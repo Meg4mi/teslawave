@@ -1,0 +1,78 @@
+/** Geohash precision used for presence cells: ~39 x 19.5 km at the equator. */
+export const CELL_PRECISION = 4;
+
+/**
+ * Durable Object sharding key = cell.slice(0, HUB_PRECISION).
+ * 2 => ~1250 x 625 km regions, at most 32^2 = 1024 hubs can ever exist.
+ * Bounding the number of Durable Objects bounds the worst-case bill (ADR-0002).
+ * Raise to 3 or 4 to shard further; nothing else changes, fan-out is already per cell.
+ */
+export const HUB_PRECISION = 2;
+
+/** Geohash alphabet, exactly HUB_PRECISION characters. Anything else is rejected at the edge. */
+export const HUB_ID_RE = /^[0-9b-hjkmnp-z]{2}$/;
+
+/** A cell id is 1..12 geohash characters. */
+export const CELL_ID_RE = /^[0-9b-hjkmnp-z]{1,12}$/;
+
+/** Subscribe to cells whose box is within this distance of the driver. */
+export const NEIGHBOUR_RADIUS_M = 10_000;
+
+/** Home cell + up to 3 neighbours (a corner case). */
+export const MAX_CELLS_PER_CLIENT = 4;
+
+/** At most this many hub sockets open at once. */
+export const MAX_SOCKETS_PER_CLIENT = 3;
+
+export const POS_INTERVAL_MOVING_MS = 5_000;
+export const POS_INTERVAL_STATIONARY_MS = 30_000;
+export const STATIONARY_SPEED_KMH = 2;
+export const POS_HEADING_DELTA_DEG = 20;
+export const POS_SPEED_DELTA_KMH = 15;
+
+/** Server broadcasts at most one diff per cell per tick. Message-driven, never a timer. */
+export const SERVER_TICK_MS = 2_000;
+
+/** Presence entries older than this are evicted (server) and hidden (client). */
+export const PRESENCE_EXPIRY_MS = 60_000;
+
+export const RATE_POS_MS = 2_000;
+export const RATE_WAVE_MS = 5_000;
+export const RATE_VIOLATIONS_TO_CLOSE = 5;
+export const MAX_MSG_BYTES = 1_024;
+
+/** Anything faster than this between two updates is a spoof or a bug. */
+export const MAX_SPEED_KMH = 250;
+
+export const MAX_SOCKETS_PER_CELL = 500;
+export const MAX_SOCKETS_PER_HUB = 2_000;
+
+/** Client shows the wave button below this distance. */
+export const WAVE_PROMPT_RANGE_M = 150;
+export const WAVE_PROMPT_TTL_MS = 10_000;
+/** Server accepts a wave below this distance: 2 x max fuzz + margin. */
+export const WAVE_VALIDATE_RANGE_M = 300;
+/** Two waves within this window read as a "wave back". */
+export const WAVE_BACK_WINDOW_MS = 4_000;
+
+export const FUZZ_MIN_M = 50;
+export const FUZZ_MAX_M = 100;
+export const FUZZ_STEP_M = 5;
+
+export const TRAIL_MS = 30_000;
+
+export const PAIR_CODE_LEN = 6;
+export const PAIR_TTL_MS = 600_000;
+/** No 0/O/1/I: this is typed on a car touchscreen. */
+export const PAIR_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+
+/** Personal milestones. No leaderboards, no ranking (brief 4.3). */
+export const WAVE_MILESTONES = [1, 5, 10, 25, 50, 100] as const;
+
+export const NICK_MAX_LEN = 16;
+
+/** WebSocket close codes. */
+export const CLOSE_BAD_HELLO = 4001;
+export const CLOSE_PROTOCOL = 4008;
+export const CLOSE_CAPACITY = 4029;
+export const CLOSE_WRONG_HUB = 4030;
