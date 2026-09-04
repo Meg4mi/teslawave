@@ -21,3 +21,5 @@ Format: Context / Decision / Rejected alternatives / Consequences (`0000-templat
 | [0012](0012-own-car-raw-fix.md) | Own car drawn from the raw local fix, others from fuzzed data |
 | [0013](0013-hub-core-pure-module.md) | Hub logic as a pure, portable module |
 | [0014](0014-design-without-blur.md) | Pre-baked pixels instead of blur and backdrop-filter |
+| [0016](0016-snap-other-cars-to-roads.md) | Other cars are drawn on the road they are plausibly on |
+| [0017](0017-camera-yields-to-touch.md) | The camera yields to the driver's hands |

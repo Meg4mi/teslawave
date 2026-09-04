@@ -5,6 +5,7 @@ import {
   dropCells,
   getSummary,
   resetWorld,
+  setDisplayOffsetSource,
   setSelfPlacement,
   setSelfReported,
   setSubscribedCells,
@@ -48,6 +49,7 @@ const diff = (over: Partial<Extract<ServerMsg, { t: 'diff' }>> = {}): ServerMsg 
 });
 
 beforeEach(() => {
+  setDisplayOffsetSource(null);
   resetWorld('me');
   setSelfPlacement({ lat: GENEVA.lat, lng: GENEVA.lng, heading: 90, speed: 50 });
   setSelfReported({ lat: GENEVA.lat, lng: GENEVA.lng });
@@ -121,6 +123,22 @@ describe('world', () => {
     applyServerMsg(welcome([]));
     tickWorld(performance.now() + 4_000);
     expect(getSummary().online).toBe(0);
+  });
+
+  it('draws a car where the display nudge puts it, and measures it where the server does', () => {
+    setSelfReported({ lat: GENEVA.lat, lng: GENEVA.lng });
+    // 500 m east: too far to wave at.
+    applyServerMsg(welcome([car({ lng: GENEVA.lng + 0.0065 })]));
+    const before = tickWorld(performance.now() + 1_000)[0];
+    expect(before?.distanceM).toBeGreaterThan(400);
+
+    // Now nudge it onto a road 80 m north. The sprite moves; the distance must not, or the
+    // wave button would appear for a wave the hub is going to refuse.
+    setDisplayOffsetSource(() => ({ lat: 0.0007, lng: 0 }));
+    const after = tickWorld(performance.now() + 1_100)[0];
+    expect(after?.placement.lat).toBeCloseTo((before?.placement.lat ?? 0) + 0.0007, 6);
+    expect(after?.reported.lat).toBeCloseTo(before?.placement.lat ?? 0, 6);
+    expect(after?.distanceM).toBeCloseTo(before?.distanceM ?? 0, 0);
   });
 
   it('forgets the cells of a hub socket that went away', () => {

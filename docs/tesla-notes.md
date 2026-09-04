@@ -12,6 +12,7 @@ Live at **https://teslawave.meg4mi.workers.dev** — open that on the car screen
 |---|---|---|---|
 | 2026-09-04 | none (CI container) | first deploy | Worker, Durable Object, D1 and cron live; seven smoke checks green, including a real WebSocket welcomed by the hub |
 | 2026-09-04 | Tesla car screen (photo) | live map, wave toast, counters | two bugs, both fixed: the "waved at you" toast never disappeared, and the online counts drifted as the connection came and went. See below. |
+| 2026-09-04 | Tesla car screen | pinch to zoom, where other cars sit | pinch barely worked and other cars sat beside the road. Both fixed: ADR-0017 and ADR-0016. See below. |
 | _pending_ | 2019 Model 3, MCU 2 | first load, map, own car moving | not yet run on a car |
 | _pending_ | 2022 Model Y, MCU 3 | same | not yet run on a car |
 
@@ -64,3 +65,33 @@ frozen socket, the healthy one, and the immediate position.
 
 The HUD dims the counters when the socket is down. The numbers may be minutes old at that
 point, and the dot alone was not saying so loudly enough.
+
+
+## 2026-09-04 — pinch, and cars in the fields
+
+**Pinch to zoom barely worked.** The camera followed the driver unconditionally, up to thirty
+`jumpTo` calls a second. MapLibre's two-finger handler computes its zoom from how the touch
+points move against the current transform, so every one of those calls moved the ground out
+from under the gesture — the zoom read as slipping, and a drag was undone within 33 ms. A real
+gesture now suspends the camera for six seconds (ADR-0017). A tap does not count: one finger
+has to travel ten pixels, two fingers down is always a pinch. The camera comes back on its
+own, keeping whatever zoom you chose, and a "Back to my car" pill is there for anyone who does
+not want to wait.
+
+**Other cars sat beside the road**, in fields and car parks. That is the 50–100 m privacy fuzz
+doing its job — 75 m sideways on a motorway is a field — and fuzzing less is not available.
+So the *drawing* is put back on the road instead: each other car is moved onto the road it is
+most plausibly on, scored on distance adjusted for heading and, above 80 km/h, road class. The
+position we send and validate waves against is untouched (ADR-0016). Nothing is invented: if
+no road scores within 130 m, the car stays where the server put it, and below zoom 13 or
+before tiles load the correction is simply absent.
+
+Cost of the snapping, measured by the perf spec with 20 cars at 6x CPU throttling: our own
+per-frame work went 3.38 ms mean / 8.20 ms p95 before, 5.47 / 13.30 with a naive version, and
+4.20 / 7.60 once off-screen cars were skipped and the re-snap interval went to 1.2 s. Budget
+is 8 ms mean. The lesson for the car: the query behind this is the expensive part, so it is
+rationed to two cars a frame and only for cars actually on screen.
+
+Both are worth re-checking on the car: whether pinch now feels like the built-in map, and
+whether cars sit on the road you can see out of the windscreen — particularly on a motorway
+with a service road running alongside it, which is the case the scoring exists for.

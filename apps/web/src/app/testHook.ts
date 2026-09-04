@@ -23,7 +23,14 @@ const frameCost = (): { mean: number; p95: number; samples: number } => {
 };
 
 export type TestHook = {
-  cars: () => Array<{ id: string; lat: number; lng: number; heading: number; distanceM: number }>;
+  cars: () => Array<{
+    id: string;
+    lat: number;
+    lng: number;
+    heading: number;
+    distanceM: number;
+    drawn: { lat: number; lng: number };
+  }>;
   summary: () => ReturnType<typeof getSummary>;
   self: () => ReturnType<typeof getSelfPlacement>;
   identity: () => unknown;
@@ -37,13 +44,16 @@ export type TestHook = {
  */
 export function installTestHook(): void {
   const hook: TestHook = {
+    // `lat`/`lng` are what the server sent, so tests of the network and motion pipeline are
+    // not disturbed by the display nudge onto roads; `drawn` is where the sprite actually is.
     cars: () =>
       tickWorld(performance.now()).map((car) => ({
         id: car.id,
-        lat: car.placement.lat,
-        lng: car.placement.lng,
-        heading: car.placement.heading,
+        lat: car.reported.lat,
+        lng: car.reported.lng,
+        heading: car.reported.heading,
         distanceM: car.distanceM,
+        drawn: { lat: car.placement.lat, lng: car.placement.lng },
       })),
     summary: getSummary,
     self: getSelfPlacement,

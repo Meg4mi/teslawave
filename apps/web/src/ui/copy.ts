@@ -40,6 +40,7 @@ export const COPY = {
     budget: (time: string): string =>
       `TeslaWave is over its free capacity for today. Back at ${time}.`,
     reconnecting: 'Reconnecting…',
+    recentre: 'Back to my car',
     tilesOffline: 'Map tiles are not loading. Cars and waves still work.',
   },
 

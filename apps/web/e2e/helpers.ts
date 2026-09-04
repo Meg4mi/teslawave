@@ -12,11 +12,17 @@ export type HookCar = {
   lng: number;
   heading: number;
   distanceM: number;
+  /** Where the sprite is drawn, once nudged onto a road. */
+  drawn: { lat: number; lng: number };
 };
 
 declare global {
   interface Window {
-    __twMap?: { getStyle: () => { layers: unknown[] } };
+    __twMap?: {
+      getStyle: () => { layers: unknown[] };
+      getCenter: () => { lat: number; lng: number };
+      getZoom: () => number;
+    };
     __tw: {
       cars: () => HookCar[];
       summary: () => { online: number; near: number; selfWaves: number; nearby: { id: string } | null };

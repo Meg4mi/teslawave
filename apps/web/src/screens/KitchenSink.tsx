@@ -60,6 +60,7 @@ export function KitchenSink(): ReactNode {
         appearedAt: performance.now(),
         lastServerTs: now,
         placement: { lat, lng: 6.14, heading: 40 + i * 60, speed: 60 },
+        reported: { lat, lng: 6.14, heading: 40 + i * 60, speed: 60 },
         distanceM: 100 + i * 40,
       };
     });

@@ -34,7 +34,12 @@ export type WorldCar = {
   lastServerTs: number;
 };
 
-export type RenderCar = WorldCar & { placement: Placement; distanceM: number };
+/**
+ * `placement` is where the sprite goes; `reported` is what the server actually sent. They
+ * differ by the display nudge that puts cars back on the road (map/snap.ts). Anything that
+ * has to agree with the server — distances, wave range — uses `reported`.
+ */
+export type RenderCar = WorldCar & { placement: Placement; reported: Placement; distanceM: number };
 
 export type Summary = {
   online: number;
@@ -58,6 +63,20 @@ const cellStats = new Map<string, { online: number; wavesToday: number; lastWave
  */
 let subscribed = new Set<string>();
 const listeners = new Set<() => void>();
+
+/**
+ * Where a car is *drawn* can differ from where the server says it is: the map layer nudges
+ * sprites onto the road they are plausibly on, to undo the sideways part of the privacy fuzz
+ * (see map/snap.ts). Distances — and therefore the wave prompt — are always measured from the
+ * unnudged position, because that is the one the hub validates against.
+ */
+let displayOffsetOf: (id: string) => { lat: number; lng: number } | null = () => null;
+
+export function setDisplayOffsetSource(
+  source: ((id: string) => { lat: number; lng: number } | null) | null,
+): void {
+  displayOffsetOf = source ?? ((): null => null);
+}
 
 let clockOffset = 0;
 let selfId = '';
@@ -235,10 +254,15 @@ function placements(server: number): RenderCar[] {
   for (const car of cars.values()) {
     const placement = sample(car.track, server);
     if (!placement) continue;
+    // Measured before the display nudge, always.
     const distanceM = from
       ? haversineM(from.lat, from.lng, placement.lat, placement.lng)
       : Number.POSITIVE_INFINITY;
-    out.push({ ...car, placement, distanceM });
+    const offset = displayOffsetOf(car.id);
+    const shown = offset
+      ? { ...placement, lat: placement.lat + offset.lat, lng: placement.lng + offset.lng }
+      : placement;
+    out.push({ ...car, placement: shown, reported: placement, distanceM });
   }
   return out;
 }

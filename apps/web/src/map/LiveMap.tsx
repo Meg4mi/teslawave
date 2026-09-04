@@ -2,10 +2,12 @@ import { useEffect, useRef, type ReactNode } from 'react';
 import { AttributionControl, Map as MlMap, prewarm, setWorkerUrl } from 'maplibre-gl';
 import type { MapMouseEvent, MapTouchEvent } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
-import { getSelfPlacement, tickWorld, type RenderCar } from '../sim/world';
+import { getSelfPlacement, setDisplayOffsetSource, tickWorld, type RenderCar } from '../sim/world';
 import { createRenderer, type Renderer } from '../overlay/renderer';
 import { buildStyle } from './style';
+import { createRoadSnapper } from './snap';
 import { MAPLIBRE_WORKER_URL } from './maplibre-worker-url';
+import { COPY } from '../ui/copy';
 import { recordFrameCost } from '../app/testHook';
 import { isE2E } from '../config/env';
 import './map.css';
@@ -40,6 +42,21 @@ const OVERLAY_SLOW_MS = 32;
 /** Roughly a tenth of a metre, and a fifth of a degree: below this nothing visibly moves. */
 const CAMERA_EPSILON_DEG = 1e-6;
 const CAMERA_EPSILON_DEG_BEARING = 0.2;
+/**
+ * How long the camera stays out of the way after the driver touches the map.
+ *
+ * It used to follow unconditionally, up to thirty times a second, which meant a pinch was
+ * fighting a jumpTo the whole time it lasted — the gesture computes its deltas against a
+ * transform that had already been moved out from under it, so zooming felt like it was
+ * slipping. Now a gesture wins outright, and the map comes back to you when you stop. The
+ * zoom you chose is kept: only the centre and bearing resume.
+ */
+const CAMERA_HOLD_MS = 6_000;
+/** Below this a touch is a tap, not a drag. */
+const DRAG_SLOP_PX = 10;
+/** Snapping is the one thing here that queries the vector tiles; ration it on slow frames. */
+const SNAP_BUDGET = 2;
+const SNAP_BUDGET_SLOW = 1;
 
 export function LiveMap({
   northUp,
@@ -53,6 +70,7 @@ export function LiveMap({
 }: LiveMapProps): ReactNode {
   const container = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const recentre = useRef<HTMLButtonElement>(null);
   const mapRef = useRef<MlMap | null>(null);
   const carsRef = useRef<RenderCar[]>([]);
   // Props read inside the animation loop, which must not restart when they change.
@@ -102,6 +120,51 @@ export function LiveMap({
 
     const renderer = createRenderer(canvas);
     onReady(renderer);
+
+    // Sprites are drawn on the road they are plausibly on rather than in the field the privacy
+    // fuzz put them in. Display only: the position we send is untouched (map/snap.ts).
+    const snapper = createRoadSnapper(map);
+    setDisplayOffsetSource(snapper.offsetOf);
+
+    const recentreButton = recentre.current;
+    let cameraHeldUntil = 0;
+    const holdCamera = (): void => {
+      cameraHeldUntil = performance.now() + CAMERA_HOLD_MS;
+      if (recentreButton) recentreButton.hidden = false;
+    };
+    /*
+     * Gestures only, and only real ones. A tap to select a car still jitters a pixel or two on
+     * a car screen, and holding the camera every time somebody tapped would mean it hardly
+     * ever followed. Two fingers down is always a pinch; one finger has to travel first.
+     */
+    let touchFrom: { x: number; y: number } | null = null;
+    const onTouchStart = (event: TouchEvent): void => {
+      const touch = event.touches[0];
+      touchFrom = touch ? { x: touch.clientX, y: touch.clientY } : null;
+      if (event.touches.length > 1) holdCamera();
+    };
+    const onTouchMove = (event: TouchEvent): void => {
+      if (event.touches.length > 1) return holdCamera();
+      const touch = event.touches[0];
+      if (!touch || !touchFrom) return;
+      if (Math.hypot(touch.clientX - touchFrom.x, touch.clientY - touchFrom.y) > DRAG_SLOP_PX)
+        holdCamera();
+    };
+    host.addEventListener('touchstart', onTouchStart, { passive: true });
+    host.addEventListener('touchmove', onTouchMove, { passive: true });
+    host.addEventListener('wheel', holdCamera, { passive: true });
+    // MapLibre has its own thresholds; these catch anything the ones above miss. `zoomstart`
+    // also fires for our own jumpTo, which is why it checks for an original event.
+    map.on('dragstart', holdCamera);
+    map.on('zoomstart', (event) => {
+      if ('originalEvent' in event && event.originalEvent) holdCamera();
+    });
+
+    const follow = (): void => {
+      cameraHeldUntil = 0;
+      if (recentreButton) recentreButton.hidden = true;
+    };
+    recentreButton?.addEventListener('click', follow);
 
     /*
      * A map that never loads is the difference between "quiet road" and "this app is
@@ -178,7 +241,14 @@ export function LiveMap({
        * redraws even when the camera has not moved. A car standing at a light stops
        * repainting the map altogether.
        */
-      if (placement && now - cameraAt >= (halfRate ? CAMERA_SLOW_MS : CAMERA_MS)) {
+      if (now >= cameraHeldUntil && recentreButton && !recentreButton.hidden)
+        recentreButton.hidden = true;
+
+      if (
+        placement &&
+        now >= cameraHeldUntil &&
+        now - cameraAt >= (halfRate ? CAMERA_SLOW_MS : CAMERA_MS)
+      ) {
         const bearing = north ? 0 : placement.heading;
         const moved =
           !lastCentre ||
@@ -195,6 +265,7 @@ export function LiveMap({
       const measure = instrumented ? performance.now() : 0;
       const cars = tickWorld(now);
       carsRef.current = cars;
+      snapper.update(cars, now, halfRate ? SNAP_BUDGET_SLOW : SNAP_BUDGET);
       renderer.render(
         now,
         (lng, lat) => map.project([lng, lat]),
@@ -239,6 +310,11 @@ export function LiveMap({
       cancelAnimationFrame(raf);
       observer.disconnect();
       dprWatch.removeEventListener('change', resize);
+      host.removeEventListener('touchstart', onTouchStart);
+      host.removeEventListener('touchmove', onTouchMove);
+      host.removeEventListener('wheel', holdCamera);
+      recentreButton?.removeEventListener('click', follow);
+      setDisplayOffsetSource(null);
       map.off('click', pick);
       map.remove();
       mapRef.current = null;
@@ -252,6 +328,10 @@ export function LiveMap({
       <div className="map__gl" ref={container} />
       <canvas className="map__overlay" ref={canvasRef} aria-hidden />
       <div className="map__vignette" aria-hidden />
+      {/* Only while you have the map. Six seconds after you let go it goes away by itself. */}
+      <button type="button" data-touch className="map__recentre" ref={recentre} hidden>
+        {COPY.map.recentre}
+      </button>
     </div>
   );
 }
