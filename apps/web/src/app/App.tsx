@@ -54,6 +54,7 @@ import { CarCard } from '../screens/CarCard';
 import { PulseSheet } from '../screens/PulseSheet';
 import { SettingsSheet } from '../screens/SettingsSheet';
 import { EnterCodeSheet, ShowPairingSheet } from '../screens/Pairing';
+import { GarageSheet, type CarEdit } from '../screens/GarageSheet';
 import { HowToWave } from '../screens/HowToWave';
 import type { Renderer } from '../overlay/renderer';
 import { installTestHook } from './testHook';
@@ -61,12 +62,17 @@ import { isE2E } from '../config/env';
 import './app.css';
 import '../screens/sheets.css';
 
-type SheetName = 'settings' | 'pulse' | 'pair-show' | 'pair-enter' | 'how-to' | null;
+type SheetName = 'settings' | 'pulse' | 'pair-show' | 'pair-enter' | 'how-to' | 'garage' | null;
 
 const BOOT_KEY = 'tw.booted';
 
 export function App(): ReactNode {
   const { identity, prefs, setIdentity, setPrefs, claimMilestone } = useIdentity();
+  // Read by the connection effect, which must not re-run when the car changes.
+  const profileRef = useRef(identity);
+  useEffect(() => {
+    profileRef.current = identity;
+  });
   const [status, setStatus] = useState<NetStatus>('idle');
   const [sheet, setSheet] = useState<SheetName>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -184,9 +190,17 @@ export function App(): ReactNode {
     setSelectedId(null);
   }, []);
 
-  // --- Connection ------------------------------------------------------------------
+  /*
+   * --- Connection ---------------------------------------------------------------------
+   *
+   * Keyed on who you are, not on what you are driving. Changing your paint used to replace the
+   * identity object, which tore the socket down, cleared the world and re-fuzzed the position:
+   * the map blinked and everyone around you saw you leave and come back. Profile changes go
+   * down the open socket instead, as a fresh `hello`.
+   */
+  const identityId = identity?.id;
   useEffect(() => {
-    if (!identity) return;
+    if (!identityId) return;
     const net = createNet({
       onMessage: onServerMsg,
       onStatus: setStatus,
@@ -194,20 +208,32 @@ export function App(): ReactNode {
       onCells: setSubscribedCells,
     });
     netRef.current = net;
-    resetWorld(identity.id);
+    resetWorld(identityId);
     resetFuzz();
     net.start({
+      id: identityId,
+      model: profileRef.current?.model ?? '3',
+      colour: profileRef.current?.colour ?? 'pearl',
+      spectator,
+      ...(profileRef.current?.nick === undefined ? {} : { nick: profileRef.current.nick }),
+    });
+    return () => {
+      net.stop();
+      netRef.current = null;
+    };
+  }, [identityId, spectator, onServerMsg]);
+
+  // What you are driving, pushed down the socket that is already open.
+  useEffect(() => {
+    if (!identity) return;
+    netRef.current?.setProfile({
       id: identity.id,
       model: identity.model,
       colour: identity.colour,
       spectator,
       ...(identity.nick === undefined ? {} : { nick: identity.nick }),
     });
-    return () => {
-      net.stop();
-      netRef.current = null;
-    };
-  }, [identity, spectator, onServerMsg]);
+  }, [identity, spectator]);
 
   /**
    * Wall-clock heartbeat. The render loop expires cars, but a hidden tab gets no animation
@@ -256,6 +282,25 @@ export function App(): ReactNode {
       cancelled = true;
     };
   }, [spectator, identity]);
+
+  const editCar = useCallback(
+    (next: CarEdit): void => {
+      const current = profileRef.current;
+      if (!current) return;
+      // Rebuilt rather than patched, so deleting the name actually deletes it. The new profile
+      // reaches everyone around you on the socket that is already open.
+      setIdentity({
+        id: current.id,
+        createdAt: current.createdAt,
+        model: next.model,
+        colour: next.colour,
+        ...(next.nick === undefined ? {} : { nick: next.nick }),
+      });
+      setSheet(null);
+      showToast(COPY.garage.saved);
+    },
+    [setIdentity, showToast],
+  );
 
   const adopt = useCallback(
     (paired: { id: string; model: string; colour: string; nick?: string }): void => {
@@ -454,8 +499,12 @@ export function App(): ReactNode {
           onShowPairing={() => setSheet('pair-show')}
           onEnterCode={() => setSheet('pair-enter')}
           onHowItWorks={() => setSheet('how-to')}
+          onEditCar={() => setSheet('garage')}
           onClose={() => setSheet(null)}
         />
+      ) : null}
+      {sheet === 'garage' && identity ? (
+        <GarageSheet car={identity} onSave={editCar} onClose={() => setSheet(null)} />
       ) : null}
       {sheet === 'pair-show' && identity ? (
         <ShowPairingSheet identity={identity} onClose={() => setSheet(null)} />

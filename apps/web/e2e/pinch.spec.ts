@@ -52,6 +52,24 @@ const start = async (page: Page): Promise<Stage> => {
   return { x: size.width / 2, y: size.height / 2, narrow: small * 0.18, wide: small * 0.7 };
 };
 
+/**
+ * The map opens north-up and swings round to the car's heading as soon as the first fix
+ * lands. Reading a bearing before that has settled measures the swing, not the gesture.
+ */
+const settled = async (page: Page): Promise<void> => {
+  await expect
+    .poll(
+      async () => {
+        const { bearing } = await state(page);
+        const heading = (await page.evaluate(() => window.__tw.self()?.heading)) ?? 0;
+        const off = Math.abs(bearing - heading);
+        return off > 180 ? 360 - off : off;
+      },
+      { timeout: 10_000, message: 'the camera should settle on the heading' },
+    )
+    .toBeLessThan(1);
+};
+
 test('spreading two fingers zooms the map in', async ({ page }) => {
   const stage = await start(page);
   const before = await state(page);
@@ -78,6 +96,7 @@ test('a pinch never rotates the map away from heading-up', async ({ page }) => {
   const centre = stage;
   // The map is heading-up, so the bearing is the car's heading; the question is whether a
   // twisting pinch moves it off that. A heading-up map that quietly rotates is disorienting.
+  await settled(page);
   const before = await state(page);
   const cdp = await page.context().newCDPSession(page);
   const step = stage.narrow * 0.5;
@@ -128,10 +147,20 @@ test('the zoom buttons work without a pinch at all', async ({ page }) => {
 
 test('pinching in has room to go somewhere', async ({ page }) => {
   const stage = await start(page);
-  // The ceiling used to be a zoom and a half above the follow zoom, which is why pinching in
-  // felt like it did nothing.
-  for (let i = 0; i < 3; i++) await pinch(page, stage, stage.narrow, stage.wide);
-  expect((await state(page)).zoom).toBeGreaterThan(18);
+  /*
+   * The ceiling used to be 17, a zoom and a half above the one we follow at, which is why
+   * pinching in felt like it did nothing. Getting past 17 at all is the claim; how many
+   * pinches that takes depends on how much of each gesture the machine managed to deliver, so
+   * it keeps going rather than assuming three is enough.
+   */
+  let zoom = (await state(page)).zoom;
+  for (let i = 0; i < 8 && zoom <= 17.5; i++) {
+    await pinch(page, stage, stage.narrow, stage.wide);
+    const next = (await state(page)).zoom;
+    expect(next).toBeGreaterThan(zoom);
+    zoom = next;
+  }
+  expect(zoom).toBeGreaterThan(17.5);
 });
 
 test('the zoom you pinched to survives the camera picking you up again', async ({ page }) => {

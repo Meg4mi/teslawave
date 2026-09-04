@@ -10,6 +10,7 @@ export function SettingsSheet({
   onShowPairing,
   onEnterCode,
   onHowItWorks,
+  onEditCar,
   onClose,
 }: {
   prefs: Prefs;
@@ -17,11 +18,21 @@ export function SettingsSheet({
   onShowPairing: () => void;
   onEnterCode: () => void;
   onHowItWorks: () => void;
+  onEditCar: () => void;
   onClose: () => void;
 }): ReactNode {
   return (
     <Sheet label={COPY.controls.settings} onClose={onClose}>
       <h2 className="card-sheet__title">{COPY.controls.settings}</h2>
+
+      {/* First, because it is the one setting that is about you rather than about the app. */}
+      <div className="settings__row">
+        <span className="settings__label">
+          {COPY.garage.title}
+          <span className="settings__hint">{COPY.garage.hint}</span>
+        </span>
+        <Button onClick={onEditCar}>{COPY.garage.open}</Button>
+      </div>
 
       <div className="settings__row">
         <span className="settings__label">

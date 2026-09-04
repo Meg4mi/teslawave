@@ -161,7 +161,7 @@ export function createRenderer(canvas: HTMLCanvasElement) {
         const p = project(car.placement.lng, car.placement.lat);
         if (p.x < -80 || p.y < -80 || p.x > width + 80 || p.y > height + 80) continue;
 
-        const appearing = Math.min(1, (now - car.appearedAt) / 300);
+        const appearing = Math.min(1, Math.max(0, (now - car.appearedAt) / 300));
         const sprite = getSprite(car.model, car.colour, dpr);
         ctx.save();
         ctx.translate(p.x, p.y);
@@ -180,7 +180,11 @@ export function createRenderer(canvas: HTMLCanvasElement) {
 
         // The single ring that announces a car arriving.
         if (now - car.appearedAt < 600) {
-          const t = (now - car.appearedAt) / 600;
+          // Clamped, because these two clocks are not the same reading. `appearedAt` is a
+          // `performance.now()` taken when the message arrived; `now` is the frame's start
+          // time, which can be a few milliseconds earlier. A negative radius throws, and the
+          // throw took the rest of the frame's drawing with it.
+          const t = Math.max(0, (now - car.appearedAt) / 600);
           ctx.globalAlpha = 0.5 * (1 - t);
           ctx.strokeStyle = '#6ee7ff';
           ctx.lineWidth = 1.5;
@@ -258,7 +262,7 @@ export function createRenderer(canvas: HTMLCanvasElement) {
       }
 
       // 8. The boot sonar sweep, and the ambient one when the road is quiet.
-      const sonarT = (now - sonarStartedAt) / 900;
+      const sonarT = Math.max(0, (now - sonarStartedAt) / 900);
       if (sonarStartedAt > 0 && sonarT < 1) {
         ctx.globalAlpha = 0.4 * (1 - sonarT);
         ctx.strokeStyle = '#6ee7ff';

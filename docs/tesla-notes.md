@@ -14,6 +14,7 @@ Live at **https://teslawave.meg4mi.workers.dev** — open that on the car screen
 | 2026-09-04 | Tesla car screen (photo) | live map, wave toast, counters | two bugs, both fixed: the "waved at you" toast never disappeared, and the online counts drifted as the connection came and went. See below. |
 | 2026-09-04 | Tesla car screen | pinch to zoom, where other cars sit | pinch barely worked and other cars sat beside the road. Both fixed: ADR-0017 and ADR-0016. See below. |
 | 2026-09-04 | Tesla car screen | pinch again, car sprites | zoom ceiling raised, our per-frame work stands aside during a gesture, zoom buttons added; sprites re-traced per model (ADR-0018). |
+| 2026-09-04 | Tesla car screen | turning | the camera moved once a second, not every frame. Own position is interpolated now, and the camera pauses on touch-down (ADR-0019). |
 | _pending_ | 2019 Model 3, MCU 2 | first load, map, own car moving | not yet run on a car |
 | _pending_ | 2022 Model Y, MCU 3 | same | not yet run on a car |
 
@@ -120,3 +121,34 @@ place: Playwright's mouse cannot express a pinch, so the first round only ever t
 (ADR-0018). Worth checking on the car: whether a Model 3 and a Model Y are tellable apart at a
 glance while moving — the 3's body-coloured roof bar against the Y's uninterrupted glass is the
 tell, and it is a few pixels at the follow zoom.
+
+
+## 2026-09-04 — "a bit laggy when I turn"
+
+Not frame rate. The camera was moving once a second.
+
+Every other car is interpolated between server samples; your own car was drawn straight from
+the raw fix, and `watchPosition` gives about one a second. So the map held still for a second
+and then jumped — at 100 km/h a 28 metre step, and through a bend the whole turn at once.
+Own position is dead-reckoned forward at frame rate now and eased toward, so the map glides and
+turns (ADR-0019).
+
+Fixing it exposed the deeper half of the pinch problem. With the camera moving every frame
+instead of once a second, gestures stopped working altogether: a `jumpTo` between a finger
+landing and its first movement cancels the gesture inside MapLibre before it becomes one. The
+camera now pauses the moment a pointer lands, and resumes immediately if the finger lifts
+without travelling. ADR-0017's version — wait for the first movement, and listen for MapLibre's
+`dragstart` — was one frame too late and listening for an event a following camera prevents.
+
+Two bugs found while looking:
+
+- The renderer threw `The radius provided (-72.28) is negative` from `ctx.arc` on most frames
+  at boot. `performance.now()` read inside a handler is a few milliseconds ahead of the frame's
+  own timestamp, so the boot sonar's progress was briefly negative. The throw took the rest of
+  that frame's drawing with it — cars, your own car, ripples. Radii are clamped now.
+- Changing your car used to replace the identity object, which tore the socket down, cleared
+  the world and re-fuzzed the position. Profile changes go down the open socket as a fresh
+  `hello`; the connection is keyed on who you are, not what you drive.
+
+Worth checking on the car: whether a turn now reads as a smooth sweep, and whether a
+one-finger pan and a pinch both take hold immediately rather than after a beat.

@@ -1,3 +1,4 @@
+import { createSelfFollower } from './self';
 import {
   PRESENCE_EXPIRY_MS,
   TRAIL_MS,
@@ -80,6 +81,11 @@ export function setDisplayOffsetSource(
 
 let clockOffset = 0;
 let selfId = '';
+/**
+ * Fixes arrive about once a second; the map redraws sixty times a second. The follower fills
+ * in between them so the camera glides and turns instead of stepping (see sim/self.ts).
+ */
+const follower = createSelfFollower();
 let selfPlacement: Placement | null = null;
 /** The fuzzed position, which is what the server sees and validates waves against. */
 let selfReported: { lat: number; lng: number } | null = null;
@@ -104,6 +110,7 @@ export function resetWorld(id: string): void {
   subscribed = new Set();
   selfId = id;
   selfWaves = 0;
+  follower.push(null);
   selfPlacement = null;
   selfReported = null;
   clockOffset = 0;
@@ -128,8 +135,10 @@ export function setSubscribedCells(cells: readonly string[]): void {
   for (const cell of [...cellStats.keys()]) if (!subscribed.has(cell)) cellStats.delete(cell);
 }
 
-export function setSelfPlacement(placement: Placement | null): void {
-  selfPlacement = placement;
+/** A new fix from the device, or null when position goes away. Smoothed before it is drawn. */
+export function setSelfPlacement(placement: Placement | null, at = Date.now()): void {
+  follower.push(placement ? { ...placement, ts: at } : null);
+  selfPlacement = follower.current();
 }
 
 /**
@@ -280,6 +289,7 @@ export function refreshSummary(): void {
  */
 export function tickWorld(nowMs: number): RenderCar[] {
   const server = serverNow();
+  selfPlacement = follower.advance(nowMs, Date.now());
   pruneExpired();
   const out = placements(server);
 

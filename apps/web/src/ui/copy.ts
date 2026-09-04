@@ -46,6 +46,15 @@ export const COPY = {
     tilesOffline: 'Map tiles are not loading. Cars and waves still work.',
   },
 
+  garage: {
+    title: 'Your car',
+    hint: 'Change what other drivers see. Takes effect for everyone around you straight away.',
+    open: 'Change',
+    save: 'Save',
+    cancel: 'Cancel',
+    saved: 'Your car is updated.',
+  },
+
   howTo: {
     title: 'How waving works',
     lead: 'It is the Tesla wave, on your screen. Nothing to learn.',

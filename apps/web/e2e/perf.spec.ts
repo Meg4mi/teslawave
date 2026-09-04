@@ -104,3 +104,34 @@ test('holds a usable frame rate while panning with twenty cars', async ({ page }
   expect(cost.samples).toBeGreaterThan(30);
   expect(cost.mean).toBeLessThanOrEqual(MAX_FRAME_COST_MS);
 });
+
+/**
+ * Turning is the expensive case: every camera tick hands MapLibre a new bearing, and a new
+ * bearing repaints the whole vector map and re-places every label. It is also the case the
+ * driver reported as laggy, so it gets its own measurement rather than being assumed to
+ * behave like panning.
+ */
+test('holds its per-frame budget through a turn', async ({ page }) => {
+  test.slow();
+  await onboard(page, simUrl(TRACK.lat, TRACK.lng, 90, 30, 25));
+
+  await expect
+    .poll(async () => page.evaluate(() => window.__tw.cars().length), { timeout: 30_000 })
+    .toBeGreaterThanOrEqual(5);
+
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send('Emulation.setCPUThrottlingRate', { rate: 6 });
+  await page.evaluate(() => window.__tw.resetFrameCost());
+  // A long window on purpose: at 6x throttling in a shared container the per-frame cost is
+  // noisy, and the mean over ten seconds is what says something about the code.
+  await page.waitForTimeout(10_000);
+
+  const cost = await page.evaluate(() => window.__tw.frameCost());
+  await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
+  console.log(
+    `perf(turning): our work ${cost.mean.toFixed(2)} ms mean / ${cost.p95.toFixed(2)} ms p95 ` +
+      `over ${cost.samples} frames, turning 25 deg/s at 6x CPU throttling`,
+  );
+  expect(cost.samples).toBeGreaterThan(30);
+  expect(cost.mean).toBeLessThanOrEqual(MAX_FRAME_COST_MS);
+});

@@ -4,15 +4,27 @@ import { bearingDeg, haversineM } from '@teslawave/protocol';
 export type Fix = { lat: number; lng: number; heading: number; speed: number; at: number };
 export type GeoStatus = 'idle' | 'granted' | 'denied' | 'unavailable';
 
-/** `?sim=lat,lng,heading,speed` drives a fake car. Used by the e2e tests and by development. */
-function readSim(): Fix | null {
+/**
+ * `?sim=lat,lng,heading,speed,turn` drives a fake car; `turn` is degrees per second, so a
+ * curve can be driven on demand. Turning is the case that showed the camera stepping once a
+ * second rather than gliding, and without it there was no way to test for that.
+ */
+type Sim = Fix & { turn: number };
+
+function readSim(): Sim | null {
   const raw = new URLSearchParams(location.search).get('sim');
   if (!raw) return null;
-  const [lat, lng, heading = '90', speed = '50'] = raw.split(',');
+  const [lat, lng, heading = '90', speed = '50', turn = '0'] = raw.split(',');
   if (lat === undefined || lng === undefined) return null;
-  const parsed = { lat: Number(lat), lng: Number(lng), heading: Number(heading), speed: Number(speed) };
+  const parsed = {
+    lat: Number(lat),
+    lng: Number(lng),
+    heading: Number(heading),
+    speed: Number(speed),
+    turn: Number(turn),
+  };
   if (!Number.isFinite(parsed.lat) || !Number.isFinite(parsed.lng)) return null;
-  return { ...parsed, at: Date.now() };
+  return { ...parsed, turn: Number.isFinite(parsed.turn) ? parsed.turn : 0, at: Date.now() };
 }
 
 const MIN_HEADING_SPEED_KMH = 3;
@@ -34,18 +46,27 @@ export function usePosition(enabled: boolean): { status: GeoStatus; fix: Fix | n
     if (sim) {
       const startedAt = Date.now();
       let frame = 0;
+      // Integrated in short steps so a turning car follows an arc rather than a chord.
+      let lat = sim.lat;
+      let lng = sim.lng;
+      let heading = sim.heading;
+      let at = startedAt;
+      const R = 6_371_000;
       const tick = (): void => {
-        const seconds = (Date.now() - startedAt) / 1000;
-        const metres = (sim.speed / 3.6) * seconds;
-        const R = 6_371_000;
-        const lat = sim.lat + (metres * Math.cos((sim.heading * Math.PI) / 180)) / R * (180 / Math.PI);
-        const lng =
-          sim.lng +
-          ((metres * Math.sin((sim.heading * Math.PI) / 180)) /
-            (R * Math.cos((sim.lat * Math.PI) / 180))) *
+        const now = Date.now();
+        for (let t = at; t < now; t += 100) {
+          const step = Math.min(100, now - t) / 1000;
+          heading = (((heading + sim.turn * step) % 360) + 360) % 360;
+          const metres = (sim.speed / 3.6) * step;
+          lat += ((metres * Math.cos((heading * Math.PI) / 180)) / R) * (180 / Math.PI);
+          lng +=
+            ((metres * Math.sin((heading * Math.PI) / 180)) / (R * Math.cos((lat * Math.PI) / 180))) *
             (180 / Math.PI);
+        }
+        at = now;
         setStatus('granted');
-        setFix({ lat, lng, heading: sim.heading, speed: sim.speed, at: Date.now() });
+        setFix({ lat, lng, heading, speed: sim.speed, at: now });
+        // One a second, like a real device: the point is that the app copes with that.
         frame = window.setTimeout(tick, 1_000);
       };
       tick();

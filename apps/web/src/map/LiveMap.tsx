@@ -66,6 +66,13 @@ const DRAG_SLOP_PX = 10;
 /** Snapping is the one thing here that queries the vector tiles; ration it on slow frames. */
 const SNAP_BUDGET = 2;
 const SNAP_BUDGET_SLOW = 1;
+/**
+ * Above this rate of turn we are repainting the whole vector map every frame with a new
+ * bearing, which is the most expensive thing the map ever does. Querying rendered features
+ * against a map in that state is the worst possible moment to do it, so we stop until the
+ * wheel comes back — a second of a slightly-off correction nobody will see.
+ */
+const TURNING_DEG_PER_S = 6;
 
 export function LiveMap({
   northUp,
@@ -143,52 +150,72 @@ export function LiveMap({
       cameraHeldUntil = performance.now() + CAMERA_HOLD_MS;
       if (recentreButton) recentreButton.hidden = false;
     };
-    /*
-     * Gestures only, and only real ones. A tap to select a car still jitters a pixel or two on
-     * a car screen, and holding the camera every time somebody tapped would mean it hardly
-     * ever followed. Two fingers down is always a pinch; one finger has to travel first.
-     */
-    let touchFrom: { x: number; y: number } | null = null;
-    /*
-     * While a finger is down the map itself is re-tessellating every frame, which on an Intel
-     * Atom is the whole budget. Our own work — road snapping and trails — stands aside for the
-     * duration, so the gesture gets the machine. Neither is missed: a trail gap of half a
-     * second fades out anyway, and a snap correction is recomputed as soon as you let go.
-     */
-    let touching = 0;
-    const onTouchStart = (event: TouchEvent): void => {
-      touching = event.touches.length;
-      const touch = event.touches[0];
-      touchFrom = touch ? { x: touch.clientX, y: touch.clientY } : null;
-      if (event.touches.length > 1) holdCamera();
-    };
-    const onTouchEnd = (event: TouchEvent): void => {
-      touching = event.touches.length;
-    };
-    const onTouchMove = (event: TouchEvent): void => {
-      if (event.touches.length > 1) return holdCamera();
-      const touch = event.touches[0];
-      if (!touch || !touchFrom) return;
-      if (Math.hypot(touch.clientX - touchFrom.x, touch.clientY - touchFrom.y) > DRAG_SLOP_PX)
-        holdCamera();
-    };
-    host.addEventListener('touchstart', onTouchStart, { passive: true });
-    host.addEventListener('touchmove', onTouchMove, { passive: true });
-    host.addEventListener('touchend', onTouchEnd, { passive: true });
-    host.addEventListener('touchcancel', onTouchEnd, { passive: true });
-    host.addEventListener('wheel', holdCamera, { passive: true });
-    // MapLibre has its own thresholds; these catch anything the ones above miss. `zoomstart`
-    // also fires for our own jumpTo, which is why it checks for an original event.
-    map.on('dragstart', holdCamera);
-    map.on('zoomstart', (event) => {
-      if ('originalEvent' in event && event.originalEvent) holdCamera();
-    });
-
     const follow = (): void => {
       cameraHeldUntil = 0;
       if (recentreButton) recentreButton.hidden = true;
     };
     recentreButton?.addEventListener('click', follow);
+    /*
+     * Gestures are read from raw pointer events, never from MapLibre's own `dragstart`.
+     * MapLibre emits that only once a drag has passed its threshold, and our `jumpTo` in
+     * between resets it, so the event we would be waiting for never arrives.
+     *
+     * `touching` also gates our per-frame work: while a finger is down the map is
+     * re-tessellating every frame, which on an Intel Atom is the whole budget, so road
+     * snapping and trails stand aside. Neither is missed — a trail gap of half a second fades
+     * out anyway, and a snap correction is recomputed as soon as you let go.
+     */
+    const down = new Map<number, { x: number; y: number }>();
+    let touching = 0;
+    let gestured = false;
+
+    /*
+     * The camera pauses the moment a finger lands, before we know what the finger is for.
+     *
+     * It has to. A `jumpTo` between the touch landing and its first movement cancels the
+     * gesture inside MapLibre before it ever becomes one — no `dragstart`, no pan, no pinch —
+     * and at thirty frames a second there is always one in that gap. Waiting for the first
+     * movement to pause is already too late.
+     *
+     * A tap therefore pauses the camera too, for as long as the finger is down. Lift it
+     * without having travelled and the camera resumes on the spot, so tapping a car to see
+     * who it is costs nothing. Only a gesture that actually moved leaves the camera held —
+     * and only that shows the pill.
+     */
+    const onPointerDown = (event: PointerEvent): void => {
+      down.set(event.pointerId, { x: event.clientX, y: event.clientY });
+      touching = down.size;
+      cameraHeldUntil = performance.now() + CAMERA_HOLD_MS;
+      if (down.size > 1) {
+        gestured = true;
+        holdCamera();
+      }
+    };
+    const onPointerMove = (event: PointerEvent): void => {
+      if (down.size === 0) return;
+      const from = down.get(event.pointerId);
+      const travelled = from
+        ? Math.hypot(event.clientX - from.x, event.clientY - from.y) > DRAG_SLOP_PX
+        : false;
+      if (down.size > 1 || travelled) {
+        gestured = true;
+        holdCamera();
+      }
+    };
+    const onPointerUp = (event: PointerEvent): void => {
+      down.delete(event.pointerId);
+      touching = down.size;
+      if (down.size > 0) return;
+      // A tap, not a gesture: pick the driver straight back up.
+      if (!gestured) follow();
+      gestured = false;
+    };
+    host.addEventListener('pointerdown', onPointerDown, { passive: true });
+    host.addEventListener('pointermove', onPointerMove, { passive: true });
+    host.addEventListener('pointerup', onPointerUp, { passive: true });
+    host.addEventListener('pointercancel', onPointerUp, { passive: true });
+    host.addEventListener('wheel', holdCamera, { passive: true });
+
 
     /*
      * Instant, not eased: the follow loop calls jumpTo, which would cancel an easeTo the frame
@@ -248,6 +275,7 @@ export function LiveMap({
     let cameraAt = 0;
     let lastCentre: { lng: number; lat: number; bearing: number } | null = null;
     let overlayAt = 0;
+    let turnRate = 0;
     let raf = 0;
     const instrumented = isE2E();
 
@@ -294,6 +322,10 @@ export function LiveMap({
           Math.abs(lastCentre.lng - placement.lng) > CAMERA_EPSILON_DEG ||
           Math.abs(lastCentre.bearing - bearing) > CAMERA_EPSILON_DEG_BEARING;
         if (moved) {
+          const turned = lastCentre ? Math.abs(bearing - lastCentre.bearing) : 0;
+          const elapsed = Math.max(1, now - cameraAt);
+          // Smoothed, so one noisy fix does not read as a turn.
+          turnRate = turnRate * 0.7 + ((turned > 180 ? 360 - turned : turned) / elapsed) * 1_000 * 0.3;
           map.jumpTo({ center: [placement.lng, placement.lat], bearing });
           lastCentre = { lat: placement.lat, lng: placement.lng, bearing };
         }
@@ -303,7 +335,8 @@ export function LiveMap({
       const measure = instrumented ? performance.now() : 0;
       const cars = tickWorld(now);
       carsRef.current = cars;
-      snapper.update(cars, now, touching > 0 ? 0 : halfRate ? SNAP_BUDGET_SLOW : SNAP_BUDGET);
+      const busy = touching > 0 || turnRate > TURNING_DEG_PER_S;
+      snapper.update(cars, now, busy ? 0 : halfRate ? SNAP_BUDGET_SLOW : SNAP_BUDGET);
       renderer.render(
         now,
         (lng, lat) => map.project([lng, lat]),
@@ -348,10 +381,10 @@ export function LiveMap({
       cancelAnimationFrame(raf);
       observer.disconnect();
       dprWatch.removeEventListener('change', resize);
-      host.removeEventListener('touchstart', onTouchStart);
-      host.removeEventListener('touchmove', onTouchMove);
-      host.removeEventListener('touchend', onTouchEnd);
-      host.removeEventListener('touchcancel', onTouchEnd);
+      host.removeEventListener('pointerdown', onPointerDown);
+      host.removeEventListener('pointermove', onPointerMove);
+      host.removeEventListener('pointerup', onPointerUp);
+      host.removeEventListener('pointercancel', onPointerUp);
       host.removeEventListener('wheel', holdCamera);
       recentreButton?.removeEventListener('click', follow);
       zoomInButton?.removeEventListener('click', zoomInAt);

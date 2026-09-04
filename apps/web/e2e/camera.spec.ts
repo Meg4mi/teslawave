@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { GENEVA, onboard, simUrl } from './helpers';
+import { dragBy, GENEVA, onboard, simUrl } from './helpers';
 
 const metresApart = (
   a: { lat: number; lng: number } | null | undefined,
@@ -30,9 +30,13 @@ const start = async (page: Page): Promise<void> => {
   await page.waitForFunction(() => window.__twMap !== undefined);
 };
 
-const centreOf = (page: Page): { x: number; y: number } => {
+/**
+ * A drag sized from the viewport. Fixed pixel offsets are a car-screen habit: 260 px left of
+ * centre on a phone is off the side of the window, and the map never sees the gesture.
+ */
+const centreOf = (page: Page): { x: number; y: number; reach: number } => {
   const size = page.viewportSize() ?? { width: 1_920, height: 1_200 };
-  return { x: size.width / 2, y: size.height / 2 };
+  return { x: size.width / 2, y: size.height / 2, reach: Math.min(size.width, size.height) * 0.28 };
 };
 
 /**
@@ -42,16 +46,13 @@ const centreOf = (page: Page): { x: number; y: number } => {
  */
 test('a drag makes the map let go instead of snapping back', async ({ page }) => {
   await start(page);
-  const { x, y } = centreOf(page);
+  const { x, y, reach } = centreOf(page);
 
-  await page.mouse.move(x, y);
-  await page.mouse.down();
-  await page.mouse.move(x - 260, y - 160, { steps: 4 });
-  await page.mouse.up();
+  await dragBy(page, { x, y }, -reach, -reach * 0.6);
 
   const after = await snapshot(page);
   expect(after.held).toBe(true);
-  expect(metresApart(after.centre, after.self)).toBeGreaterThan(150);
+  expect(metresApart(after.centre, after.self)).toBeGreaterThan(80);
 });
 
 test('the pill brings you straight back, well before the camera would resume on its own', async ({
@@ -78,12 +79,9 @@ test('the camera picks the driver up again a few seconds after the last gesture'
   page,
 }) => {
   await start(page);
-  const { x, y } = centreOf(page);
+  const { x, y, reach } = centreOf(page);
 
-  await page.mouse.move(x, y);
-  await page.mouse.down();
-  await page.mouse.move(x - 220, y, { steps: 4 });
-  await page.mouse.up();
+  await dragBy(page, { x, y }, -reach, 0);
 
   // Nobody should have to find a button: losing your own car while driving is not an option.
   await expect
@@ -100,4 +98,54 @@ test('a tap to look at a car does not stop the map following you', async ({ page
 
   await page.mouse.click(x + 4, y + 4);
   expect((await snapshot(page)).held).toBe(false);
+});
+
+/**
+ * The device gives us about one fix a second. Drawn straight, that is a camera that holds
+ * still for a second and then jumps — at 100 km/h a 28 metre step, and through a bend the
+ * whole turn arriving at once. Which is what "the map is laggy when I turn" was.
+ */
+test('the map turns continuously, not once a second', async ({ page }) => {
+  await onboard(page, simUrl(GENEVA.lat, GENEVA.lng, 0, 60, 25));
+  await page.waitForFunction(() => window.__twMap !== undefined);
+
+  const samples = await page.evaluate(async () => {
+    const read = (): number =>
+      (window.__twMap as unknown as { getBearing: () => number } | undefined)?.getBearing() ?? 0;
+    const out: { t: number; b: number }[] = [];
+    // Sampled well inside one fix interval: if the camera only moved when a fix landed, most
+    // of these would be identical.
+    for (let i = 0; i < 30; i++) {
+      out.push({ t: performance.now(), b: read() });
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    return out;
+  });
+
+  const moved = samples.filter(
+    (s, i) => i > 0 && Math.abs(s.b - (samples[i - 1]?.b ?? s.b)) > 0.05,
+  );
+  expect(moved.length).toBeGreaterThan(samples.length * 0.5);
+
+  // Three seconds of a 25 deg/s turn is about 75 degrees, less whatever the smoothing lags by.
+  const total = samples.reduce((sum, s, i) => {
+    const step = Math.abs(s.b - (samples[i - 1]?.b ?? s.b));
+    return sum + (step > 180 ? 360 - step : step);
+  }, 0);
+  expect(total).toBeGreaterThan(40);
+
+  /*
+   * And it never lurches. Rate, not raw step: a busy page delivers these samples late, so a
+   * step of ten degrees can mean four hundred milliseconds rather than a jump. The car is
+   * turning at 25 deg/s; the old once-a-second camera covered that in a single frame, which
+   * is upwards of a thousand deg/s.
+   */
+  for (let i = 1; i < samples.length; i++) {
+    const previous = samples[i - 1];
+    const current = samples[i];
+    if (!previous || !current) continue;
+    const step = Math.abs(current.b - previous.b);
+    const rate = ((step > 180 ? 360 - step : step) / Math.max(1, current.t - previous.t)) * 1_000;
+    expect(rate).toBeLessThan(100);
+  }
 });
