@@ -6,6 +6,10 @@
   "compatibility_flags": ["nodejs_compat"],
   "observability": { "enabled": true },
 
+  // Uncomment once teslawave.app is on Cloudflare DNS. Until then the deploy is reachable
+  // at teslawave.<account>.workers.dev, which is what preview links use anyway.
+  // "routes": [{ "pattern": "teslawave.app", "custom_domain": true }],
+
   // The SPA is served as static assets: those requests are free and unlimited.
   // Only /ws and /api/* reach the Worker and consume the 100k requests/day budget.
   "assets": {

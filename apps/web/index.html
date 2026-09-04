@@ -20,5 +20,10 @@
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
+    <!--
+      Cloudflare Web Analytics: free, no cookies, so no cookie banner. Injected only when a
+      token is configured, so development and previews stay unmeasured.
+    -->
+    %ANALYTICS%
   </body>
 </html>

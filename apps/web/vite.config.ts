@@ -14,6 +14,16 @@ const BRAND = JSON.parse(
 
 const brand = (key: string): string => BRAND[key] ?? '';
 
+/** Privacy-friendly page views, and nothing else. No token, no script. */
+const analyticsTag = (): string => {
+  const token = process.env['VITE_CF_BEACON_TOKEN'];
+  if (!token || !/^[a-f0-9]{8,64}$/i.test(token)) return '';
+  return (
+    '<script defer src="https://static.cloudflareinsights.com/beacon.min.js" ' +
+    `data-cf-beacon='{"token":"${token}"}'></script>`
+  );
+};
+
 /** The brand string lives in one file; the HTML shell reads it from there. */
 const brandHtml = {
   name: 'teslawave-brand',
@@ -22,7 +32,8 @@ const brandHtml = {
       .replaceAll('%BRAND_NAME%', brand('name'))
       .replaceAll('%BRAND_TITLE%', brand('title'))
       .replaceAll('%BRAND_DESCRIPTION%', brand('description'))
-      .replaceAll('%BRAND_URL%', brand('url'));
+      .replaceAll('%BRAND_URL%', brand('url'))
+      .replaceAll('%ANALYTICS%', analyticsTag());
   },
 };
 
