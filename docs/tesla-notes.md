@@ -15,6 +15,7 @@ Live at **https://teslawave.meg4mi.workers.dev** — open that on the car screen
 | 2026-09-04 | Tesla car screen | pinch to zoom, where other cars sit | pinch barely worked and other cars sat beside the road. Both fixed: ADR-0017 and ADR-0016. See below. |
 | 2026-09-04 | Tesla car screen | pinch again, car sprites | zoom ceiling raised, our per-frame work stands aside during a gesture, zoom buttons added; sprites re-traced per model (ADR-0018). |
 | 2026-09-04 | Tesla car screen | turning | the camera moved once a second, not every frame. Own position is interpolated now, and the camera pauses on touch-down (ADR-0019). |
+| 2026-09-04 | Tesla car screen | real time, other cars, frame rate, settings rows, the wave button | four bugs fixed and three costs cut, see below. Wave range widened to 300 m and the button redesigned. |
 | _pending_ | 2019 Model 3, MCU 2 | first load, map, own car moving | not yet run on a car |
 | _pending_ | 2022 Model Y, MCU 3 | same | not yet run on a car |
 
@@ -152,3 +153,63 @@ Two bugs found while looking:
 
 Worth checking on the car: whether a turn now reads as a smooth sweep, and whether a
 one-finger pan and a pinch both take hold immediately rather than after a beat.
+
+
+## 2026-09-04 — real time, positions, frames, and the wave button
+
+Five things asked for after a drive; what was actually wrong, and what changed.
+
+**The wave button only ever came once.** Its ten-second window was a single `expired` flag
+that nothing reset, so after the first car of the drive had passed, no later car got a prompt
+— and the same object was handed over twice a second, which restarted the countdown whenever
+a wave had been counted in the cell that day. It is keyed on *which* car now
+(`screens/WaveButton.tsx`, with a test that fails against the old code): a new car gets a
+fresh window, a wave sends the button away with its exit animation, and the same car gets a
+second prompt only once it has been out of range and back.
+
+**Cars vanished for a few seconds at cell borders.** A car crossing from one geohash cell to
+the next is announced as an update in the new cell and a departure from the old one, and the
+hub sends the update first. The client deleted on the departure regardless, so every car
+blinked out at every border until its next report. A departure now only counts for the cell
+the car is actually in (`sim/world.ts`).
+
+**Ghosts after a reconnect.** A `welcome` restates a cell from scratch, but the client only
+added what was in it; a driver who had left while the socket was down stayed on the map for
+up to a minute. The welcome now removes anyone in those cells who is not in the snapshot.
+
+**A car slid across the map after the phone came out of a pocket.** The correction that
+blends a late sample was measured from wherever the car was last *drawn*, however long ago.
+After a gap the car is placed and nothing is blended (`protocol/motion.ts`).
+
+**Other cars sat at an angle to their road.** Snapping put the sprite on the road but kept
+the reported heading, which carries the fuzz's own noise. A moving car is now turned to lie
+along the road it was put on, when it is within 30° of it; a bigger mismatch is left alone
+because it is probably a real turn (`map/snap.ts`, display only, the wire heading untouched).
+
+**The wave range was too tight.** Between two fuzzed positions, 150 m rarely happened even
+side by side. It is 300 m now, the server accepts at 450 m, and the button was redesigned:
+the car in a dark well, a breathing accent halo, rings leaving the wave icon, the countdown as
+a track under the name (ADR-0007, amended).
+
+**The settings rows with a chevron were reported as too hard to hit.** Only the 24 px chevron
+was the button. The whole 72 px row is now, and the chevron sits in a circle so the row
+visibly ends in a control.
+
+**Frame cost.** Three cuts, none of which changes what is drawn (ADR-0021):
+
+- The overlay projected every point through `map.project` — over a thousand calls a frame with
+  twenty cars and their trails. It now recovers the map's affine transform once per frame
+  from three real projections and checks it against a fourth.
+- Trails were sixty strokes per car. They are quantised into six alpha levels, one path each,
+  and a car far off the screen has no trail walked at all.
+- The vector map was always drawn at the device's pixel ratio. Once frames are measured slow,
+  it drops to 1x for the rest of the session; the cars stay at full density.
+
+The perf spec (20 cars, 6x CPU throttling, budget 8 ms mean for our own per-frame work)
+still gates all of this; its numbers for this change are recorded below once measured. The composite number in CI still says nothing about a
+car (no GPU); the resolution latch in particular needs a real screen at density 2 to judge.
+
+Worth checking on the car: whether the wave button now appears for cars that are plainly
+alongside; whether other cars lie along the road rather than across it; whether a border
+crossing on the motorway still makes anyone blink; and, on a density-2 screen, whether the map
+softening after a slow spell is noticeable, and whether it is worth it.

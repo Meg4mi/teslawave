@@ -8,6 +8,12 @@ export const MAX_DEAD_RECKON_MS = 10_000;
 export const RENDER_DELAY_MS = 2_000;
 /** A late correction is blended over this long instead of snapping. */
 export const CORRECTION_MS = 1_000;
+/**
+ * A render older than this is not "where the car is drawn", it is where it was drawn before
+ * the tab went to sleep. Easing from there would slide the car across the map from a spot it
+ * left minutes ago, so a sample arriving after a gap places the car and blends nothing.
+ */
+export const CORRECTION_MAX_GAP_MS = 5_000;
 
 export function haversineM(lat1: number, lng1: number, lat2: number, lng2: number): number {
   const dLat = toRad(lat2 - lat1);
@@ -126,7 +132,10 @@ const effectiveAt = (track: EntityTrack, serverNow: number): number =>
  * the difference is recorded as a correction and blended out over CORRECTION_MS.
  */
 export function pushSample(track: EntityTrack, s: MotionSample, nowMs: number): void {
-  const previous = track.lastRender;
+  const previous =
+    track.lastRender && nowMs - track.lastRender.atMs <= CORRECTION_MAX_GAP_MS + RENDER_DELAY_MS
+      ? track.lastRender
+      : null;
   const known = track.samples.some((x) => x.ts === s.ts);
   if (!known) {
     track.samples.push(s);
@@ -151,6 +160,10 @@ export function pushSample(track: EntityTrack, s: MotionSample, nowMs: number): 
         track.correction = { lat, lng, startedAt: nowMs };
       }
     }
+  } else if (track.lastRender) {
+    // Too long since the last frame: forget the old spot and any correction toward it.
+    track.lastRender = null;
+    track.correction = null;
   }
 }
 

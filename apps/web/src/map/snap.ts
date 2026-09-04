@@ -26,9 +26,34 @@ const HEADING_SPEED_KMH = 12;
 /** Over this it is not on a residential street, whatever the geometry says. */
 const FAST_SPEED_KMH = 80;
 
+/**
+ * A car within this many degrees of its road is turned to lie along it. Further off and it is
+ * either turning onto something else or the road guess is wrong, and forcing the sprite round
+ * would tell a lie the position does not.
+ */
+export const MAX_ALIGN_DEG = 30;
+
 const ROAD_LAYERS = ['road-motorway', 'road-primary', 'road-secondary', 'road-minor'];
 
-export type Offset = { lat: number; lng: number };
+export type Offset = {
+  lat: number;
+  lng: number;
+  /** Degrees to add to the drawn heading, so the sprite lies along the road it sits on. */
+  turn: number;
+};
+
+const NO_OFFSET: Offset = { lat: 0, lng: 0, turn: 0 };
+
+/**
+ * How far to turn a car heading `headingDeg` so it lies along a road with bearing
+ * `roadBearingDeg`, in whichever of the road's two directions is nearer: signed, in
+ * (-90, 90]. Zero when the mismatch is too big to be the fuzz talking.
+ */
+export function alignTurnDeg(roadBearingDeg: number, headingDeg: number): number {
+  const d = ((((roadBearingDeg - headingDeg) % 180) + 270) % 180) - 90;
+  return Math.abs(d) > MAX_ALIGN_DEG ? 0 : d;
+}
+
 export type Candidate = { lat: number; lng: number; distanceM: number; bearingDeg: number; klass: string };
 
 /** Nearest point on segment a→b to p, all in metres, plus how far along it landed. */
@@ -199,15 +224,18 @@ export function createRoadSnapper(map: MlMap): RoadSnapper {
       );
     } catch {
       // A style reload mid-query: nothing to snap to this time round.
-      return { lat: 0, lng: 0 };
+      return NO_OFFSET;
     }
     const road = pickRoad(
       candidatesFrom(features, target.lat, target.lng),
       target.heading,
       target.speed,
     );
-    if (!road) return { lat: 0, lng: 0 };
-    return { lat: road.lat - target.lat, lng: road.lng - target.lng };
+    if (!road) return NO_OFFSET;
+    // A parked car's heading is its last one and means nothing; only a moving car is turned.
+    const turn =
+      target.speed >= HEADING_SPEED_KMH ? alignTurnDeg(road.bearingDeg, target.heading) : 0;
+    return { lat: road.lat - target.lat, lng: road.lng - target.lng, turn };
   };
 
   return {
@@ -226,19 +254,21 @@ export function createRoadSnapper(map: MlMap): RoadSnapper {
           // Never snapped, rather than snapped at time zero: a car that has just appeared
           // must be put on its road on the next pass, not a second and a bit later.
           entry = {
-            cur: { lat: 0, lng: 0 },
-            target: { lat: 0, lng: 0 },
+            cur: { ...NO_OFFSET },
+            target: NO_OFFSET,
             snappedAt: -Infinity,
             seenAt: nowMs,
           };
           entries.set(car.id, entry);
         }
         entry.seenAt = nowMs;
-        if (!snapping) entry.target = { lat: 0, lng: 0 };
-        entry.cur = {
-          lat: entry.cur.lat + (entry.target.lat - entry.cur.lat) * k,
-          lng: entry.cur.lng + (entry.target.lng - entry.cur.lng) * k,
-        };
+        if (!snapping) entry.target = NO_OFFSET;
+        // Eased in place: this runs for every car every frame, and a fresh object each time
+        // is garbage the frame does not need to make.
+        const cur = entry.cur;
+        cur.lat += (entry.target.lat - cur.lat) * k;
+        cur.lng += (entry.target.lng - cur.lng) * k;
+        cur.turn += (entry.target.turn - cur.turn) * k;
       }
 
       for (const [id, entry] of entries) if (nowMs - entry.seenAt > 5_000) entries.delete(id);
