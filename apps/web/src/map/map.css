@@ -101,16 +101,14 @@
 }
 
 @media (max-width: 720px) {
-  /* Between the two columns of controls, where nothing else lives. */
+  /*
+   * Below the HUD stack, centred. Not at the foot: the wave button and the notices live
+   * there, and a pill under a notice cannot be tapped.
+   */
   .map__recentre {
-    top: auto;
-    bottom: calc(var(--edge) + 26px + env(safe-area-inset-bottom));
-    left: calc(var(--edge) + 56px + var(--sp-3));
-    right: calc(var(--edge) + 60px + var(--sp-3));
-    justify-content: center;
+    top: calc(var(--edge) + 150px);
     min-height: 56px;
-    padding: 0 var(--sp-3);
-    transform: none;
+    padding: 0 var(--sp-4) 0 var(--sp-3);
     font-size: 15px;
   }
 
