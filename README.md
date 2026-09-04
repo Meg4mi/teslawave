@@ -66,6 +66,11 @@ pnpm check:css   # no blur, no animated shadows, no hardcoded screen size
 pnpm check:size  # under 400 kB gzipped, excluding MapLibre
 ```
 
+The end-to-end suite runs the real worker under `wrangler dev`, supervised
+(`apps/worker/scripts/dev-supervised.mjs`): wrangler's dev proxy can exit when a client drops
+a WebSocket abruptly, which the suite does on purpose, and without the supervisor every test
+after that point failed with a refused connection.
+
 ## The cost invariants
 
 The whole thing is meant to run on Cloudflare's free plan, where exceeding a limit causes an

@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { GENEVA, onboard, simUrl } from './helpers';
+import { GENEVA, onboard, open, simUrl } from './helpers';
 
 test('onboarding reaches the map, and the identity survives a reload', async ({ page }) => {
   const started = Date.now();
@@ -19,7 +19,7 @@ test('onboarding reaches the map, and the identity survives a reload', async ({ 
 });
 
 test('the disclaimer is on screen before and after onboarding', async ({ page }) => {
-  await page.goto(simUrl(GENEVA.lat, GENEVA.lng));
+  await open(page, simUrl(GENEVA.lat, GENEVA.lng));
   await expect(page.getByText(/Not affiliated with, endorsed or sponsored by Tesla/)).toBeVisible();
   await page.getByRole('button', { name: 'Go', exact: true }).click();
   await expect(page.getByText(/Not affiliated with, endorsed or sponsored by Tesla/)).toBeVisible();
@@ -62,7 +62,7 @@ test('a driver who refuses location becomes a spectator instead of a dead end', 
 }) => {
   const context = await browser.newContext({ permissions: [] });
   const page = await context.newPage();
-  await page.goto('/?e2e');
+  await open(page, '/?e2e');
   await page.getByRole('button', { name: 'Go', exact: true }).click();
   await expect(page.getByText(/You can see others, they cannot see you/)).toBeVisible({
     timeout: 20_000,
@@ -72,7 +72,7 @@ test('a driver who refuses location becomes a spectator instead of a dead end', 
 
 test('a driver alone on the road can still find out how to wave', async ({ page }) => {
   // The whole product is one gesture, and on an empty road there is nobody to demonstrate it.
-  await page.goto(simUrl(GENEVA.lat, GENEVA.lng));
+  await open(page, simUrl(GENEVA.lat, GENEVA.lng));
   await page.getByRole('button', { name: 'How waving works' }).first().click();
   const sheet = page.getByRole('dialog', { name: 'How waving works' });
   await expect(sheet).toBeVisible();

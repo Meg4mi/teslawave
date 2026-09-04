@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { GENEVA, simUrl } from './helpers';
+import { GENEVA, open, simUrl } from './helpers';
 
 /**
  * Nothing may spill past the edge of the screen, on any screen, at any size this suite
@@ -43,7 +43,7 @@ const close = async (page: Page, name: string): Promise<void> => {
 };
 
 test('no screen spills past the edge of the viewport', async ({ page }) => {
-  await page.goto(simUrl(GENEVA.lat, GENEVA.lng));
+  await open(page, simUrl(GENEVA.lat, GENEVA.lng));
   await clean(page, 'onboarding');
 
   // The longest model name, and the longest name a driver can type.

@@ -85,9 +85,11 @@ export default defineConfig({
     : {
         webServer: {
           // The real worker serving the real bundle: the same thing that gets deployed.
+          // Supervised, because wrangler's dev proxy can exit mid-suite when a client drops a
+          // socket abruptly (apps/worker/scripts/dev-supervised.mjs).
           command:
             'pnpm --filter @teslawave/web build && pnpm --filter @teslawave/worker db:local && ' +
-            'pnpm --filter @teslawave/worker dev --port 8787',
+            'pnpm --filter @teslawave/worker dev:e2e --port 8787',
           url: 'http://127.0.0.1:8787/api/whereami',
           // Always rebuild. Reusing a server left over from a previous run serves a stale
           // bundle, and a suite that passes or fails against yesterday's code is worse than
