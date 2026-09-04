@@ -1,0 +1,67 @@
+name: Free-tier usage
+
+# The cost guardrail. A hub that cannot hibernate is billed around the clock, so this looks
+# at yesterday's real numbers every morning and shouts before a bill or an outage arrives.
+on:
+  schedule:
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  issues: write
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - id: usage
+        continue-on-error: true
+        env:
+          CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+          CF_ANALYTICS_TOKEN: ${{ secrets.CF_ANALYTICS_TOKEN }}
+        run: node scripts/usage-report.mjs
+
+      - name: Open or update the usage issue
+        if: steps.usage.outputs.over_threshold == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const report = process.env.REPORT ?? 'see the workflow log';
+            const title = 'Free-tier usage above 60%';
+            const body = [
+              'TeslaWave is using more than 60% of a Cloudflare free-tier daily limit.',
+              '',
+              '```',
+              report,
+              '```',
+              '',
+              'Requests are normally the binding constraint. If it is *duration* that is high,',
+              'a Durable Object has stopped being eligible for hibernation: look for a timer,',
+              'a `ws.accept()`, an alarm or an in-flight `fetch` in `apps/worker/src`, and read',
+              'docs/decisions/0002-hub-durable-object-and-cost-model.md.',
+            ].join('\n');
+            const existing = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: 'usage',
+            });
+            const found = existing.data.find((issue) => issue.title === title);
+            if (found) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner, repo: context.repo.repo,
+                issue_number: found.number, body,
+              });
+            } else {
+              await github.rest.issues.create({
+                owner: context.repo.owner, repo: context.repo.repo,
+                title, body, labels: ['usage'],
+              });
+            }
+        env:
+          REPORT: ${{ steps.usage.outputs.report }}
