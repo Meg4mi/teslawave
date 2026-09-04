@@ -85,6 +85,19 @@ pnpm --filter @teslawave/worker db:remote
 pnpm deploy                           # -> teslawave.<account>.workers.dev
 ```
 
+From CI, or anywhere without a browser, use a scoped API token instead of `wrangler login`:
+
+```bash
+export CLOUDFLARE_ACCOUNT_ID=...     # Workers & Pages -> Overview
+export CLOUDFLARE_API_TOKEN=...      # never committed, never written to a file
+```
+
+The token needs four account-scoped permissions and nothing else: **Workers Scripts: Edit**
+(the Worker, the Durable Object namespace, static assets and the cron), **D1: Edit** (create
+the database and run migrations), **Account Settings: Read**, and **Account Analytics: Read**
+if you also want `pnpm usage`. No KV, no R2, and no zone permission until the custom domain
+is wired, which additionally needs Zone -> Workers Routes: Edit and Zone -> DNS: Edit.
+
 Then, once `teslawave.app` is on Cloudflare DNS, uncomment the `routes` entry in
 `apps/worker/wrangler.jsonc` and deploy again. Set `VITE_CF_BEACON_TOKEN` at build time to
 turn on Cloudflare Web Analytics; without it no beacon is emitted at all, so previews and
