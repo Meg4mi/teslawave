@@ -27,6 +27,11 @@ demand so they can be judged side by side.
 - [ ] Milestone card at wave 1, and it is personal: no ranking, no comparison.
 - [ ] Trails visible and fading; traffic reads as light painting from above.
 - [ ] HUD legible over both dark ground and a bright motorway.
+- [ ] Roads, water and labels are all clearly visible on the map, at the floors in ADR-0006.
+      A dark map is the point; an invisible one is a bug.
+- [ ] Every control says what it does without hovering, because a car screen has no hover.
+- [ ] All five car sprites are distinguishable from each other, and which way each one points
+      is obvious at a glance.
 - [ ] Empty state is honest and inviting, not a spinner.
 - [ ] Nothing interactive within 40 px of any screen edge; every target at least 64 px.
 - [ ] Sent, received and milestone sounds are distinguishable with your eyes closed.
