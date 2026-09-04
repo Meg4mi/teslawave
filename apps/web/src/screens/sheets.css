@@ -209,6 +209,16 @@
 }
 
 @media (max-width: 720px) {
+  /* The Change button says it; the hint is for the car screen, where there is room. */
+  .settings__tap {
+    display: none;
+  }
+
+  .settings__car svg {
+    width: 80px;
+    height: auto;
+  }
+
   .pulse {
     grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: var(--sp-2);

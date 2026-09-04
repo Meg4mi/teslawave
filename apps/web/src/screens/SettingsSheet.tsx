@@ -42,7 +42,8 @@ export function SettingsSheet({
               <span className="settings__name">{identity.nick ?? MODEL_LABELS[identity.model]}</span>
               <span className="settings__hint">
                 {identity.nick ? `${MODEL_LABELS[identity.model]} · ` : ''}
-                {colourOf(identity.colour).label} · {COPY.garage.tapHint}
+                {colourOf(identity.colour).label}
+                <span className="settings__tap"> · {COPY.garage.tapHint}</span>
               </span>
             </span>
           </span>
