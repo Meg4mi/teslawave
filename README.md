@@ -1,5 +1,7 @@
 # TeslaWave
 
+**Live: https://teslawave.cestbeauf.workers.dev**
+
 See other Teslas around you on a live map, and wave at them. Free, no account, built to run
 in the Tesla in-car browser while driving, and on a phone in a dash mount.
 
@@ -44,6 +46,13 @@ pnpm sim -- --n 20 --center 46.2044,6.1432 --radius 5000
 a wave sent, received and returned, the milestone card, and the whole sprite matrix.
 
 ## Checks
+
+Against a deployed URL, the same suite runs without a local server:
+
+```bash
+E2E_BASE_URL=https://teslawave.cestbeauf.workers.dev pnpm test:e2e
+SMOKE_URL=https://teslawave.cestbeauf.workers.dev node scripts/smoke.mjs
+```
 
 ```bash
 pnpm lint        # includes the cost invariants, see below

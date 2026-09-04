@@ -15,6 +15,15 @@ const launch = existsSync(PREINSTALLED) ? { executablePath: PREINSTALLED } : {};
  */
 const CAR = { width: 1920, height: 1200 };
 
+/**
+ * Point at a deployed URL to run the same suite against production:
+ *   E2E_BASE_URL=https://teslawave.example.workers.dev pnpm test:e2e
+ * There is no local server to start in that case. Needs direct network access from the
+ * browser; a sandbox that only proxies Node will not do.
+ */
+const deployed = process.env['E2E_BASE_URL'];
+
+
 export default defineConfig({
   testDir: './e2e',
   timeout: 60_000,
@@ -24,7 +33,7 @@ export default defineConfig({
   retries: process.env['CI'] ? 1 : 0,
   reporter: process.env['CI'] ? [['github'], ['list']] : [['list']],
   use: {
-    baseURL: 'http://127.0.0.1:8787',
+    baseURL: deployed ?? 'http://127.0.0.1:8787',
     trace: 'retain-on-failure',
     permissions: ['geolocation'],
   },
@@ -70,14 +79,19 @@ export default defineConfig({
       },
     },
   ],
-  webServer: {
-    // The real worker serving the real bundle: the same thing that gets deployed.
-    command:
-      'pnpm --filter @teslawave/web build && pnpm --filter @teslawave/worker db:local && ' +
-      'pnpm --filter @teslawave/worker dev --port 8787',
-    url: 'http://127.0.0.1:8787/api/whereami',
-    reuseExistingServer: !process.env['CI'],
-    timeout: 180_000,
-    stdout: 'pipe',
-  },
+  // Nothing to start when running against a deployed URL.
+  ...(deployed
+    ? {}
+    : {
+        webServer: {
+          // The real worker serving the real bundle: the same thing that gets deployed.
+          command:
+            'pnpm --filter @teslawave/web build && pnpm --filter @teslawave/worker db:local && ' +
+            'pnpm --filter @teslawave/worker dev --port 8787',
+          url: 'http://127.0.0.1:8787/api/whereami',
+          reuseExistingServer: !process.env['CI'],
+          timeout: 180_000,
+          stdout: 'pipe' as const,
+        },
+      }),
 });

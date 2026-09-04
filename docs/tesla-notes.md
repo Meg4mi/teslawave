@@ -6,8 +6,11 @@ work instead of composite frame rate).
 
 Add a row per session. Keep the failures: they are the useful part.
 
+Live at **https://teslawave.cestbeauf.workers.dev** — open that on the car screen.
+
 | Date | Car / firmware | What was tested | Result |
 |---|---|---|---|
+| 2026-09-04 | none (CI container) | first deploy | Worker, Durable Object, D1 and cron live; seven smoke checks green, including a real WebSocket welcomed by the hub |
 | _pending_ | 2019 Model 3, MCU 2 | first load, map, own car moving | not yet run on a car |
 | _pending_ | 2022 Model Y, MCU 3 | same | not yet run on a car |
 

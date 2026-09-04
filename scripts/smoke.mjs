@@ -11,6 +11,31 @@ if (!base) {
   process.exit(2);
 }
 
+/**
+ * A brand new workers.dev route takes a moment to propagate, and the first deploy runs this
+ * within a second of `wrangler deploy` returning. A 404 there means "not yet", not "broken",
+ * so wait for the deployment to answer before judging it.
+ */
+const READY_TIMEOUT_MS = Number(process.env.SMOKE_READY_TIMEOUT_MS ?? 120_000);
+const waitUntilReachable = async () => {
+  const deadline = Date.now() + READY_TIMEOUT_MS;
+  let last = 'no response';
+  while (Date.now() < deadline) {
+    try {
+      const res = await fetch(`${base}/api/whereami`);
+      if (res.ok) return;
+      last = `status ${res.status}`;
+    } catch (error) {
+      last = error instanceof Error ? error.message : String(error);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 3_000));
+  }
+  console.error(`${base} never became reachable within ${READY_TIMEOUT_MS / 1000} s (${last}).`);
+  process.exit(1);
+};
+
+await waitUntilReachable();
+
 const results = [];
 const check = async (name, fn) => {
   try {
