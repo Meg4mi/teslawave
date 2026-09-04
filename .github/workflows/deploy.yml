@@ -7,8 +7,10 @@ name: Deploy
 # main, on a manual dispatch, or on a commit whose message contains [deploy], which is how
 # the very first deploy is bootstrapped before this workflow reaches the default branch.
 on:
+  # Every branch, because the job's own condition decides whether to deploy. Restricting the
+  # trigger to main would mean the [deploy] escape hatch could never fire, which is exactly
+  # what happened the first time.
   push:
-    branches: [main]
   workflow_dispatch:
     inputs:
       migrate:
