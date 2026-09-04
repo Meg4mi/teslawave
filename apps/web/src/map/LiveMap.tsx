@@ -5,7 +5,7 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import { getSelfPlacement, tickWorld, type RenderCar } from '../sim/world';
 import { createRenderer, type Renderer } from '../overlay/renderer';
 import { ATTRIBUTION, buildStyle } from './style';
-import { MAPLIBRE_WORKER_URL } from '../../vite-maplibre-worker';
+import { MAPLIBRE_WORKER_URL } from './maplibre-worker-url';
 import { recordFrameCost } from '../app/testHook';
 import { isE2E } from '../config/env';
 import './map.css';

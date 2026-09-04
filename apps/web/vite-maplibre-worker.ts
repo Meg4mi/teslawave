@@ -16,9 +16,10 @@ import type { Plugin } from 'vite';
  * package so they always match the installed version, and point MapLibre at them. The dev
  * server serves the same path, so development and production fail or work together.
  */
-const WORKER = 'maplibre-gl-worker.mjs';
+import { MAPLIBRE_WORKER_URL } from './src/map/maplibre-worker-url';
+
+const WORKER = MAPLIBRE_WORKER_URL.split('/').pop() ?? 'maplibre-gl-worker.mjs';
 const SHARED = 'maplibre-gl-shared.mjs';
-export const MAPLIBRE_WORKER_URL = `/maplibre/${WORKER}`;
 
 const read = (file: string): string => {
   const require = createRequire(import.meta.url);
