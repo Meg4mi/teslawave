@@ -1,0 +1,27 @@
+{
+  "name": "@teslawave/worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc -p tsconfig.json",
+    "pretest": "node -e \"require('fs').mkdirSync('../web/dist',{recursive:true})\"",
+    "test": "vitest run",
+    "sim": "tsx scripts/sim-cars.ts"
+  },
+  "dependencies": {
+    "@teslawave/hub-core": "workspace:*",
+    "@teslawave/protocol": "workspace:*"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-plugin": "^1.1.4",
+    "@cloudflare/workers-types": "^5.20260903.1",
+    "@types/node": "^22.10.0",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.0",
+    "wrangler": "^4.129.0"
+  }
+}
