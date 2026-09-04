@@ -47,8 +47,25 @@ export type Net = {
 };
 
 const BACKOFF_MS = [1_000, 2_000, 4_000, 8_000, 15_000, 30_000];
+const PROBE_AFTER_ATTEMPTS = 2;
 const KEEPALIVE_MS = 25_000;
 const STALE_MS = 60_000;
+
+/**
+ * Why a socket will not open. The Worker answers 503 when the kill switch is off and 429
+ * once the day's free request budget is gone; a plain GET to /ws (no Upgrade header) gets
+ * 426 when everything is fine, which costs one request and tells us which message to show.
+ */
+export async function probeAvailability(): Promise<NetStatus | null> {
+  try {
+    const res = await fetch('/ws?hub=zz', { method: 'GET' });
+    if (res.status === 429) return 'budget';
+    if (res.status === 503) return 'paused';
+    return null;
+  } catch {
+    return null;
+  }
+}
 
 export function createNet(handlers: {
   onMessage: (msg: ServerMsg) => void;
@@ -120,11 +137,25 @@ export function createNet(handlers: {
     // Jitter, so a whole motorway of cars does not reconnect in lockstep.
     const delay = base * (0.7 + Math.random() * 0.6);
     hub.attempts += 1;
+    // After a couple of failures, ask why: a socket that will not open because the day's
+    // free budget is gone deserves an honest message rather than a silent retry loop.
+    if (hub.attempts === PROBE_AFTER_ATTEMPTS) void probe();
     hub.retry = window.setTimeout(() => {
       hub.retry = null;
       open(hub);
     }, delay);
     refreshStatus();
+  };
+
+  const probe = async (): Promise<void> => {
+    const reason = await probeAvailability();
+    if (!running) return;
+    if (reason) setStatus(reason);
+    else if (status === 'budget' || status === 'paused') {
+      // It is back: let refreshStatus take over again.
+      status = 'reconnecting';
+      refreshStatus();
+    }
   };
 
   function open(hub: Hub): void {
@@ -141,6 +172,7 @@ export function createNet(handlers: {
 
     ws.onopen = () => {
       hub.attempts = 0;
+      if (status === 'budget' || status === 'paused') status = 'reconnecting';
       const hello = helloFor(hub);
       if (hello) {
         sendTo(hub, hello);
@@ -276,14 +308,4 @@ export function createNet(handlers: {
   };
 }
 
-/** The Worker answers 429 when the day's free budget is gone, and 503 when paused. */
-export async function probeAvailability(): Promise<NetStatus | null> {
-  try {
-    const res = await fetch('/ws?hub=zz', { method: 'GET' });
-    if (res.status === 429) return 'budget';
-    if (res.status === 503) return 'paused';
-    return null;
-  } catch {
-    return null;
-  }
-}
+
