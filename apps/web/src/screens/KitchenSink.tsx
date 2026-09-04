@@ -80,6 +80,7 @@ export function KitchenSink(): ReactNode {
           trails: true,
           ambient: false,
           bearing: 0,
+          zoom: 15.5,
         },
         dpr,
       );

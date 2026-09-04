@@ -2,7 +2,7 @@
   position: absolute;
   top: max(var(--edge), env(safe-area-inset-top));
   left: max(var(--edge), env(safe-area-inset-left));
-  z-index: 10;
+  z-index: var(--z-hud);
   display: flex;
   flex-direction: column;
   gap: var(--sp-2);
@@ -54,6 +54,16 @@
   line-height: 1.35;
 }
 
+.hud__link {
+  pointer-events: auto;
+  min-height: 44px;
+  padding: 0;
+  font: var(--t-hud);
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
 .hud__banner {
   pointer-events: auto;
   display: flex;
@@ -72,7 +82,7 @@
   position: absolute;
   right: max(var(--edge), env(safe-area-inset-right));
   bottom: max(var(--edge), env(safe-area-inset-bottom));
-  z-index: 10;
+  z-index: var(--z-hud);
   display: flex;
   flex-direction: column;
   gap: var(--sp-3);
@@ -135,7 +145,7 @@
   position: absolute;
   left: 50%;
   bottom: max(var(--edge), env(safe-area-inset-bottom));
-  z-index: 20;
+  z-index: var(--z-wave);
   width: min(60%, 560px);
   height: 96px;
   padding: 0 var(--sp-5);
@@ -223,7 +233,7 @@
   position: absolute;
   left: 50%;
   bottom: 6px;
-  z-index: 5;
+  z-index: var(--z-attribution);
   width: max-content;
   max-width: 92vw;
   transform: translateX(-50%);
@@ -240,15 +250,15 @@
   transform: none;
   width: auto;
   max-width: none;
-  margin-top: var(--sp-5);
-  text-align: left;
+  margin-top: var(--sp-2);
+  text-align: center;
 }
 
 .milestone {
   position: absolute;
   left: 50%;
   bottom: calc(var(--edge) + 120px);
-  z-index: 45;
+  z-index: var(--z-milestone);
   display: flex;
   align-items: center;
   gap: var(--sp-3);

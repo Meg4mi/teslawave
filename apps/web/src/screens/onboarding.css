@@ -1,30 +1,31 @@
 .onboarding {
   position: absolute;
   inset: 0;
-  z-index: 60;
+  z-index: var(--z-screen);
   overflow-y: auto;
   background: var(--bg-0);
   animation: fade-in var(--d-base) var(--e-out) both;
 }
 
+/* A single narrow column: a form spread across a 17" car screen reads as scattered. */
 .onboarding__inner {
-  max-width: 760px;
+  max-width: 560px;
   margin: 0 auto;
-  padding: max(var(--edge), env(safe-area-inset-top)) var(--edge)
-    calc(var(--edge) + env(safe-area-inset-bottom));
+  padding: max(var(--sp-7), env(safe-area-inset-top)) var(--edge)
+    calc(var(--sp-6) + env(safe-area-inset-bottom));
   display: flex;
   flex-direction: column;
   gap: var(--sp-5);
 }
 
 .onboarding__head {
-  margin-top: var(--sp-2);
+  text-align: center;
 }
 
 .onboarding__title {
   margin: 0;
   font: var(--t-hero);
-  letter-spacing: -0.015em;
+  letter-spacing: -0.02em;
 }
 
 .onboarding__sub {
@@ -32,33 +33,72 @@
   color: var(--fg-dim);
 }
 
-.onboarding__preview {
+/* The hero: your car, named. Everything below is just editing this one object. */
+.hero {
   display: flex;
-  justify-content: center;
-  padding: var(--sp-2) 0;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-3);
 }
 
-.onboarding__group {
+.hero__stage {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 190px;
+  border-radius: var(--r-lg);
+  border: 1px solid var(--line-soft);
+  background:
+    radial-gradient(60% 70% at 50% 45%, rgba(110, 231, 255, 0.07), rgba(110, 231, 255, 0) 70%),
+    var(--bg-1);
+}
+
+.hero__caption {
+  margin: 0;
+  font: var(--t-body);
+  font-weight: 600;
+  color: var(--fg);
+}
+
+.hero__dot {
+  margin: 0 var(--sp-2);
+  color: var(--fg-faint);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
   border: 0;
   padding: 0;
   margin: 0;
 }
 
-.onboarding__legend {
-  display: flex;
-  align-items: baseline;
+.field__label {
   padding: 0;
-  margin-bottom: var(--sp-3);
   font: var(--t-hud);
-  color: var(--fg-dim);
+  color: var(--fg-faint);
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.1em;
 }
 
-.onboarding__models {
+.field__input {
+  min-height: var(--touch);
+  padding: 0 var(--sp-4);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-1);
+}
+
+.field__input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.models {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-  gap: var(--sp-3);
+  grid-template-columns: repeat(5, 1fr);
+  gap: var(--sp-2);
 }
 
 .tile {
@@ -66,9 +106,9 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: var(--sp-2);
-  min-height: 104px;
-  padding: var(--sp-3);
+  gap: var(--sp-1);
+  min-height: 92px;
+  padding: var(--sp-2);
   border: 1px solid var(--line);
   border-radius: var(--r-md);
   background: var(--bg-1);
@@ -86,7 +126,7 @@
 }
 
 .tile__label {
-  font: var(--t-hud);
+  font: 600 12px/1 var(--font);
   color: var(--fg-dim);
 }
 
@@ -94,25 +134,15 @@
   color: var(--fg);
 }
 
-.onboarding__colours {
+.swatches {
   display: grid;
-  /* All ten fit on one row on a car screen; they wrap evenly on a phone. */
-  grid-template-columns: repeat(auto-fit, minmax(56px, 1fr));
+  grid-template-columns: repeat(10, 1fr);
   gap: var(--sp-2);
-}
-
-.onboarding__chosen {
-  margin-left: var(--sp-3);
-  color: var(--fg);
-  text-transform: none;
-  letter-spacing: 0;
 }
 
 .swatch {
   display: grid;
   place-items: center;
-  width: 100%;
-  min-width: 48px;
   height: var(--touch);
   border-radius: var(--r-full);
   border: 1px solid transparent;
@@ -120,7 +150,7 @@
 }
 
 .swatch:active {
-  transform: scale(0.94);
+  transform: scale(0.92);
 }
 
 .swatch--on {
@@ -129,57 +159,47 @@
 
 .swatch__dot {
   display: block;
-  width: 34px;
-  height: 34px;
+  width: 30px;
+  height: 30px;
   border-radius: var(--r-full);
-  border: 1px solid rgba(255, 255, 255, 0.14);
-}
-
-.onboarding__nick {
-  display: flex;
-  flex-direction: column;
-  gap: var(--sp-2);
-}
-
-.onboarding__nick input {
-  min-height: var(--touch);
-  padding: 0 var(--sp-4);
-  border: 1px solid var(--line);
-  border-radius: var(--r-md);
-  background: var(--bg-1);
-}
-
-.onboarding__nick input:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
-}
-
-.onboarding__hint,
-.onboarding__privacy {
-  font: var(--t-hud);
-  font-weight: 450;
-  color: var(--fg-faint);
-}
-
-.onboarding__actions {
-  display: flex;
-  align-items: center;
-  gap: var(--sp-3);
-  margin-top: var(--sp-2);
-}
-
-.onboarding__secondary {
-  display: flex;
-  align-items: center;
-  gap: var(--sp-3);
-  flex-wrap: wrap;
-  margin-top: calc(-1 * var(--sp-3));
+  border: 1px solid rgba(255, 255, 255, 0.16);
 }
 
 .onboarding__go {
-  flex: 1;
-  height: 80px;
-  font-size: 20px;
+  width: 100%;
+  height: 84px;
+  font-size: 21px;
+  margin-top: var(--sp-1);
+}
+
+.onboarding__links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--sp-2) var(--sp-6);
+}
+
+.link {
+  min-height: 44px;
+  padding: 0;
+  font: var(--t-hud);
+  font-weight: 500;
+  color: var(--fg-dim);
+  text-decoration: underline;
+  text-underline-offset: 4px;
+  text-decoration-color: var(--line);
+}
+
+.link:active {
+  color: var(--fg);
+}
+
+.onboarding__privacy {
+  margin: 0;
+  text-align: center;
+  font: var(--t-hud);
+  font-weight: 450;
+  color: var(--fg-faint);
 }
 
 .privacy__list {
@@ -195,4 +215,14 @@
 
 .onboarding a {
   color: var(--accent);
+}
+
+@media (max-width: 560px) {
+  .swatches {
+    grid-template-columns: repeat(5, 1fr);
+  }
+
+  .hero__stage {
+    height: 150px;
+  }
 }

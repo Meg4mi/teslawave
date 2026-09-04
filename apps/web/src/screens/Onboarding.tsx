@@ -19,9 +19,11 @@ export type OnboardingResult = { model: TeslaModel; colour: CarColourId; nick?: 
 export function Onboarding({
   onGo,
   onHaveCode,
+  onHowItWorks,
 }: {
   onGo: (result: OnboardingResult) => void;
   onHaveCode: () => void;
+  onHowItWorks: () => void;
 }): ReactNode {
   const [model, setModel] = useState<TeslaModel>('3');
   const [colour, setColour] = useState<CarColourId>('pearl');
@@ -35,13 +37,27 @@ export function Onboarding({
           <p className="onboarding__sub">{COPY.onboarding.sub}</p>
         </header>
 
-        <div className="onboarding__preview" aria-hidden>
-          <CarChip model={model} colour={colour} size={132} />
+        {/* The car you are about to become, named. Everything below just edits this. */}
+        <div className="hero">
+          <div className="hero__stage">
+            <CarChip model={model} colour={colour} size={150} />
+          </div>
+          <p className="hero__caption">
+            {MODEL_LABELS[model]}
+            <span className="hero__dot">·</span>
+            {colourOf(colour).label}
+            {nick.trim() ? (
+              <>
+                <span className="hero__dot">·</span>
+                {nick.trim()}
+              </>
+            ) : null}
+          </p>
         </div>
 
-        <fieldset className="onboarding__group">
-          <legend className="onboarding__legend">{COPY.onboarding.pickModel}</legend>
-          <div className="onboarding__models">
+        <fieldset className="field">
+          <legend className="field__label">{COPY.onboarding.pickModel}</legend>
+          <div className="models">
             {TESLA_MODELS.map((m) => (
               <button
                 key={m}
@@ -49,22 +65,22 @@ export function Onboarding({
                 data-touch
                 className={`tile ${m === model ? 'tile--on' : ''}`.trim()}
                 aria-pressed={m === model}
+                aria-label={MODEL_LABELS[m]}
+                title={MODEL_LABELS[m]}
                 onClick={() => setModel(m)}
               >
-                <CarChip model={m} colour={colour} size={52} />
-                <span className="tile__label">{MODEL_LABELS[m]}</span>
+                <CarChip model={m} colour={colour} size={46} />
+                {/* Short, because five equal columns cannot fit "Cybertruck"; the hero
+                    caption above always spells out the selected one. */}
+                <span className="tile__label">{m === 'CT' ? 'Cyber' : m}</span>
               </button>
             ))}
           </div>
         </fieldset>
 
-        <fieldset className="onboarding__group">
-          <legend className="onboarding__legend">
-            {COPY.onboarding.pickColour}
-            {/* Ten dark circles with no names, on a screen with no hover, is a guessing game. */}
-            <span className="onboarding__chosen">{colourOf(colour).label}</span>
-          </legend>
-          <div className="onboarding__colours">
+        <fieldset className="field">
+          <legend className="field__label">{COPY.onboarding.pickColour}</legend>
+          <div className="swatches">
             {CAR_COLOURS.map((c) => (
               <button
                 key={c.id}
@@ -82,35 +98,34 @@ export function Onboarding({
           </div>
         </fieldset>
 
-        <label className="onboarding__nick">
-          <span className="onboarding__legend">{COPY.onboarding.nick}</span>
+        <label className="field">
+          <span className="field__label">{COPY.onboarding.nick}</span>
           <input
             type="text"
+            className="field__input"
             value={nick}
             maxLength={NICK_MAX_LEN}
             autoComplete="off"
             spellCheck={false}
-            placeholder=" "
             onChange={(event) => setNick(event.target.value)}
           />
-          <span className="onboarding__hint">{COPY.onboarding.nickHint}</span>
         </label>
 
-        <div className="onboarding__actions">
-          <Button
-            variant="primary"
-            className="onboarding__go"
-            onClick={() => onGo({ model, colour, ...(nick.trim() ? { nick: nick.trim() } : {}) })}
-          >
-            {COPY.onboarding.go}
-          </Button>
-        </div>
+        <Button
+          variant="primary"
+          className="onboarding__go"
+          onClick={() => onGo({ model, colour, ...(nick.trim() ? { nick: nick.trim() } : {}) })}
+        >
+          {COPY.onboarding.go}
+        </Button>
 
-        <div className="onboarding__secondary">
-          <Button variant="ghost" onClick={onHaveCode}>
+        <div className="onboarding__links">
+          <button type="button" data-touch className="link" onClick={onHowItWorks}>
+            {COPY.onboarding.howItWorks}
+          </button>
+          <button type="button" data-touch className="link" onClick={onHaveCode}>
             {COPY.onboarding.havePairingCode}
-          </Button>
-          <span className="onboarding__hint">{COPY.onboarding.havePairingCodeHint}</span>
+          </button>
         </div>
 
         <p className="onboarding__privacy">{COPY.onboarding.privacy}</p>

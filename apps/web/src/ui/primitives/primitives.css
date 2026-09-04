@@ -21,7 +21,7 @@
   border-bottom-right-radius: 0;
   transform: translate(-50%, 0);
   animation: sheet-in var(--d-base) var(--e-out) both;
-  z-index: 40;
+  z-index: var(--z-sheet);
 }
 
 @keyframes sheet-in {
@@ -36,7 +36,7 @@
   inset: 0;
   background: rgba(4, 6, 9, 0.62);
   animation: fade-in var(--d-base) var(--e-out) both;
-  z-index: 30;
+  z-index: var(--z-scrim);
 }
 
 @keyframes fade-in {
@@ -110,7 +110,7 @@
   background: var(--bg-sheet);
   transform: translate(-50%, 0);
   animation: toast-in var(--d-base) var(--e-spring) both;
-  z-index: 50;
+  z-index: var(--z-toast);
   pointer-events: none;
 }
 

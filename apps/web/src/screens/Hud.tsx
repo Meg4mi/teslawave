@@ -8,10 +8,12 @@ export function Hud({
   summary,
   status,
   onOpenPulse,
+  onHowItWorks,
 }: {
   summary: Summary;
   status: NetStatus;
   onOpenPulse: () => void;
+  onHowItWorks: () => void;
 }): ReactNode {
   const live = status === 'live';
   const ago = agoLabel(summary.lastWaveTs, summary.serverNow);
@@ -39,7 +41,13 @@ export function Hud({
       {status === 'reconnecting' || status === 'connecting' ? (
         <p className="hud__note">{COPY.map.reconnecting}</p>
       ) : summary.near === 0 ? (
-        <p className="hud__note">{COPY.map.quiet(summary.online)}</p>
+        <>
+          <p className="hud__note">{COPY.map.quiet(summary.online)}</p>
+          {/* The one gesture this app exists for is undiscoverable on an empty road. */}
+          <button type="button" data-touch className="hud__link" onClick={onHowItWorks}>
+            {COPY.map.quietHow}
+          </button>
+        </>
       ) : null}
     </div>
   );

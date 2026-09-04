@@ -9,12 +9,14 @@ export function SettingsSheet({
   onChange,
   onShowPairing,
   onEnterCode,
+  onHowItWorks,
   onClose,
 }: {
   prefs: Prefs;
   onChange: (patch: Partial<Prefs>) => void;
   onShowPairing: () => void;
   onEnterCode: () => void;
+  onHowItWorks: () => void;
   onClose: () => void;
 }): ReactNode {
   return (
@@ -32,6 +34,14 @@ export function SettingsSheet({
       </div>
 
       <div className="settings__row">
+        <span className="settings__label">
+          {COPY.howTo.title}
+          <span className="settings__hint">{COPY.howTo.lead}</span>
+        </span>
+        <Button onClick={onHowItWorks}>{COPY.howTo.tryIt}</Button>
+      </div>
+
+      <div className="settings__row">
         <span className="settings__label">Sounds</span>
         <Button onClick={() => onChange({ muted: !prefs.muted })}>
           {prefs.muted ? COPY.controls.unmute : COPY.controls.mute}
@@ -45,10 +55,15 @@ export function SettingsSheet({
         </Button>
       </div>
 
+      <div className="settings__row">
+        <span className="settings__label">
+          {COPY.pairing.showAction}
+          <span className="settings__hint">{COPY.pairing.showHint}</span>
+        </span>
+        <Button onClick={onShowPairing}>{COPY.pairing.showTitle}</Button>
+      </div>
+
       <div className="card-sheet__actions">
-        <Button variant="primary" onClick={onShowPairing}>
-          {COPY.pairing.showTitle}
-        </Button>
         <Button variant="ghost" onClick={onEnterCode}>
           {COPY.onboarding.havePairingCode}
         </Button>

@@ -16,8 +16,10 @@ export const COPY = {
     nick: 'Name (optional)',
     nickHint: 'Easier to type on your phone.',
     go: 'Go',
-    havePairingCode: 'Continue from my phone',
-    havePairingCodeHint: 'Already set up on your phone? Enter its six-character code.',
+    // Name the situation, not the mechanism: nobody has a mental model for "pairing".
+    havePairingCode: 'I already set this up on my phone',
+    havePairingCodeHint: 'Bring your name and wave count across with a short code.',
+    howItWorks: 'How waving works',
     privacy: 'Your position is blurred before it leaves your car, and never stored.',
   },
 
@@ -30,6 +32,7 @@ export const COPY = {
       n > 0
         ? `Quiet road. ${n} ${n === 1 ? 'driver' : 'drivers'} online in the area — say hi when you cross one.`
         : 'Quiet road. Nobody else out here right now.',
+    quietHow: 'How waving works',
     spectator: 'Location is off. You can see others, they cannot see you.',
     spectatorRetry: 'Turn it on',
     hidden: 'You are invisible. Nobody can see you or wave at you.',
@@ -38,6 +41,20 @@ export const COPY = {
       `TeslaWave is over its free capacity for today. Back at ${time}.`,
     reconnecting: 'Reconnecting…',
     tilesOffline: 'Map tiles are not loading. Cars and waves still work.',
+  },
+
+  howTo: {
+    title: 'How waving works',
+    lead: 'It is the Tesla wave, on your screen. Nothing to learn.',
+    steps: [
+      'Drive. Other drivers running TeslaWave appear around you on the map.',
+      'When one comes within about 150 m, a big Wave button appears at the bottom of the screen.',
+      'Tap it. They see a ripple on your car and hear a chime. If they wave back within a few seconds, you both get a "Waved back".',
+    ],
+    tapHint: 'You can also tap any car on the map to see it and wave from there.',
+    tryIt: 'Try it',
+    tried: 'That is all there is to it.',
+    close: 'Got it',
   },
 
   wave: {
@@ -67,14 +84,15 @@ export const COPY = {
   },
 
   pairing: {
-    showTitle: 'Continue on my Tesla',
-    showAction: 'Send my setup to my car',
+    showTitle: 'Use this on my car',
+    showAction: 'Use this on my car',
+    showHint: 'So you do not have to set it all up again on the car screen.',
     showBody:
-      'On the car screen, open teslawave.app, tap "Continue from my phone", and type this code. Your car then shows the same car, name and wave count.',
+      'On your car screen, open teslawave.app and tap "I already set this up on my phone". Then type this code. Your car keeps the same name, car and wave count.',
     expiresIn: (mmss: string): string => `Expires in ${mmss}`,
-    enterTitle: 'Enter the code from your phone',
+    enterTitle: 'Type the code from your phone',
     enterBody:
-      'Set up on your phone first, tap "Send my setup to my car" there, and type the six characters it shows.',
+      'On your phone, open teslawave.app, tap "Use this on my car", and type the six characters it shows you here.',
     claim: 'Continue',
     claiming: 'Checking…',
     failed: 'That code is not valid any more. Make a new one on your phone.',

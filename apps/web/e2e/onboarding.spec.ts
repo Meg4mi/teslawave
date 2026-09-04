@@ -65,3 +65,22 @@ test('a driver who refuses location becomes a spectator instead of a dead end', 
   });
   await context.close();
 });
+
+test('a driver alone on the road can still find out how to wave', async ({ page }) => {
+  // The whole product is one gesture, and on an empty road there is nobody to demonstrate it.
+  await page.goto(simUrl(GENEVA.lat, GENEVA.lng));
+  await page.getByRole('button', { name: 'How waving works' }).first().click();
+  const sheet = page.getByRole('dialog', { name: 'How waving works' });
+  await expect(sheet).toBeVisible();
+  await expect(sheet).toContainText('a big Wave button appears');
+  await expect(sheet.locator('canvas')).toBeVisible();
+  await sheet.getByRole('button', { name: 'Try it' }).click();
+  await sheet.getByRole('button', { name: 'Got it' }).click();
+  await expect(sheet).toHaveCount(0);
+
+  // And again from the map, where the empty state offers it.
+  await page.getByRole('button', { name: 'Go', exact: true }).click();
+  await page.waitForFunction(() => typeof window.__tw !== 'undefined');
+  await page.getByRole('button', { name: 'How waving works' }).first().click();
+  await expect(page.getByRole('dialog', { name: 'How waving works' })).toBeVisible();
+});

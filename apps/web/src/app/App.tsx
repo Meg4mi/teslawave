@@ -51,13 +51,14 @@ import { CarCard } from '../screens/CarCard';
 import { PulseSheet } from '../screens/PulseSheet';
 import { SettingsSheet } from '../screens/SettingsSheet';
 import { EnterCodeSheet, ShowPairingSheet } from '../screens/Pairing';
+import { HowToWave } from '../screens/HowToWave';
 import type { Renderer } from '../overlay/renderer';
 import { installTestHook } from './testHook';
 import { isE2E } from '../config/env';
 import './app.css';
 import '../screens/sheets.css';
 
-type SheetName = 'settings' | 'pulse' | 'pair-show' | 'pair-enter' | null;
+type SheetName = 'settings' | 'pulse' | 'pair-show' | 'pair-enter' | 'how-to' | null;
 
 const BOOT_KEY = 'tw.booted';
 
@@ -290,8 +291,22 @@ export function App(): ReactNode {
   );
   const selfCar = identity ? { model: identity.model, colour: identity.colour } : null;
 
-  if (!identity && sheet !== 'pair-enter')
-    return <Onboarding onGo={start} onHaveCode={() => setSheet('pair-enter')} />;
+  // Sheets open *over* onboarding rather than replacing it: dropping someone onto a map
+  // before they have an identity showed a car-less map with default settings.
+  if (!identity)
+    return (
+      <>
+        <Onboarding
+          onGo={start}
+          onHaveCode={() => setSheet('pair-enter')}
+          onHowItWorks={() => setSheet('how-to')}
+        />
+        {sheet === 'how-to' ? <HowToWave onClose={() => setSheet(null)} /> : null}
+        {sheet === 'pair-enter' ? (
+          <EnterCodeSheet onPaired={adopt} onClose={() => setSheet(null)} />
+        ) : null}
+      </>
+    );
 
   return (
     <>
@@ -305,7 +320,12 @@ export function App(): ReactNode {
         onTiles={setTiles}
       />
 
-      <Hud summary={summary} status={status} onOpenPulse={() => setSheet('pulse')} />
+      <Hud
+        summary={summary}
+        status={status}
+        onOpenPulse={() => setSheet('pulse')}
+        onHowItWorks={() => setSheet('how-to')}
+      />
 
       {spectator ? (
         <div className="hud" style={{ top: 'auto', bottom: 'calc(var(--edge) + 8px)' }}>
@@ -386,6 +406,7 @@ export function App(): ReactNode {
           onChange={setPrefs}
           onShowPairing={() => setSheet('pair-show')}
           onEnterCode={() => setSheet('pair-enter')}
+          onHowItWorks={() => setSheet('how-to')}
           onClose={() => setSheet(null)}
         />
       ) : null}
@@ -395,6 +416,7 @@ export function App(): ReactNode {
       {sheet === 'pair-enter' ? (
         <EnterCodeSheet onPaired={adopt} onClose={() => setSheet(null)} />
       ) : null}
+      {sheet === 'how-to' ? <HowToWave onClose={() => setSheet(null)} /> : null}
 
       <Disclaimer />
     </>

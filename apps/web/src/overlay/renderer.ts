@@ -33,6 +33,19 @@ export type RenderOptions = {
   /** Nothing within 10 km: keep the screen alive with a slow ambient sweep. */
   ambient: boolean;
   bearing: number;
+  zoom: number;
+};
+
+/**
+ * A real car is about 3 px at the zoom we follow at, so sprites are deliberately oversized:
+ * this is a map of who is around you, not a scale drawing. The size tracks zoom so they stay
+ * findable when zoomed out without dominating the road when zoomed in.
+ */
+const SPRITE_BASE_ZOOM = 15.5;
+const SPRITE_BASE_PX = 40;
+export const spriteScaleFor = (zoom: number, drawn: number): number => {
+  const px = Math.min(50, Math.max(28, SPRITE_BASE_PX + (zoom - SPRITE_BASE_ZOOM) * 4));
+  return px / drawn;
 };
 
 const TRAIL_WIDTH = 2.5;
@@ -75,7 +88,8 @@ export function createRenderer(canvas: HTMLCanvasElement) {
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
 
-      const { cars, self, nearbyId, selectedId, bearing } = options;
+      const { cars, self, nearbyId, selectedId, bearing, zoom } = options;
+      const sizeScale = spriteScaleFor(zoom, SPRITE_LENGTH);
 
       // 1. Trails, under everything. Traffic reads as light painting from above.
       if (options.trails) {
@@ -152,7 +166,7 @@ export function createRenderer(canvas: HTMLCanvasElement) {
         ctx.save();
         ctx.translate(p.x, p.y);
         ctx.rotate(((car.placement.heading - bearing) * Math.PI) / 180);
-        let scale = appearing;
+        let scale = appearing * sizeScale;
         if (car.id === nearbyId) {
           // Breathing, only for the car you can wave at.
           scale *= 1 + 0.06 * Math.sin((now / 1_600) * Math.PI * 2);
@@ -189,6 +203,7 @@ export function createRenderer(canvas: HTMLCanvasElement) {
         ctx.save();
         ctx.translate(p.x, p.y);
         ctx.rotate(((self.heading - bearing) * Math.PI) / 180);
+        ctx.scale(sizeScale, sizeScale);
         ctx.drawImage(sprite.canvas, -sprite.size / 2, -sprite.size / 2, sprite.size, sprite.size);
         ctx.restore();
       }

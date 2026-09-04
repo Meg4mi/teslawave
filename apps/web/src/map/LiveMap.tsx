@@ -204,6 +204,7 @@ export function LiveMap({
           trails: !halfRate && cars.length <= 40,
           ambient: cars.length === 0,
           bearing: map.getBearing(),
+          zoom: map.getZoom(),
         },
         dpr,
       );

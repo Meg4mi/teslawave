@@ -27,6 +27,22 @@
   --ok: #7ee0a8;
   --danger: #ff8b8b;
 
+  /*
+   * One layering scale. Ad-hoc z-indexes are how a dialog ends up rendering behind the
+   * screen that opened it, which is exactly what happened before this existed.
+   */
+  --z-map: 1;
+  --z-overlay: 2;
+  --z-vignette: 3;
+  --z-attribution: 4;
+  --z-hud: 10;
+  --z-wave: 20;
+  --z-screen: 30;
+  --z-scrim: 40;
+  --z-sheet: 50;
+  --z-milestone: 60;
+  --z-toast: 70;
+
   --r-sm: 10px;
   --r-md: 16px;
   --r-lg: 24px;
