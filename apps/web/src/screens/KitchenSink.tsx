@@ -21,7 +21,11 @@ export function KitchenSink(): ReactNode {
   const [toast, setToast] = useState<ToastContent | null>(null);
   const [milestone, setMilestone] = useState<number | null>(null);
   const [nearby, setNearby] = useState(true);
-  const chipSize = Number(new URLSearchParams(location.search).get('size') ?? 44);
+  const params = new URLSearchParams(location.search);
+  const chipSize = Number(params.get('size') ?? 44);
+  // ?compare renders one colour across every model, which is the only way to judge whether
+  // the silhouettes are actually distinguishable.
+  const compareColour = params.get('compare');
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -144,7 +148,7 @@ export function KitchenSink(): ReactNode {
         {/* ?size=160 blows the matrix up for judging silhouettes; 44 is what ships. */}
         <div data-sprite-matrix style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
           {TESLA_MODELS.map((model: TeslaModel) =>
-            CAR_COLOURS.map((colour) => (
+            (compareColour ? [{ id: compareColour }] : CAR_COLOURS).map((colour) => (
               <CarChip
                 key={`${model}-${colour.id}`}
                 model={model}

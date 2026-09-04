@@ -144,8 +144,13 @@
 .wave {
   position: absolute;
   left: 50%;
-  bottom: max(var(--edge), env(safe-area-inset-bottom));
+  bottom: calc(max(var(--edge), env(safe-area-inset-bottom)) + 22px);
   z-index: var(--z-wave);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
   width: min(60%, 560px);
   height: 96px;
   padding: 0 var(--sp-5);
@@ -153,11 +158,27 @@
   border: 1px solid var(--accent);
   background: var(--accent);
   color: #04222b;
-  font-weight: 650;
-  font-size: 20px;
   transform: translate(-50%, 0);
   animation: wave-in var(--d-slow) var(--e-spring) both;
   overflow: hidden;
+}
+
+.wave__verb {
+  font-weight: 700;
+  font-size: 24px;
+  letter-spacing: -0.01em;
+  line-height: 1;
+}
+
+.wave__target {
+  font-weight: 550;
+  font-size: 14px;
+  line-height: 1;
+  opacity: 0.72;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
 }
 
 .wave:active {
@@ -282,17 +303,109 @@
   }
 }
 
-/* Phone in a dash mount: same build, one column, everything within thumb reach. */
+/* Phone in a dash mount: same build, everything within thumb reach and nothing overlapping. */
 @media (max-width: 720px) {
   :root {
-    --edge: 20px;
-  }
-
-  .wave {
-    width: calc(100% - 2 * var(--edge));
+    --edge: 16px;
   }
 
   .hud {
     max-width: calc(100vw - 2 * var(--edge));
+  }
+
+  /* Narrower controls: four 76 px buttons took up half the height of a phone screen. */
+  .control {
+    width: 60px;
+    min-height: 56px;
+    gap: 2px;
+    padding: var(--sp-1) 2px;
+  }
+
+  .control__icon {
+    height: 22px;
+  }
+
+  .control__icon svg {
+    width: 21px;
+    height: 21px;
+  }
+
+  .control__label {
+    font-size: 9px;
+  }
+
+  .controls {
+    gap: var(--sp-2);
+    bottom: calc(var(--edge) + 26px + env(safe-area-inset-bottom));
+  }
+
+  /* The wave button stops at the control column instead of running underneath it. */
+  .wave {
+    left: var(--edge);
+    right: calc(var(--edge) + 60px + var(--sp-3));
+    width: auto;
+    height: 72px;
+    padding: 0 var(--sp-3);
+    transform: none;
+    /* Clear of the two-line disclaimer, which is required on every screen. */
+    bottom: calc(var(--edge) + 26px + env(safe-area-inset-bottom));
+  }
+
+  .wave__verb {
+    font-size: 21px;
+  }
+
+  .wave__target {
+    font-size: 12px;
+  }
+
+  .wave:active {
+    transform: scale(0.97);
+  }
+
+  @keyframes wave-in {
+    from {
+      opacity: 0;
+      transform: translateY(24px) scale(0.96);
+    }
+  }
+
+  .wave--leaving {
+    animation: none;
+  }
+
+  .milestone {
+    left: var(--edge);
+    right: var(--edge);
+    transform: none;
+    bottom: calc(var(--edge) + 108px + env(safe-area-inset-bottom));
+  }
+
+  .toast {
+    left: var(--edge);
+    right: var(--edge);
+    max-width: none;
+    transform: none;
+    bottom: calc(var(--edge) + 108px + env(safe-area-inset-bottom));
+  }
+
+  @keyframes toast-in {
+    from {
+      opacity: 0;
+      transform: translateY(16px) scale(0.98);
+    }
+  }
+
+  /* Bottom-left, clear of the attribution button in the corner. */
+  .disclaimer {
+    left: var(--edge);
+    right: 46px;
+    bottom: calc(2px + env(safe-area-inset-bottom));
+    width: auto;
+    max-width: none;
+    transform: none;
+    text-align: left;
+    font-size: 9px;
+    line-height: 1.25;
   }
 }

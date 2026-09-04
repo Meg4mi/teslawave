@@ -58,6 +58,9 @@ export const COPY = {
   },
 
   wave: {
+    verb: 'Wave',
+    promptTarget: (model: TeslaModel, colour: string): string =>
+      `at the ${describeCar(model, colour)}`,
     prompt: (model: TeslaModel, colour: string): string => `Wave at the ${describeCar(model, colour)}`,
     received: (model: TeslaModel, colour: string): string =>
       `A ${describeCar(model, colour)} waved at you`,

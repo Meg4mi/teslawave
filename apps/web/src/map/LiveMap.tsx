@@ -4,7 +4,7 @@ import type { MapMouseEvent, MapTouchEvent } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { getSelfPlacement, tickWorld, type RenderCar } from '../sim/world';
 import { createRenderer, type Renderer } from '../overlay/renderer';
-import { ATTRIBUTION, buildStyle } from './style';
+import { buildStyle } from './style';
 import { MAPLIBRE_WORKER_URL } from './maplibre-worker-url';
 import { recordFrameCost } from '../app/testHook';
 import { isE2E } from '../config/env';
@@ -15,6 +15,8 @@ export type LiveMapProps = {
   selectedId: string | null;
   nearbyId: string | null;
   self: { model: string; colour: string } | null;
+  /** Rough starting centre, before there is a GPS fix to follow. */
+  origin: { lat: number; lng: number } | null;
   onSelect: (id: string | null) => void;
   onReady: (renderer: Renderer) => void;
   /** False once it is clear the tiles are not coming, so the app can say so. */
@@ -44,6 +46,7 @@ export function LiveMap({
   selectedId,
   nearbyId,
   self,
+  origin,
   onSelect,
   onReady,
   onTiles,
@@ -57,6 +60,12 @@ export function LiveMap({
   useEffect(() => {
     live.current = { northUp, selectedId, nearbyId, self };
   }, [northUp, selectedId, nearbyId, self]);
+
+  // Only until the driver's own position takes over.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (map && origin && !getSelfPlacement()) map.jumpTo({ center: [origin.lng, origin.lat] });
+  }, [origin]);
 
   useEffect(() => {
     const host = container.current;
@@ -80,7 +89,9 @@ export function LiveMap({
       // 2026.26 changed the Tesla browser's pixel density: always read it, never assume it.
       pixelRatio: window.devicePixelRatio,
     });
-    map.addControl(new AttributionControl({ compact: true, customAttribution: ATTRIBUTION }));
+    // No customAttribution: the tile source already supplies it, and adding ours printed
+    // the same sentence twice, on top of the disclaimer.
+    map.addControl(new AttributionControl({ compact: true }));
     if (isE2E()) {
       // A handle for debugging the style from a browser console or a test.
       (window as unknown as { __twMap: MlMap }).__twMap = map;

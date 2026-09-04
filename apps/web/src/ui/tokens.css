@@ -91,10 +91,18 @@
 html,
 body,
 #root {
-  height: 100%;
+  /*
+   * dvh, not %: on iOS Safari a percentage height resolves against the large viewport, so
+   * the app ran behind the URL bar at the top and left a black band above the toolbar at the
+   * bottom. dvh tracks the bar as it collapses. vh stays as the fallback for older engines.
+   */
+  height: 100vh;
+  height: 100dvh;
   margin: 0;
   overflow: hidden;
   overscroll-behavior: none;
+  position: fixed;
+  inset: 0;
 }
 
 body {

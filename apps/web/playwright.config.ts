@@ -89,7 +89,10 @@ export default defineConfig({
             'pnpm --filter @teslawave/web build && pnpm --filter @teslawave/worker db:local && ' +
             'pnpm --filter @teslawave/worker dev --port 8787',
           url: 'http://127.0.0.1:8787/api/whereami',
-          reuseExistingServer: !process.env['CI'],
+          // Always rebuild. Reusing a server left over from a previous run serves a stale
+          // bundle, and a suite that passes or fails against yesterday's code is worse than
+          // no suite at all: it cost two debugging rounds before this line existed.
+          reuseExistingServer: false,
           timeout: 180_000,
           stdout: 'pipe' as const,
         },

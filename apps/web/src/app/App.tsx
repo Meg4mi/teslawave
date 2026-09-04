@@ -70,6 +70,7 @@ export function App(): ReactNode {
   const [toast, setToast] = useState<ToastContent | null>(null);
   const [milestone, setMilestone] = useState<number | null>(null);
   const [tiles, setTiles] = useState(true);
+  const [origin, setOrigin] = useState<{ lat: number; lng: number } | null>(null);
   const netRef = useRef<Net | null>(null);
   const rendererRef = useRef<Renderer | null>(null);
   const sentWaves = useRef(new Map<string, number>());
@@ -79,6 +80,24 @@ export function App(): ReactNode {
 
   useEffect(() => {
     if (isE2E()) installTestHook();
+  }, []);
+
+  /*
+   * Rough position from the request, before anyone has granted anything. It centres the map
+   * that sits behind onboarding, so the first screen is the place you are about to be rather
+   * than a black form, and so "Go" drops your car onto a map you were already looking at.
+   */
+  useEffect(() => {
+    let cancelled = false;
+    void fetch('/api/whereami')
+      .then((res) => (res.ok ? (res.json() as Promise<{ lat: number | null; lng: number | null }>) : null))
+      .then((body) => {
+        if (!cancelled && body?.lat && body.lng) setOrigin({ lat: body.lat, lng: body.lng });
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
   }, []);
   const { status: geo, fix } = usePosition(identity !== null);
   const spectator = geo === 'denied' || geo === 'unavailable';
@@ -291,11 +310,21 @@ export function App(): ReactNode {
   );
   const selfCar = identity ? { model: identity.model, colour: identity.colour } : null;
 
-  // Sheets open *over* onboarding rather than replacing it: dropping someone onto a map
-  // before they have an identity showed a car-less map with default settings.
+  // Onboarding is a card over the live map, not a separate black screen: same place, same
+  // materials, and tapping Go drops your car onto the map already in front of you.
   if (!identity)
     return (
       <>
+        <LiveMap
+          northUp
+          selectedId={null}
+          nearbyId={null}
+          self={null}
+          origin={origin}
+          onSelect={() => undefined}
+          onReady={onMapReady}
+          onTiles={setTiles}
+        />
         <Onboarding
           onGo={start}
           onHaveCode={() => setSheet('pair-enter')}
@@ -315,6 +344,7 @@ export function App(): ReactNode {
         selectedId={selectedId}
         nearbyId={nearby?.id ?? null}
         self={selfCar}
+        origin={origin}
         onSelect={setSelectedId}
         onReady={onMapReady}
         onTiles={setTiles}

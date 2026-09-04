@@ -152,5 +152,7 @@ export function buildStyle(): StyleSpecification {
   };
 }
 
-export const ATTRIBUTION =
-  '<a href="https://openfreemap.org" target="_blank" rel="noreferrer">OpenFreeMap</a> © <a href="https://www.openmaptiles.org/" target="_blank" rel="noreferrer">OpenMapTiles</a> Data from <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a>';
+/*
+ * Attribution is mandatory and comes from the tile source's own TileJSON, which MapLibre
+ * renders for us. Adding a second copy here printed it twice.
+ */

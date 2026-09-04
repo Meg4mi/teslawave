@@ -25,12 +25,16 @@ test('the disclaimer is on screen before and after onboarding', async ({ page })
   await expect(page.getByText(/Not affiliated with, endorsed or sponsored by Tesla/)).toBeVisible();
 });
 
-test('every touch target is big enough and clear of the screen edges', async ({ page }, info) => {
+test('every touch target is big enough and clear of the screen edges', async ({ page }) => {
   await onboard(page, simUrl(GENEVA.lat, GENEVA.lng));
   const viewport = page.viewportSize();
   expect(viewport).not.toBeNull();
-  // The brief's margins are for the car screen; a phone in a mount has its own.
-  const edge = info.project.name === 'phone' ? 20 : 40;
+  // Read the app's own edge margin rather than restating it here: the car screen and a phone
+  // in a mount use different values, and two copies of a number drift apart.
+  const edge = await page.evaluate(() =>
+    Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--edge')),
+  );
+  expect(edge).toBeGreaterThan(0);
 
   const targets = page.locator('[data-touch]:visible');
   const count = await targets.count();

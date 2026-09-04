@@ -16,7 +16,10 @@ test('two cars in range can wave, and both counters move', async ({ browser }) =
 
   const waveButton = pageA.locator('.wave');
   await expect(waveButton).toBeVisible({ timeout: 20_000 });
-  await expect(waveButton).toContainText(/Wave at the/);
+  // The label is two lines now: the verb, then who it is aimed at.
+  await expect(waveButton.locator('.wave__verb')).toHaveText('Wave');
+  await expect(waveButton.locator('.wave__target')).toContainText(/at the .+ Model/);
+  await expect(waveButton).toHaveAttribute('aria-label', /^Wave at the/);
   await waveButton.click();
 
   // The toast specifically: receiving your first wave also raises the milestone card, and

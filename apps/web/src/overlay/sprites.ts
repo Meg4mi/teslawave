@@ -37,6 +37,16 @@ type ModelSpec = {
   glass: { front: number; roofFront: number; roofRear: number; rear: number; halfWidth: number };
   /** Panel seams across the body: bonnet, doors, boot. Real cars show their gaps. */
   seams: number[];
+  /**
+   * The Model 3 has a body-coloured structural bar across the middle of the roof; the Y's
+   * glass is one continuous panel. It is the clearest way to tell them apart from above.
+   */
+  roofBar?: number;
+  /**
+   * The Model X's falcon wing doors hinge off the roof, so their cut lines run up into the
+   * roof glass. Nothing else on the road has this.
+   */
+  falconSeams?: [number, number];
   mirrors: { y: number; reach: number };
   /** Cybertruck only: where the vault starts. */
   bed?: number;
@@ -62,8 +72,9 @@ const MODELS: Record<TeslaModel, ModelSpec> = {
     axles: [-0.29, 0.3],
     wheel: { length: 0.155, width: 0.07 },
     // Short bonnet, glass roof running almost to the boot: the Model 3 signature.
-    glass: { front: -0.14, roofFront: 0.01, roofRear: 0.14, rear: 0.26, halfWidth: 0.62 },
+    glass: { front: -0.14, roofFront: 0.01, roofRear: 0.14, rear: 0.24, halfWidth: 0.52 },
     seams: [-0.14, 0.03, 0.28],
+    roofBar: 0.06,
     mirrors: { y: -0.12, reach: 0.3 },
   },
   Y: {
@@ -79,7 +90,7 @@ const MODELS: Record<TeslaModel, ModelSpec> = {
     axles: [-0.29, 0.3],
     wheel: { length: 0.155, width: 0.076 },
     // Same glass roof, but the hatch ends it abruptly instead of tapering away.
-    glass: { front: -0.16, roofFront: -0.01, roofRear: 0.2, rear: 0.3, halfWidth: 0.66 },
+    glass: { front: -0.16, roofFront: -0.01, roofRear: 0.2, rear: 0.28, halfWidth: 0.56 },
     seams: [-0.16, 0.02, 0.32],
     mirrors: { y: -0.14, reach: 0.3 },
   },
@@ -96,7 +107,7 @@ const MODELS: Record<TeslaModel, ModelSpec> = {
     axles: [-0.31, 0.31],
     wheel: { length: 0.15, width: 0.068 },
     // Long bonnet, long fastback: the glass sits further back than on a 3.
-    glass: { front: -0.09, roofFront: 0.04, roofRear: 0.16, rear: 0.3, halfWidth: 0.6 },
+    glass: { front: -0.09, roofFront: 0.04, roofRear: 0.16, rear: 0.28, halfWidth: 0.5 },
     seams: [-0.09, 0.06, 0.32],
     mirrors: { y: -0.07, reach: 0.29 },
   },
@@ -114,7 +125,7 @@ const MODELS: Record<TeslaModel, ModelSpec> = {
     wheel: { length: 0.155, width: 0.078 },
     // The panoramic windscreen carries on over the front seats, so the glass starts almost
     // at the nose. Nothing else on the road looks like this from above.
-    glass: { front: -0.32, roofFront: -0.12, roofRear: 0.18, rear: 0.28, halfWidth: 0.68 },
+    glass: { front: -0.32, roofFront: -0.12, roofRear: 0.18, rear: 0.26, halfWidth: 0.58 },
     seams: [-0.32, -0.1, 0.3],
     mirrors: { y: -0.13, reach: 0.3 },
   },
@@ -130,7 +141,7 @@ const MODELS: Record<TeslaModel, ModelSpec> = {
     axles: [-0.28, 0.32],
     wheel: { length: 0.17, width: 0.088 },
     // One straight sheet of glass over the cabin, then the vault.
-    glass: { front: -0.3, roofFront: -0.16, roofRear: -0.02, rear: 0.02, halfWidth: 0.74 },
+    glass: { front: -0.3, roofFront: -0.16, roofRear: -0.02, rear: 0.02, halfWidth: 0.66 },
     seams: [-0.3, 0.04],
     mirrors: { y: -0.06, reach: 0.24 },
     bed: 0.06,
@@ -277,12 +288,12 @@ export function getSprite(
   ctx.fill();
 
   // 2. Wheels, under the body and poking out at the corners. The strongest "this is a car" cue.
-  ctx.fillStyle = 'rgba(9, 11, 15, 0.92)';
+  ctx.fillStyle = 'rgba(8, 10, 14, 0.96)';
   const wheelLength = spec.wheel.length * length;
   const wheelWidth = spec.wheel.width * length;
   for (const axle of spec.axles)
     for (const side of [-1, 1]) {
-      const x = side * (halfWidth + wheelWidth * 0.16);
+      const x = side * (halfWidth + wheelWidth * 0.3);
       ctx.fill(
         roundedRect(x, axle * length, wheelWidth, wheelLength, spec.angular ? 1 : wheelWidth * 0.4),
       );
@@ -347,6 +358,28 @@ export function getSprite(
   glass.addColorStop(1, 'rgba(14, 20, 30, 0.95)');
   ctx.fillStyle = glass;
   ctx.fill(glassPath(spec, length, halfWidth));
+
+  // The Model 3's roof bar: painted body colour, straight across, splitting the glass in two.
+  if (spec.roofBar !== undefined) {
+    const w = halfWidth * g.halfWidth;
+    ctx.fillStyle = mix(base, '#000000', 0.12);
+    ctx.fillRect(-w, (spec.roofBar - 0.018) * length, w * 2, length * 0.036);
+  }
+
+  // The Model X's falcon wing cut lines, running up over the roof glass.
+  if (spec.falconSeams) {
+    const w = halfWidth * g.halfWidth;
+    ctx.strokeStyle = 'rgba(190, 214, 240, 0.28)';
+    ctx.lineWidth = Math.max(0.5, length * 0.012);
+    for (const y of spec.falconSeams) {
+      ctx.beginPath();
+      ctx.moveTo(-w * 1.02, y * length);
+      ctx.lineTo(-w * 0.24, y * length - length * 0.02);
+      ctx.moveTo(w * 1.02, y * length);
+      ctx.lineTo(w * 0.24, y * length - length * 0.02);
+      ctx.stroke();
+    }
+  }
 
   // 7. Panel seams: the pillar lines across the glass, and the gaps between bonnet, doors
   // and boot. Cars are made of panels, and at this size the gaps are most of the realism.
