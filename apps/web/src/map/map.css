@@ -1,0 +1,85 @@
+.map {
+  position: absolute;
+  inset: 0;
+}
+
+.map__gl,
+.map__overlay,
+.map__vignette {
+  position: absolute;
+  inset: 0;
+}
+
+.map__overlay {
+  pointer-events: none;
+  z-index: var(--z-overlay);
+}
+
+/*
+ * Painted once, never animated: the HUD needs to stay legible over both the dark ground
+ * and a bright motorway. A blur here would cost the whole frame budget on MCU 2.
+ */
+.map__vignette {
+  pointer-events: none;
+  z-index: var(--z-vignette);
+  background:
+    radial-gradient(130% 100% at 50% 50%, rgba(7, 9, 12, 0) 68%, rgba(7, 9, 12, 0.5) 100%),
+    linear-gradient(to bottom, rgba(7, 9, 12, 0.5), rgba(7, 9, 12, 0) 18%);
+}
+
+.maplibregl-ctrl-attrib {
+  background: rgba(7, 9, 12, 0.7) !important;
+  color: var(--fg-faint) !important;
+  font-size: 10px !important;
+}
+
+.maplibregl-ctrl-attrib a {
+  color: var(--fg-faint) !important;
+}
+
+.maplibregl-ctrl-bottom-right {
+  z-index: var(--z-attribution);
+}
+
+/*
+ * Shown only while the driver has hold of the map. It is a convenience, not the only way
+ * back: the camera resumes on its own a few seconds after the last gesture.
+ */
+.map__recentre {
+  position: absolute;
+  top: calc(max(var(--edge), env(safe-area-inset-top)) + 48px);
+  left: 50%;
+  z-index: var(--z-hud);
+  min-height: 64px;
+  padding: 0 var(--sp-6);
+  border: 1px solid var(--line);
+  border-radius: var(--r-full);
+  background: var(--bg-sheet);
+  color: var(--fg);
+  font: var(--t-body);
+  transform: translateX(-50%);
+  cursor: pointer;
+}
+
+.map__recentre:active {
+  transform: translateX(-50%) scale(0.96);
+}
+
+/*
+ * Bottom left, opposite the app controls, where map zoom lives on every map anyone has used.
+ * They are the same object as a control button, minus the label: a plus and a minus need no
+ * caption, and the column stays short enough not to crowd the road.
+ */
+.map__zoom {
+  position: absolute;
+  left: max(var(--edge), env(safe-area-inset-left));
+  bottom: max(var(--edge), env(safe-area-inset-bottom));
+  z-index: var(--z-hud);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.control--zoom {
+  width: var(--touch);
+}

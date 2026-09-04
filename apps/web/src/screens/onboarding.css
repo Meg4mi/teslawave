@@ -1,0 +1,246 @@
+/*
+ * A card over the live map rather than a screen of its own. Onboarding and the map were two
+ * different-looking places; now there is one place, and Go drops your car onto the map you
+ * have been looking at all along.
+ */
+.onboarding {
+  position: absolute;
+  inset: 0;
+  z-index: var(--z-screen);
+  overflow-y: auto;
+  display: grid;
+  place-items: center;
+  padding: var(--sp-4) var(--sp-4) calc(var(--sp-4) + env(safe-area-inset-bottom));
+  background: linear-gradient(rgba(7, 9, 12, 0.78), rgba(7, 9, 12, 0.9));
+  animation: fade-in var(--d-base) var(--e-out) both;
+}
+
+.onboarding__inner {
+  width: min(520px, 100%);
+  padding: var(--sp-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background-color: var(--bg-sheet);
+  background-image: var(--noise, none);
+  background-repeat: repeat;
+  background-size: 160px 160px;
+  animation: card-in var(--d-slow) var(--e-out) both;
+}
+
+@keyframes card-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.985);
+  }
+}
+
+.onboarding__head {
+  text-align: center;
+}
+
+.onboarding__title {
+  margin: 0;
+  font: var(--t-hero);
+  letter-spacing: -0.02em;
+}
+
+.onboarding__sub {
+  margin: var(--sp-2) 0 0;
+  color: var(--fg-dim);
+}
+
+/* The hero: your car, named. Everything below is just editing this one object. */
+.hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-3);
+}
+
+.hero__stage {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 150px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--line-soft);
+  background:
+    radial-gradient(60% 70% at 50% 45%, rgba(110, 231, 255, 0.08), rgba(110, 231, 255, 0) 70%),
+    var(--bg-1);
+}
+
+.hero__caption {
+  margin: 0;
+  font: var(--t-body);
+  font-weight: 600;
+  color: var(--fg);
+}
+
+.hero__dot {
+  margin: 0 var(--sp-2);
+  color: var(--fg-faint);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  border: 0;
+  padding: 0;
+  margin: 0;
+}
+
+.field__label {
+  padding: 0;
+  font: var(--t-hud);
+  color: var(--fg-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+.field__input {
+  min-height: var(--touch);
+  padding: 0 var(--sp-4);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-1);
+}
+
+.field__input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.models {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: var(--sp-2);
+}
+
+.tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-1);
+  min-height: 92px;
+  padding: var(--sp-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-1);
+  transition:
+    transform var(--d-fast) var(--e-out),
+    border-color var(--d-fast) linear;
+}
+
+.tile:active {
+  transform: scale(0.97);
+}
+
+.tile--on {
+  border-color: var(--accent);
+}
+
+.tile__label {
+  font: 600 12px/1 var(--font);
+  color: var(--fg-dim);
+}
+
+.tile--on .tile__label {
+  color: var(--fg);
+}
+
+.swatches {
+  display: grid;
+  grid-template-columns: repeat(10, 1fr);
+  gap: var(--sp-2);
+}
+
+.swatch {
+  display: grid;
+  place-items: center;
+  height: var(--touch);
+  border-radius: var(--r-full);
+  border: 1px solid transparent;
+  transition: transform var(--d-fast) var(--e-out);
+}
+
+.swatch:active {
+  transform: scale(0.92);
+}
+
+.swatch--on {
+  border-color: var(--accent);
+}
+
+.swatch__dot {
+  display: block;
+  width: 30px;
+  height: 30px;
+  border-radius: var(--r-full);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+}
+
+.onboarding__go {
+  width: 100%;
+  height: 76px;
+  font-size: 21px;
+}
+
+.onboarding__links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--sp-2) var(--sp-6);
+}
+
+.link {
+  min-height: 44px;
+  padding: 0;
+  font: var(--t-hud);
+  font-weight: 500;
+  color: var(--fg-dim);
+  text-decoration: underline;
+  text-underline-offset: 4px;
+  text-decoration-color: var(--line);
+}
+
+.link:active {
+  color: var(--fg);
+}
+
+.onboarding__privacy {
+  margin: 0;
+  text-align: center;
+  font: var(--t-hud);
+  font-weight: 450;
+  color: var(--fg-faint);
+}
+
+.privacy__list {
+  margin: 0;
+  padding-left: var(--sp-5);
+  color: var(--fg-dim);
+  line-height: 1.6;
+}
+
+.privacy__list strong {
+  color: var(--fg);
+}
+
+.onboarding a {
+  color: var(--accent);
+}
+
+@media (max-width: 560px) {
+  .swatches {
+    grid-template-columns: repeat(5, 1fr);
+  }
+
+  .hero__stage {
+    height: 128px;
+  }
+}

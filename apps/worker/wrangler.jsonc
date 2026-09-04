@@ -1,0 +1,47 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "teslawave",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-09-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": { "enabled": true },
+
+  // Uncomment once teslawave.app is on Cloudflare DNS. Until then the deploy is reachable
+  // at teslawave.<account>.workers.dev, which is what preview links use anyway.
+  // "routes": [{ "pattern": "teslawave.app", "custom_domain": true }],
+
+  // The SPA is served as static assets: those requests are free and unlimited.
+  // Only /ws and /api/* reach the Worker and consume the 100k requests/day budget.
+  "assets": {
+    "directory": "../web/dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/ws", "/api/*"]
+  },
+
+  "durable_objects": {
+    "bindings": [{ "name": "HUB", "class_name": "HubDO" }]
+  },
+  // SQLite-backed classes are the only kind available on the Workers Free plan.
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["HubDO"] }],
+
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "teslawave",
+      "database_id": "4ff83bd0-27c7-4950-bfc4-eaece9bcd51a",
+      "migrations_dir": "migrations"
+    }
+  ],
+
+  "vars": {
+    // Kill switch: set to "false" in the dashboard to stop accepting sockets, no deploy needed.
+    "WS_ENABLED": "true",
+    "TEST_MODE": "false"
+  },
+
+  "triggers": {
+    // One alarm-free cron a day: rolls yesterday's counters into D1 and prunes.
+    "crons": ["5 0 * * *"]
+  }
+}
