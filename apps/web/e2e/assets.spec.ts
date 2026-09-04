@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { open } from './helpers';
 
 /**
  * MapLibre's worker is requested at a URL no bundler can follow statically, so it went
@@ -31,7 +32,7 @@ test('the worker starts and the map gets past style creation', async ({ page }) 
     const text = m.text();
     if (m.type() === 'error' && /worker|Worker/.test(text)) failures.push(text);
   });
-  await page.goto('/?e2e&sim=46.2044,6.1432,90,50');
+  await open(page, '/?e2e&sim=46.2044,6.1432,90,50');
   await page.getByRole('button', { name: 'Go', exact: true }).click();
   await page.waitForFunction(() => typeof window.__tw !== 'undefined');
   await page.waitForTimeout(2_500);

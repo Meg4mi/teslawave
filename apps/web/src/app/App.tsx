@@ -353,6 +353,9 @@ export function App(): ReactNode {
     rendererRef.current?.playSonar();
   };
 
+  // Tapping your own car on the map opens the garage: the car is the thing you edit.
+  const openGarage = useCallback((): void => setSheet('garage'), []);
+
   const onMapReady = useCallback((renderer: Renderer): void => {
     rendererRef.current = renderer;
     try {
@@ -379,6 +382,7 @@ export function App(): ReactNode {
       <>
         <LiveMap
           northUp
+          bare
           selectedId={null}
           nearbyId={null}
           self={null}
@@ -408,6 +412,7 @@ export function App(): ReactNode {
         self={selfCar}
         origin={origin}
         onSelect={setSelectedId}
+        onSelectSelf={openGarage}
         onReady={onMapReady}
         onTiles={setTiles}
       />
@@ -419,24 +424,25 @@ export function App(): ReactNode {
         onHowItWorks={() => setSheet('how-to')}
       />
 
+      {/* Notices sit at the foot, centred, one above the other if there are two. */}
       {spectator ? (
-        <div className="hud" style={{ top: 'auto', bottom: 'calc(var(--edge) + 8px)' }}>
+        <div className="hud hud--foot">
           <p className="hud__banner">{COPY.map.spectator}</p>
         </div>
       ) : null}
-      {!tiles ? (
-        <div className="hud" style={{ top: 'auto', bottom: 'calc(var(--edge) + 60px)' }}>
-          <p className="hud__banner">{COPY.map.tilesOffline}</p>
-        </div>
-      ) : null}
       {status === 'budget' ? (
-        <div className="hud" style={{ top: 'auto', bottom: 'calc(var(--edge) + 8px)' }}>
+        <div className="hud hud--foot">
           <p className="hud__banner">{COPY.map.budget('02:00')}</p>
         </div>
       ) : null}
       {status === 'paused' ? (
-        <div className="hud" style={{ top: 'auto', bottom: 'calc(var(--edge) + 8px)' }}>
+        <div className="hud hud--foot">
           <p className="hud__banner">{COPY.map.paused}</p>
+        </div>
+      ) : null}
+      {!tiles ? (
+        <div className="hud hud--foot">
+          <p className="hud__banner">{COPY.map.tilesOffline}</p>
         </div>
       ) : null}
 
@@ -494,6 +500,7 @@ export function App(): ReactNode {
       {sheet === 'pulse' ? <PulseSheet summary={summary} onClose={() => setSheet(null)} /> : null}
       {sheet === 'settings' ? (
         <SettingsSheet
+          identity={identity}
           prefs={prefs}
           onChange={setPrefs}
           onShowPairing={() => setSheet('pair-show')}

@@ -25,3 +25,4 @@ Format: Context / Decision / Rejected alternatives / Consequences (`0000-templat
 | [0017](0017-camera-yields-to-touch.md) | The camera yields to the driver's hands |
 | [0018](0018-traced-model-art.md) | Each model is traced, not parameterised |
 | [0019](0019-own-car-is-interpolated-too.md) | Your own car is interpolated too, and the camera pauses on touch-down |
+| [0020](0020-one-car-drawing-two-renderers.md) | One car drawing, rendered as SVG in the UI and baked to bitmap on the map |

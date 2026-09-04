@@ -6,35 +6,79 @@
   background-repeat: repeat;
   background-size: 160px 160px;
   border: 1px solid var(--line);
-  border-radius: var(--r-lg);
+  border-radius: var(--r-xl);
 }
 
+/*
+ * A dialog. Centred on the car screen, like every popup the car itself shows; on a phone it
+ * becomes a bottom sheet (see the media query at the end).
+ */
 .sheet {
   position: fixed;
   left: 50%;
-  bottom: 0;
-  width: min(760px, 100%);
-  max-height: min(88vh, 720px);
-  padding: var(--sp-5) var(--sp-5) calc(var(--sp-5) + env(safe-area-inset-bottom));
-  overflow-y: auto;
-  border-bottom-left-radius: 0;
-  border-bottom-right-radius: 0;
-  transform: translate(-50%, 0);
-  animation: sheet-in var(--d-base) var(--e-out) both;
+  top: 50%;
   z-index: var(--z-sheet);
+  display: flex;
+  flex-direction: column;
+  width: min(640px, calc(100vw - 2 * var(--edge)));
+  max-height: calc(100vh - 2 * var(--edge));
+  max-height: calc(100dvh - 2 * var(--edge));
+  overflow: hidden;
+  transform: translate(-50%, -50%);
+  animation: sheet-in var(--d-slow) var(--e-out) both;
+}
+
+.sheet--wide {
+  width: min(880px, calc(100vw - 2 * var(--edge)));
 }
 
 @keyframes sheet-in {
   from {
     opacity: 0;
-    transform: translate(-50%, 24px);
+    transform: translate(-50%, calc(-50% + 18px)) scale(0.985);
   }
+}
+
+.sheet__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-4);
+  padding: var(--sp-4) var(--sp-4) 0 var(--sp-6);
+  min-height: 72px;
+}
+
+.sheet__title {
+  font: var(--t-title);
+  letter-spacing: -0.01em;
+}
+
+.sheet__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--sp-3) var(--sp-6) var(--sp-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+
+.sheet__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--sp-3);
+  margin-top: var(--sp-2);
+}
+
+.sheet__note {
+  color: var(--fg-dim);
+  max-width: 56ch;
 }
 
 .scrim {
   position: fixed;
   inset: 0;
-  background: rgba(4, 6, 9, 0.62);
+  background: rgba(3, 4, 6, 0.66);
   animation: fade-in var(--d-base) var(--e-out) both;
   z-index: var(--z-scrim);
 }
@@ -45,6 +89,7 @@
   }
 }
 
+/* Buttons are pills, as in the car and the app. The primary one is white. */
 .btn {
   display: inline-flex;
   align-items: center;
@@ -53,29 +98,37 @@
   min-height: var(--touch);
   min-width: var(--touch);
   padding: 0 var(--sp-5);
-  border-radius: var(--r-md);
-  border: 1px solid var(--line);
+  border-radius: var(--r-full);
+  border: 1px solid var(--line-strong);
   background: var(--bg-2);
   color: var(--fg);
-  font-weight: 600;
+  font: var(--t-strong);
+  white-space: nowrap;
   transition:
     transform var(--d-fast) var(--e-out),
     opacity var(--d-fast) linear,
+    background-color var(--d-fast) linear,
     border-color var(--d-fast) linear;
 }
 
 .btn:active {
-  transform: scale(0.96);
+  transform: scale(0.97);
+}
+
+.btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .btn[disabled] {
-  opacity: 0.45;
+  opacity: 0.4;
+  pointer-events: none;
 }
 
 .btn--primary {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #04222b;
+  background: var(--paint);
+  border-color: var(--paint);
+  color: var(--paint-fg);
 }
 
 .btn--ghost {
@@ -84,9 +137,69 @@
   color: var(--fg-dim);
 }
 
+.btn--ghost:active {
+  color: var(--fg);
+}
+
 .btn--icon {
   padding: 0;
+  width: var(--touch);
+}
+
+.btn--lg {
+  min-height: 76px;
+  padding: 0 var(--sp-6);
+  font-size: 20px;
+}
+
+/* The switch: the whole 64 px row is the target, the track is what you read. */
+.switch {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: var(--touch);
+  min-height: var(--touch);
+  padding: 0 var(--sp-2);
   border-radius: var(--r-full);
+}
+
+.switch__track {
+  position: relative;
+  display: block;
+  width: 52px;
+  height: 30px;
+  border-radius: var(--r-full);
+  background: var(--bg-3);
+  border: 1px solid var(--line-strong);
+  transition:
+    background-color var(--d-base) var(--e-out),
+    border-color var(--d-base) var(--e-out);
+}
+
+.switch__knob {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 22px;
+  height: 22px;
+  border-radius: var(--r-full);
+  background: var(--fg);
+  transition: transform var(--d-base) var(--e-out);
+}
+
+.switch[aria-checked='true'] .switch__track {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.switch[aria-checked='true'] .switch__knob {
+  background: #04222b;
+  transform: translateX(22px);
+}
+
+.switch:focus-visible .switch__track {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .card {
@@ -99,19 +212,42 @@
 .toast {
   position: fixed;
   left: 50%;
-  bottom: calc(var(--edge) + var(--sp-6));
+  bottom: calc(var(--edge) + 132px);
   display: flex;
   align-items: center;
   gap: var(--sp-3);
-  max-width: min(520px, calc(100vw - 2 * var(--edge)));
-  padding: var(--sp-3) var(--sp-4);
+  max-width: min(560px, calc(100vw - 2 * var(--edge)));
+  min-height: 56px;
+  padding: var(--sp-2) var(--sp-5) var(--sp-2) var(--sp-3);
   border-radius: var(--r-full);
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   background: var(--bg-sheet);
+  background-image: var(--noise, none);
+  background-size: 160px 160px;
+  font: var(--t-strong);
   transform: translate(-50%, 0);
-  animation: toast-in var(--d-base) var(--e-spring) both;
+  animation: toast-in var(--d-slow) var(--e-spring) both;
   z-index: var(--z-toast);
   pointer-events: none;
+}
+
+.toast--warm {
+  border-color: var(--accent-warm);
+}
+
+.toast__icon {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--r-full);
+  background: var(--bg-2);
+}
+
+.toast__text {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .toast--leaving {
@@ -165,5 +301,44 @@
   100% {
     color: inherit;
     transform: scale(1);
+  }
+}
+
+/* A phone in a dash mount: the dialog becomes a bottom sheet, within thumb reach. */
+@media (max-width: 720px) {
+  .sheet,
+  .sheet--wide {
+    left: 0;
+    right: 0;
+    top: auto;
+    bottom: 0;
+    width: auto;
+    max-height: calc(100vh - var(--edge));
+    max-height: calc(100dvh - var(--edge));
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
+    border-bottom: 0;
+    transform: none;
+    animation: sheet-up var(--d-slow) var(--e-out) both;
+  }
+
+  @keyframes sheet-up {
+    from {
+      opacity: 0;
+      transform: translateY(28px);
+    }
+  }
+
+  .sheet__head {
+    padding: var(--sp-3) var(--sp-3) 0 var(--sp-5);
+    min-height: 64px;
+  }
+
+  .sheet__title {
+    font-size: 21px;
+  }
+
+  .sheet__body {
+    padding: var(--sp-2) var(--sp-5) calc(var(--sp-5) + env(safe-area-inset-bottom));
   }
 }

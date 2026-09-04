@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "wrangler dev",
+    "dev:e2e": "node scripts/dev-supervised.mjs",
     "deploy": "wrangler deploy",
     "typecheck": "tsc -p tsconfig.json",
     "pretest": "node -e \"require('fs').mkdirSync('../web/dist',{recursive:true})\"",

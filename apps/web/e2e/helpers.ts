@@ -38,11 +38,30 @@ declare global {
 }
 
 /**
+ * Navigate, retrying for a few seconds if the server refuses the connection. The dev server
+ * is supervised and restarts if wrangler's proxy dies (apps/worker/scripts/dev-supervised.mjs);
+ * a test that lands in that gap should wait for it, not fail for it.
+ */
+export async function open(page: Page, url: string): Promise<void> {
+  const deadline = Date.now() + 20_000;
+  for (;;) {
+    try {
+      await page.goto(url);
+      return;
+    } catch (error) {
+      const refused = error instanceof Error && /ERR_CONNECTION_REFUSED|ECONNREFUSED/.test(error.message);
+      if (!refused || Date.now() > deadline) throw error;
+      await page.waitForTimeout(1_000);
+    }
+  }
+}
+
+/**
  * Onboard once: pick the defaults and tap Go. `exact` matters: Playwright matches accessible
  * names by substring by default, and the map controls include "Go invisible".
  */
 export async function onboard(page: Page, url: string): Promise<void> {
-  await page.goto(url);
+  await open(page, url);
   await page.getByRole('button', { name: 'Go', exact: true }).click();
   await page.waitForFunction(() => typeof window.__tw !== 'undefined');
 }

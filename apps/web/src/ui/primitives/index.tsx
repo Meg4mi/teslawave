@@ -1,23 +1,55 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { CloseIcon } from '../icons';
+import { COPY } from '../copy';
 import './primitives.css';
 
+/**
+ * A dialog over the map. On the car screen it is a centred card, the way every popup in
+ * the car is; on a phone it rises from the bottom edge, within thumb reach. The header
+ * carries the title and a close button, so a sheet never needs a "Close" button of its own.
+ */
 export function Sheet({
   children,
   onClose,
   label,
+  title,
+  wide = false,
 }: {
   children: ReactNode;
   onClose?: () => void;
   label: string;
+  title?: ReactNode;
+  /** Room for a picker or a keypad. */
+  wide?: boolean;
 }): ReactNode {
   return (
     <>
       {onClose ? <div className="scrim" onPointerDown={onClose} /> : null}
-      <section className="surface sheet" role="dialog" aria-modal="true" aria-label={label}>
-        {children}
+      <section
+        className={`surface sheet ${wide ? 'sheet--wide' : ''}`.trim()}
+        role="dialog"
+        aria-modal="true"
+        aria-label={label}
+      >
+        {title !== undefined || onClose ? (
+          <header className="sheet__head">
+            {title !== undefined ? <h2 className="sheet__title">{title}</h2> : <span />}
+            {onClose ? (
+              <Button variant="icon" label={COPY.controls.close} onClick={onClose}>
+                <CloseIcon size={22} />
+              </Button>
+            ) : null}
+          </header>
+        ) : null}
+        <div className="sheet__body">{children}</div>
       </section>
     </>
   );
+}
+
+/** The row of actions at the foot of a sheet: primary on the right, like the car. */
+export function SheetActions({ children }: { children: ReactNode }): ReactNode {
+  return <div className="sheet__actions">{children}</div>;
 }
 
 export function Button({
@@ -27,6 +59,7 @@ export function Button({
   disabled,
   label,
   className = '',
+  size = 'md',
 }: {
   children?: ReactNode;
   onClick?: () => void;
@@ -34,6 +67,7 @@ export function Button({
   disabled?: boolean;
   label?: string;
   className?: string;
+  size?: 'md' | 'lg';
 }): ReactNode {
   const variantClass =
     variant === 'default' ? '' : variant === 'icon' ? 'btn--icon btn--ghost' : `btn--${variant}`;
@@ -41,12 +75,42 @@ export function Button({
     <button
       type="button"
       data-touch
-      className={`btn ${variantClass} ${className}`.trim()}
+      className={`btn ${variantClass} ${size === 'lg' ? 'btn--lg' : ''} ${className}`.trim()}
       onClick={onClick}
       disabled={disabled}
       aria-label={label}
     >
       {children}
+    </button>
+  );
+}
+
+/**
+ * An on/off switch, as in the car's own settings. The whole row is the target, because a
+ * 26 px knob is not something you aim for at 80 km/h.
+ */
+export function Switch({
+  checked,
+  onChange,
+  label,
+}: {
+  checked: boolean;
+  onChange: (next: boolean) => void;
+  label: string;
+}): ReactNode {
+  return (
+    <button
+      type="button"
+      data-touch
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      className="switch"
+      onClick={() => onChange(!checked)}
+    >
+      <span className="switch__track">
+        <span className="switch__knob" />
+      </span>
     </button>
   );
 }
@@ -89,7 +153,7 @@ export function Counter({
 }
 
 /**
- * A map control: icon plus a always-visible label. A car screen has no hover, so anything
+ * A map control: icon plus an always-visible label. A car screen has no hover, so anything
  * that only explains itself in a tooltip explains itself to nobody.
  */
 export function ControlButton({
@@ -150,12 +214,11 @@ export function Toast({ toast, onDone }: { toast: ToastContent | null; onDone: (
   const leaving = leavingId === toast.id;
   return (
     <div
-      className={`toast ${leaving ? 'toast--leaving' : ''}`.trim()}
+      className={`toast ${leaving ? 'toast--leaving' : ''} ${toast.warm ? 'toast--warm' : ''}`.trim()}
       role="status"
-      style={toast.warm ? { borderColor: 'var(--accent-warm)' } : undefined}
     >
-      {toast.icon}
-      <span>{toast.text}</span>
+      {toast.icon ? <span className="toast__icon">{toast.icon}</span> : null}
+      <span className="toast__text">{toast.text}</span>
     </div>
   );
 }

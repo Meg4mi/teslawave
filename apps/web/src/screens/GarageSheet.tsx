@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from 'react';
-import type { CarColourId, TeslaModel } from '@teslawave/protocol';
-import { Button, Sheet } from '../ui/primitives';
+import { MODEL_LABELS, colourOf, type CarColourId, type TeslaModel } from '@teslawave/protocol';
+import { Button, Sheet, SheetActions } from '../ui/primitives';
+import { CarSvg } from '../ui/CarSvg';
 import { CarPicker, type CarChoice } from './CarPicker';
 import { COPY } from '../ui/copy';
 
@@ -32,13 +33,21 @@ export function GarageSheet({
     draft.nick.trim() !== (car.nick ?? '');
 
   return (
-    <Sheet label={COPY.garage.title} onClose={onClose}>
-      <h2 className="card-sheet__title">{COPY.garage.title}</h2>
-      <p className="settings__hint garage__hint">{COPY.garage.hint}</p>
-
-      <CarPicker value={draft} onChange={(patch) => setDraft({ ...draft, ...patch })} heroSize={120} />
-
-      <div className="card-sheet__actions">
+    <Sheet label={COPY.garage.title} title={COPY.garage.title} onClose={onClose} wide>
+      <div className="garage">
+        <div className="garage__stage" aria-hidden>
+          <CarSvg key={draft.model} className="garage__car" model={draft.model} colour={draft.colour} size={420} heading={90} />
+          <p className="stage__caption">
+            <span className="stage__model">{MODEL_LABELS[draft.model]}</span>
+            <span className="stage__paint">{colourOf(draft.colour).label}</span>
+          </p>
+        </div>
+        <div className="garage__form">
+          <CarPicker value={draft} onChange={(patch) => setDraft({ ...draft, ...patch })} />
+          <p className="settings__hint">{COPY.garage.hint}</p>
+        </div>
+      </div>
+      <SheetActions>
         <Button variant="ghost" onClick={onClose}>
           {COPY.garage.cancel}
         </Button>
@@ -55,7 +64,7 @@ export function GarageSheet({
         >
           {COPY.garage.save}
         </Button>
-      </div>
+      </SheetActions>
     </Sheet>
   );
 }

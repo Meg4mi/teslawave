@@ -42,9 +42,9 @@ export type RenderOptions = {
  * findable when zoomed out without dominating the road when zoomed in.
  */
 const SPRITE_BASE_ZOOM = 15.5;
-const SPRITE_BASE_PX = 40;
+const SPRITE_BASE_PX = 46;
 export const spriteScaleFor = (zoom: number, drawn: number): number => {
-  const px = Math.min(50, Math.max(28, SPRITE_BASE_PX + (zoom - SPRITE_BASE_ZOOM) * 4));
+  const px = Math.min(58, Math.max(30, SPRITE_BASE_PX + (zoom - SPRITE_BASE_ZOOM) * 4));
   return px / drawn;
 };
 

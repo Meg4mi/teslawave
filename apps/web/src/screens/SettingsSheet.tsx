@@ -1,10 +1,18 @@
 import type { ReactNode } from 'react';
-import { Button, Sheet } from '../ui/primitives';
+import { MODEL_LABELS, colourOf } from '@teslawave/protocol';
+import { Button, Sheet, Switch } from '../ui/primitives';
+import { CarSvg } from '../ui/CarSvg';
+import { ChevronRightIcon } from '../ui/icons';
 import { COPY } from '../ui/copy';
 import { Disclaimer } from '../ui/Disclaimer';
-import type { Prefs } from '../identity/store';
+import type { Identity, Prefs } from '../identity/store';
 
+/**
+ * Settings, as rows: a label, a hint, one control on the right. Toggles are switches, as in
+ * the car; anything that opens something else says so with a chevron.
+ */
 export function SettingsSheet({
+  identity,
   prefs,
   onChange,
   onShowPairing,
@@ -13,6 +21,7 @@ export function SettingsSheet({
   onEditCar,
   onClose,
 }: {
+  identity: Identity;
   prefs: Prefs;
   onChange: (patch: Partial<Prefs>) => void;
   onShowPairing: () => void;
@@ -22,62 +31,92 @@ export function SettingsSheet({
   onClose: () => void;
 }): ReactNode {
   return (
-    <Sheet label={COPY.controls.settings} onClose={onClose}>
-      <h2 className="card-sheet__title">{COPY.controls.settings}</h2>
+    <Sheet label={COPY.controls.settings} title={COPY.controls.settings} onClose={onClose}>
+      <div className="settings">
+        {/* First, because it is the one setting that is about you rather than about the app. */}
+        {/* The whole row opens the garage; the button is the labelled control for it. */}
+        <div className="settings__row settings__row--tap" onClick={onEditCar}>
+          <span className="settings__car">
+            <CarSvg model={identity.model} colour={identity.colour} size={96} heading={90} />
+            <span className="settings__label">
+              <span className="settings__name">{identity.nick ?? MODEL_LABELS[identity.model]}</span>
+              <span className="settings__hint">
+                {identity.nick ? `${MODEL_LABELS[identity.model]} · ` : ''}
+                {colourOf(identity.colour).label}
+                <span className="settings__tap"> · {COPY.garage.tapHint}</span>
+              </span>
+            </span>
+          </span>
+          <Button onClick={onEditCar}>{COPY.garage.open}</Button>
+        </div>
 
-      {/* First, because it is the one setting that is about you rather than about the app. */}
-      <div className="settings__row">
-        <span className="settings__label">
-          {COPY.garage.title}
-          <span className="settings__hint">{COPY.garage.hint}</span>
-        </span>
-        <Button onClick={onEditCar}>{COPY.garage.open}</Button>
-      </div>
+        <div className="settings__row">
+          <span className="settings__label">
+            {COPY.settings.visible}
+            <span className="settings__hint">
+              {prefs.sharing ? COPY.settings.visibleHint : COPY.map.hidden}
+            </span>
+          </span>
+          <Switch
+            checked={prefs.sharing}
+            label={COPY.settings.visible}
+            onChange={(sharing) => onChange({ sharing })}
+          />
+        </div>
 
-      <div className="settings__row">
-        <span className="settings__label">
-          {COPY.controls.invisible}
-          <span className="settings__hint">{COPY.map.hidden}</span>
-        </span>
-        <Button onClick={() => onChange({ sharing: !prefs.sharing })}>
-          {prefs.sharing ? COPY.controls.visible : COPY.controls.invisible}
-        </Button>
-      </div>
+        <div className="settings__row">
+          <span className="settings__label">
+            {COPY.settings.sound}
+            <span className="settings__hint">{COPY.settings.soundHint}</span>
+          </span>
+          <Switch
+            checked={!prefs.muted}
+            label={COPY.settings.sound}
+            onChange={(on) => onChange({ muted: !on })}
+          />
+        </div>
 
-      <div className="settings__row">
-        <span className="settings__label">
-          {COPY.howTo.title}
-          <span className="settings__hint">{COPY.howTo.lead}</span>
-        </span>
-        <Button onClick={onHowItWorks}>{COPY.howTo.tryIt}</Button>
-      </div>
+        <div className="settings__row">
+          <span className="settings__label">
+            {COPY.settings.northUp}
+            <span className="settings__hint">{COPY.settings.northUpHint}</span>
+          </span>
+          <Switch
+            checked={prefs.northUp}
+            label={COPY.settings.northUp}
+            onChange={(northUp) => onChange({ northUp })}
+          />
+        </div>
 
-      <div className="settings__row">
-        <span className="settings__label">Sounds</span>
-        <Button onClick={() => onChange({ muted: !prefs.muted })}>
-          {prefs.muted ? COPY.controls.unmute : COPY.controls.mute}
-        </Button>
-      </div>
+        <div className="settings__row">
+          <span className="settings__label">
+            {COPY.pairing.showAction}
+            <span className="settings__hint">{COPY.pairing.showHint}</span>
+          </span>
+          <Button variant="icon" label={COPY.pairing.showTitle} onClick={onShowPairing}>
+            <ChevronRightIcon />
+          </Button>
+        </div>
 
-      <div className="settings__row">
-        <span className="settings__label">Map orientation</span>
-        <Button onClick={() => onChange({ northUp: !prefs.northUp })}>
-          {prefs.northUp ? COPY.controls.northUp : COPY.controls.trackUp}
-        </Button>
-      </div>
+        <div className="settings__row">
+          <span className="settings__label">
+            {COPY.onboarding.havePairingCode}
+            <span className="settings__hint">{COPY.onboarding.havePairingCodeHint}</span>
+          </span>
+          <Button variant="icon" label={COPY.pairing.enterTitle} onClick={onEnterCode}>
+            <ChevronRightIcon />
+          </Button>
+        </div>
 
-      <div className="settings__row">
-        <span className="settings__label">
-          {COPY.pairing.showAction}
-          <span className="settings__hint">{COPY.pairing.showHint}</span>
-        </span>
-        <Button onClick={onShowPairing}>{COPY.pairing.showTitle}</Button>
-      </div>
-
-      <div className="card-sheet__actions">
-        <Button variant="ghost" onClick={onEnterCode}>
-          {COPY.onboarding.havePairingCode}
-        </Button>
+        <div className="settings__row">
+          <span className="settings__label">
+            {COPY.howTo.title}
+            <span className="settings__hint">{COPY.howTo.lead}</span>
+          </span>
+          <Button variant="icon" label={COPY.howTo.title} onClick={onHowItWorks}>
+            <ChevronRightIcon />
+          </Button>
+        </div>
       </div>
 
       <Disclaimer inline />

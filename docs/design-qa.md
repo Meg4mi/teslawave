@@ -31,7 +31,15 @@ demand so they can be judged side by side.
       A dark map is the point; an invisible one is a bug.
 - [ ] Every control says what it does without hovering, because a car screen has no hover.
 - [ ] All five car sprites are distinguishable from each other, and which way each one points
-      is obvious at a glance.
+      is obvious at a glance. On `/art`, each one reads as the car it claims to be: the 3's
+      split roof, the Y's hatch, the S's bonnet, the X's windscreen and roof glass, the
+      Cybertruck's vault.
+- [ ] The car in onboarding, in the garage, on the card and in the wave button is the same
+      drawing as the sprite on the map, in the same paint.
+- [ ] Onboarding on the car screen reads as a configurator: car left, choices right, one white
+      button; on a phone the same thing stacks and nothing is cut off.
+- [ ] Every dialog is a centred card on the car and a bottom sheet on a phone, with its title
+      and close button in the header; settings toggles are switches.
 - [ ] Empty state is honest and inviting, not a spinner.
 - [ ] Nothing interactive within 40 px of any screen edge; every target at least 64 px.
 - [ ] Sent, received and milestone sounds are distinguishable with your eyes closed.

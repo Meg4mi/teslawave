@@ -4,6 +4,7 @@ import { createRenderer, type Renderer } from '../overlay/renderer';
 import { createTrack, pushSample } from '@teslawave/protocol';
 import { Button, Counter, Toast, type ToastContent } from '../ui/primitives';
 import { CarChip } from '../ui/CarChip';
+import { WaveButton } from './WaveButton';
 import { COPY } from '../ui/copy';
 import { play, unlockAudio } from '../ui/sound';
 import type { RenderCar } from '../sim/world';
@@ -161,12 +162,10 @@ export function KitchenSink(): ReactNode {
         </div>
       </div>
 
-      {nearby ? (
-        <button type="button" className="wave" onClick={() => fire('sent')}>
-          {COPY.wave.prompt('Y', 'deepblue')}
-          <span className="wave__countdown" aria-hidden />
-        </button>
-      ) : null}
+      <WaveButton
+        target={nearby ? { id: 'demo-Y', model: 'Y', colour: 'deepblue' } : null}
+        onWave={() => fire('sent')}
+      />
 
       {milestone !== null ? (
         <div className="milestone">
