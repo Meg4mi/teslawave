@@ -6,7 +6,7 @@ work instead of composite frame rate).
 
 Add a row per session. Keep the failures: they are the useful part.
 
-Live at **https://teslawave.cestbeauf.workers.dev** — open that on the car screen.
+Live at **https://teslawave.meg4mi.workers.dev** — open that on the car screen.
 
 | Date | Car / firmware | What was tested | Result |
 |---|---|---|---|

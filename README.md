@@ -1,6 +1,6 @@
 # TeslaWave
 
-**Live: https://teslawave.cestbeauf.workers.dev**
+**Live: https://teslawave.meg4mi.workers.dev**
 
 See other Teslas around you on a live map, and wave at them. Free, no account, built to run
 in the Tesla in-car browser while driving, and on a phone in a dash mount.
@@ -50,8 +50,8 @@ a wave sent, received and returned, the milestone card, and the whole sprite mat
 Against a deployed URL, the same suite runs without a local server:
 
 ```bash
-E2E_BASE_URL=https://teslawave.cestbeauf.workers.dev pnpm test:e2e
-SMOKE_URL=https://teslawave.cestbeauf.workers.dev node scripts/smoke.mjs
+E2E_BASE_URL=https://teslawave.meg4mi.workers.dev pnpm test:e2e
+SMOKE_URL=https://teslawave.meg4mi.workers.dev node scripts/smoke.mjs
 ```
 
 ```bash

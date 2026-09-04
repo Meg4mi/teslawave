@@ -68,15 +68,31 @@ await check('an unknown path falls back to the app (SPA routing)', async () => {
 await check('the MapLibre worker is served as JavaScript', async () => {
   // Served as index.html by the SPA fallback once already, which renders the map blank while
   // everything else looks healthy. Never again without this failing loudly.
-  for (const path of ['/maplibre/maplibre-gl-worker.mjs', '/maplibre/maplibre-gl-shared.mjs']) {
-    const res = await fetch(`${base}${path}`);
-    expect(res.ok, `${path} returned ${res.status}`);
-    const type = res.headers.get('content-type') ?? '';
-    expect(/javascript|ecmascript/.test(type), `${path} served as ${type}`);
-    const body = await res.text();
-    expect(!body.includes('<div id="root">'), `${path} is the app shell, not the module`);
+  //
+  // A new asset path can lag behind the API by a few seconds after a deploy, and /api answers
+  // from the previous version in the meantime, so the readiness wait cannot see it. Retry for
+  // a bounded window: slow propagation should not be a red build, but a missing file still is.
+  const deadline = Date.now() + 90_000;
+  let last = '';
+  for (;;) {
+    const results = await Promise.all(
+      ['/maplibre/maplibre-gl-worker.mjs', '/maplibre/maplibre-gl-shared.mjs'].map(async (path) => {
+        const res = await fetch(`${base}${path}`);
+        const type = res.headers.get('content-type') ?? '';
+        const body = await res.text();
+        if (!res.ok) return `${path} returned ${res.status}`;
+        if (!/javascript|ecmascript/.test(type)) return `${path} served as ${type}`;
+        if (body.includes('<div id="root">')) return `${path} is the app shell, not the module`;
+        return null;
+      }),
+    );
+    const problem = results.find((r) => r !== null);
+    if (!problem) return 'worker and shared chunk present';
+    last = problem;
+    if (Date.now() > deadline) break;
+    await new Promise((resolve) => setTimeout(resolve, 5_000));
   }
-  return 'worker and shared chunk present';
+  throw new Error(last);
 });
 
 await check('/api/whereami answers', async () => {
