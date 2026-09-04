@@ -113,6 +113,15 @@ export type EntityTrack = {
 export const createTrack = (): EntityTrack => ({ samples: [], correction: null, lastRender: null });
 
 /**
+ * The time we draw this track at. With two or more samples we render RENDER_DELAY_MS behind
+ * server time so there is always a sample ahead to interpolate towards; with one there is
+ * nothing to interpolate, and rendering in the past would leave a car that has just appeared
+ * frozen for two seconds, so it dead-reckons from that sample instead.
+ */
+const effectiveAt = (track: EntityTrack, serverNow: number): number =>
+  track.samples.length > 1 ? serverNow - RENDER_DELAY_MS : serverNow;
+
+/**
  * Add a server sample. If it would move the car away from where it is currently drawn,
  * the difference is recorded as a correction and blended out over CORRECTION_MS.
  */
@@ -126,7 +135,10 @@ export function pushSample(track: EntityTrack, s: MotionSample, nowMs: number): 
     if (track.samples.length > 3) track.samples.splice(0, track.samples.length - 3);
   }
   if (previous) {
-    const fresh = evaluate(track.samples, previous.atMs);
+    // Compare against where the car would be drawn now, on the new time base: the second
+    // sample switches the track from dead reckoning to interpolation, and that switch is
+    // itself a discontinuity the correction has to absorb.
+    const fresh = evaluate(track.samples, effectiveAt(track, nowMs));
     if (fresh) {
       const carried = track.correction
         ? decayFactor(track.correction, nowMs)
@@ -147,7 +159,7 @@ const decayFactor = (c: { startedAt: number }, nowMs: number): number =>
 
 /** Where to draw this car right now. `serverNow` is client time plus the clock offset. */
 export function sample(track: EntityTrack, serverNow: number): Placement | null {
-  const atMs = serverNow - RENDER_DELAY_MS;
+  const atMs = effectiveAt(track, serverNow);
   const base = evaluate(track.samples, atMs);
   if (!base) return null;
   let placement = base;

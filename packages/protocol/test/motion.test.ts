@@ -118,6 +118,27 @@ describe('EntityTrack', () => {
     expect(haversineM(settled.lat, settled.lng, truth.lat, truth.lng)).toBeLessThan(0.5);
   });
 
+  it('starts moving immediately on the first sample instead of freezing', () => {
+    const track = createTrack();
+    const now = 10_000;
+    pushSample(track, mk(now, 46.2), now);
+    const first = sample(track, now)!;
+    const later = sample(track, now + 1_000)!;
+    // 72 km/h northbound: about 20 m in a second, not a frozen car.
+    expect(haversineM(first.lat, first.lng, later.lat, later.lng)).toBeGreaterThan(15);
+  });
+
+  it('switches to interpolation once a second sample arrives, without a jump', () => {
+    const track = createTrack();
+    let now = 10_000;
+    pushSample(track, mk(now, 46.2), now);
+    const before = sample(track, now + 1_999)!;
+    now += 2_000;
+    pushSample(track, mk(now, 46.2004), now);
+    const after = sample(track, now)!;
+    expect(haversineM(before.lat, before.lng, after.lat, after.lng)).toBeLessThan(1);
+  });
+
   it('keeps at most three samples', () => {
     const track = createTrack();
     for (let i = 0; i < 10; i++) pushSample(track, mk(i * 2_000, 46 + i * 0.001), i * 2_000);

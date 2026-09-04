@@ -9,7 +9,9 @@
     "typecheck": "tsc -p tsconfig.json",
     "pretest": "node -e \"require('fs').mkdirSync('../web/dist',{recursive:true})\"",
     "test": "vitest run",
-    "sim": "tsx scripts/sim-cars.ts"
+    "sim": "tsx scripts/sim-cars.ts",
+    "db:local": "wrangler d1 migrations apply teslawave --local",
+    "db:remote": "wrangler d1 migrations apply teslawave --remote"
   },
   "dependencies": {
     "@teslawave/hub-core": "workspace:*",

@@ -1,0 +1,120 @@
+.pulse {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: var(--sp-3);
+  margin: var(--sp-5) 0;
+}
+
+.pulse__item {
+  padding: var(--sp-4);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-1);
+}
+
+.pulse__item dt {
+  font: var(--t-hud);
+  color: var(--fg-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.pulse__item dd {
+  margin: var(--sp-2) 0 0;
+  font-size: 30px;
+  font-weight: 650;
+}
+
+.settings__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-4);
+  padding: var(--sp-3) 0;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.settings__row:last-of-type {
+  border-bottom: 0;
+}
+
+.settings__label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.settings__hint {
+  font: var(--t-hud);
+  font-weight: 450;
+  color: var(--fg-faint);
+}
+
+.pair__code {
+  margin: var(--sp-5) 0 var(--sp-3);
+  font-family: var(--font-num);
+  font-size: clamp(44px, 9vw, 76px);
+  font-weight: 650;
+  letter-spacing: 0.14em;
+  text-align: center;
+  color: var(--accent);
+}
+
+.pair__qr {
+  display: block;
+  width: min(220px, 46vw);
+  height: auto;
+  margin: 0 auto var(--sp-4);
+  padding: var(--sp-3);
+  background: #fff;
+  border-radius: var(--r-md);
+  image-rendering: pixelated;
+}
+
+.pair__entry {
+  min-height: 72px;
+  margin: var(--sp-4) 0;
+  padding: 0 var(--sp-4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-1);
+  font-family: var(--font-num);
+  font-size: 34px;
+  letter-spacing: 0.3em;
+}
+
+.pair__slot {
+  color: var(--fg-faint);
+}
+
+.pair__slot--filled {
+  color: var(--fg);
+}
+
+/* A keypad of our own: the on-screen keyboard in the car is hostile (brief 2.2). */
+.keypad {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: var(--sp-2);
+}
+
+.keypad .btn {
+  padding: 0;
+  min-width: 0;
+  font-family: var(--font-num);
+  font-size: 20px;
+}
+
+.keypad__wide {
+  grid-column: span 2;
+}
+
+@media (max-width: 720px) {
+  .keypad {
+    grid-template-columns: repeat(6, 1fr);
+  }
+}

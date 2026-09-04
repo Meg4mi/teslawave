@@ -15,11 +15,18 @@ export async function pruneAndAggregate(env: Env, now: number): Promise<void> {
 }
 
 export async function readStats(env: Env): Promise<Response> {
-  const rows = await env.DB.prepare(
-    'SELECT day, SUM(waves) AS waves FROM daily_stats GROUP BY day ORDER BY day DESC LIMIT 7',
-  ).all<{ day: string; waves: number }>();
-  const total = rows.results.reduce((sum, r) => sum + (r.waves ?? 0), 0);
-  return new Response(JSON.stringify({ days: rows.results, total }), {
+  let days: Array<{ day: string; waves: number }> = [];
+  try {
+    const rows = await env.DB.prepare(
+      'SELECT day, SUM(waves) AS waves FROM daily_stats GROUP BY day ORDER BY day DESC LIMIT 7',
+    ).all<{ day: string; waves: number }>();
+    days = rows.results;
+  } catch {
+    // A database that has not been migrated yet is an empty one, not an outage: this endpoint
+    // only feeds a number in the landing copy.
+  }
+  const total = days.reduce((sum, r) => sum + (r.waves ?? 0), 0);
+  return new Response(JSON.stringify({ days, total }), {
     headers: { 'content-type': 'application/json', 'cache-control': 'public, max-age=300' },
   });
 }
