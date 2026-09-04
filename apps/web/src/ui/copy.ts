@@ -52,6 +52,7 @@ export const COPY = {
     title: 'Your car',
     hint: 'Change what other drivers see. Takes effect for everyone around you straight away.',
     open: 'Change',
+    tapHint: 'Tap to change model, colour or name',
     save: 'Save',
     cancel: 'Cancel',
     saved: 'Your car is updated.',
@@ -65,7 +66,8 @@ export const COPY = {
       'When one comes within about 150 m, a big Wave button appears at the bottom of the screen.',
       'Tap it. They see a ripple on your car and hear a chime. If they wave back within a few seconds, you both get a "Waved back".',
     ],
-    tapHint: 'You can also tap any car on the map to see it and wave from there.',
+    tapHint:
+      'You can also tap any car on the map to see it and wave from there. Tap your own car to change it.',
     tryIt: 'Try it',
     tried: 'That is all there is to it.',
     close: 'Got it',

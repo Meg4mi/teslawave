@@ -21,6 +21,8 @@ export type LiveMapProps = {
   /** Rough starting centre, before there is a GPS fix to follow. */
   origin: { lat: number; lng: number } | null;
   onSelect: (id: string | null) => void;
+  /** A tap on your own car: the natural way to change what it looks like. */
+  onSelectSelf?: () => void;
   onReady: (renderer: Renderer) => void;
   /** False once it is clear the tiles are not coming, so the app can say so. */
   onTiles: (loaded: boolean) => void;
@@ -83,6 +85,7 @@ export function LiveMap({
   self,
   origin,
   onSelect,
+  onSelectSelf,
   onReady,
   onTiles,
   bare = false,
@@ -374,6 +377,17 @@ export function LiveMap({
         const p = map.project([car.placement.lng, car.placement.lat]);
         const d = Math.hypot(p.x - event.point.x, p.y - event.point.y);
         if (d <= HIT_RADIUS_PX && (!best || d < best.d)) best = { id: car.id, d };
+      }
+      // Your own car, when it is the closest thing to the finger: open the garage.
+      const me = getSelfPlacement();
+      if (me && live.current.self && onSelectSelf) {
+        const p = map.project([me.lng, me.lat]);
+        const d = Math.hypot(p.x - event.point.x, p.y - event.point.y);
+        if (d <= HIT_RADIUS_PX && (!best || d < best.d)) {
+          onSelect(null);
+          onSelectSelf();
+          return;
+        }
       }
       onSelect(best?.id ?? null);
     };

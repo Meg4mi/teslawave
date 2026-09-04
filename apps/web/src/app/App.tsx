@@ -353,6 +353,9 @@ export function App(): ReactNode {
     rendererRef.current?.playSonar();
   };
 
+  // Tapping your own car on the map opens the garage: the car is the thing you edit.
+  const openGarage = useCallback((): void => setSheet('garage'), []);
+
   const onMapReady = useCallback((renderer: Renderer): void => {
     rendererRef.current = renderer;
     try {
@@ -409,6 +412,7 @@ export function App(): ReactNode {
         self={selfCar}
         origin={origin}
         onSelect={setSelectedId}
+        onSelectSelf={openGarage}
         onReady={onMapReady}
         onTiles={setTiles}
       />

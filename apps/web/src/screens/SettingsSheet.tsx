@@ -34,14 +34,15 @@ export function SettingsSheet({
     <Sheet label={COPY.controls.settings} title={COPY.controls.settings} onClose={onClose}>
       <div className="settings">
         {/* First, because it is the one setting that is about you rather than about the app. */}
-        <div className="settings__row">
+        {/* The whole row opens the garage; the button is the labelled control for it. */}
+        <div className="settings__row settings__row--tap" onClick={onEditCar}>
           <span className="settings__car">
             <CarSvg model={identity.model} colour={identity.colour} size={96} heading={90} />
             <span className="settings__label">
               {identity.nick ?? MODEL_LABELS[identity.model]}
               <span className="settings__hint">
                 {identity.nick ? `${MODEL_LABELS[identity.model]} · ` : ''}
-                {colourOf(identity.colour).label}
+                {colourOf(identity.colour).label} · {COPY.garage.tapHint}
               </span>
             </span>
           </span>

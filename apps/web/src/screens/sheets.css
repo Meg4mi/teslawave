@@ -63,6 +63,10 @@
   color: var(--fg-faint);
 }
 
+.settings__row--tap {
+  cursor: pointer;
+}
+
 .settings__car {
   display: flex;
   align-items: center;
