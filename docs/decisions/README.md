@@ -23,3 +23,4 @@ Format: Context / Decision / Rejected alternatives / Consequences (`0000-templat
 | [0014](0014-design-without-blur.md) | Pre-baked pixels instead of blur and backdrop-filter |
 | [0016](0016-snap-other-cars-to-roads.md) | Other cars are drawn on the road they are plausibly on |
 | [0017](0017-camera-yields-to-touch.md) | The camera yields to the driver's hands |
+| [0018](0018-traced-model-art.md) | Each model is traced, not parameterised |

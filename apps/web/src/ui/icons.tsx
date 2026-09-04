@@ -88,3 +88,15 @@ export const CloseIcon = ({ size }: IconProps): ReactNode => (
     <path d="M6 6l12 12M18 6L6 18" />
   </Svg>
 );
+
+export const PlusIcon = ({ size }: IconProps): ReactNode => (
+  <Svg size={size}>
+    <path d="M12 5v14M5 12h14" />
+  </Svg>
+);
+
+export const MinusIcon = ({ size }: IconProps): ReactNode => (
+  <Svg size={size}>
+    <path d="M5 12h14" />
+  </Svg>
+);

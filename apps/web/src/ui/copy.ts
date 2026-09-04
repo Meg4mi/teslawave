@@ -41,6 +41,8 @@ export const COPY = {
       `TeslaWave is over its free capacity for today. Back at ${time}.`,
     reconnecting: 'Reconnecting…',
     recentre: 'Back to my car',
+    zoomIn: 'Zoom in',
+    zoomOut: 'Zoom out',
     tilesOffline: 'Map tiles are not loading. Cars and waves still work.',
   },
 

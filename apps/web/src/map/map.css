@@ -64,3 +64,22 @@
 .map__recentre:active {
   transform: translateX(-50%) scale(0.96);
 }
+
+/*
+ * Bottom left, opposite the app controls, where map zoom lives on every map anyone has used.
+ * They are the same object as a control button, minus the label: a plus and a minus need no
+ * caption, and the column stays short enough not to crowd the road.
+ */
+.map__zoom {
+  position: absolute;
+  left: max(var(--edge), env(safe-area-inset-left));
+  bottom: max(var(--edge), env(safe-area-inset-bottom));
+  z-index: var(--z-hud);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.control--zoom {
+  width: var(--touch);
+}

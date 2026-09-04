@@ -13,6 +13,7 @@ Live at **https://teslawave.meg4mi.workers.dev** — open that on the car screen
 | 2026-09-04 | none (CI container) | first deploy | Worker, Durable Object, D1 and cron live; seven smoke checks green, including a real WebSocket welcomed by the hub |
 | 2026-09-04 | Tesla car screen (photo) | live map, wave toast, counters | two bugs, both fixed: the "waved at you" toast never disappeared, and the online counts drifted as the connection came and went. See below. |
 | 2026-09-04 | Tesla car screen | pinch to zoom, where other cars sit | pinch barely worked and other cars sat beside the road. Both fixed: ADR-0017 and ADR-0016. See below. |
+| 2026-09-04 | Tesla car screen | pinch again, car sprites | zoom ceiling raised, our per-frame work stands aside during a gesture, zoom buttons added; sprites re-traced per model (ADR-0018). |
 | _pending_ | 2019 Model 3, MCU 2 | first load, map, own car moving | not yet run on a car |
 | _pending_ | 2022 Model Y, MCU 3 | same | not yet run on a car |
 
@@ -95,3 +96,27 @@ rationed to two cars a frame and only for cars actually on screen.
 Both are worth re-checking on the car: whether pinch now feels like the built-in map, and
 whether cars sit on the road you can see out of the windscreen — particularly on a motorway
 with a service road running alongside it, which is the case the scoring exists for.
+
+
+## 2026-09-04 — pinch, second pass, and the sprites re-traced
+
+Pinch was reported as still poor after the camera fix. Three things were wrong beyond the
+camera, and only one of them was input handling:
+
+- **The zoom ceiling was 17**, a zoom and a half above the one we follow at, so pinching in ran
+  out of room almost at once and read as "pinch barely does anything". It is 19 now.
+  OpenMapTiles data stops at zoom 14 and the client overzooms past it, so this costs no tiles.
+- **We were competing for the frame.** While a finger is down the map is re-tessellating every
+  frame, which on an Intel Atom is the whole budget. Road snapping and trails now stand aside
+  for the duration of a gesture.
+- **A pinch is an awkward gesture to make while driving at all.** There are zoom buttons at the
+  bottom left now, the same object as the app's other controls.
+
+The gesture itself was verified with real two-finger touch events dispatched through CDP
+(`e2e/pinch.spec.ts`), which is what the camera work should have been tested with in the first
+place: Playwright's mouse cannot express a pinch, so the first round only ever tested a drag.
+
+**The sprites are now traced per model** rather than five variations on one parametric shape
+(ADR-0018). Worth checking on the car: whether a Model 3 and a Model Y are tellable apart at a
+glance while moving — the 3's body-coloured roof bar against the Y's uninterrupted glass is the
+tell, and it is a few pixels at the follow zoom.

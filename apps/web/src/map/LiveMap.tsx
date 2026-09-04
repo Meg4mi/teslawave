@@ -8,6 +8,7 @@ import { buildStyle } from './style';
 import { createRoadSnapper } from './snap';
 import { MAPLIBRE_WORKER_URL } from './maplibre-worker-url';
 import { COPY } from '../ui/copy';
+import { MinusIcon, PlusIcon } from '../ui/icons';
 import { recordFrameCost } from '../app/testHook';
 import { isE2E } from '../config/env';
 import './map.css';
@@ -33,6 +34,14 @@ setWorkerUrl(MAPLIBRE_WORKER_URL);
 prewarm();
 
 const FOLLOW_ZOOM = 15.5;
+/**
+ * The ceiling used to be 17, a zoom and a half above the one we follow at, so pinching in
+ * ran out of room almost immediately and read as "pinch barely does anything". OpenMapTiles
+ * data stops at zoom 14 and the client overzooms past it, so a higher ceiling costs no tiles.
+ */
+const MIN_ZOOM = 8;
+const MAX_ZOOM = 19;
+const ZOOM_STEP = 1;
 const SLOW_FRAME_MS = 28;
 const HIT_RADIUS_PX = 40;
 /** Camera repaints the map; the overlay does not. They run at different rates on purpose. */
@@ -71,6 +80,8 @@ export function LiveMap({
   const container = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const recentre = useRef<HTMLButtonElement>(null);
+  const zoomIn = useRef<HTMLButtonElement>(null);
+  const zoomOut = useRef<HTMLButtonElement>(null);
   const mapRef = useRef<MlMap | null>(null);
   const carsRef = useRef<RenderCar[]>([]);
   // Props read inside the animation loop, which must not restart when they change.
@@ -95,8 +106,8 @@ export function LiveMap({
       style: buildStyle(),
       center: [6.1432, 46.2044],
       zoom: FOLLOW_ZOOM,
-      minZoom: 8,
-      maxZoom: 17,
+      minZoom: MIN_ZOOM,
+      maxZoom: MAX_ZOOM,
       attributionControl: false,
       // MSAA costs frames we do not have on an Intel Atom, and the map is flat anyway.
       canvasContextAttributes: { antialias: false, powerPreference: 'low-power' },
@@ -138,10 +149,21 @@ export function LiveMap({
      * ever followed. Two fingers down is always a pinch; one finger has to travel first.
      */
     let touchFrom: { x: number; y: number } | null = null;
+    /*
+     * While a finger is down the map itself is re-tessellating every frame, which on an Intel
+     * Atom is the whole budget. Our own work — road snapping and trails — stands aside for the
+     * duration, so the gesture gets the machine. Neither is missed: a trail gap of half a
+     * second fades out anyway, and a snap correction is recomputed as soon as you let go.
+     */
+    let touching = 0;
     const onTouchStart = (event: TouchEvent): void => {
+      touching = event.touches.length;
       const touch = event.touches[0];
       touchFrom = touch ? { x: touch.clientX, y: touch.clientY } : null;
       if (event.touches.length > 1) holdCamera();
+    };
+    const onTouchEnd = (event: TouchEvent): void => {
+      touching = event.touches.length;
     };
     const onTouchMove = (event: TouchEvent): void => {
       if (event.touches.length > 1) return holdCamera();
@@ -152,6 +174,8 @@ export function LiveMap({
     };
     host.addEventListener('touchstart', onTouchStart, { passive: true });
     host.addEventListener('touchmove', onTouchMove, { passive: true });
+    host.addEventListener('touchend', onTouchEnd, { passive: true });
+    host.addEventListener('touchcancel', onTouchEnd, { passive: true });
     host.addEventListener('wheel', holdCamera, { passive: true });
     // MapLibre has its own thresholds; these catch anything the ones above miss. `zoomstart`
     // also fires for our own jumpTo, which is why it checks for an original event.
@@ -165,6 +189,20 @@ export function LiveMap({
       if (recentreButton) recentreButton.hidden = true;
     };
     recentreButton?.addEventListener('click', follow);
+
+    /*
+     * Instant, not eased: the follow loop calls jumpTo, which would cancel an easeTo the frame
+     * after it started. A whole level at once is also less work than animating through one.
+     */
+    const stepZoom = (by: number) => (): void => {
+      map.setZoom(Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, map.getZoom() + by)));
+    };
+    const zoomInAt = stepZoom(ZOOM_STEP);
+    const zoomOutAt = stepZoom(-ZOOM_STEP);
+    const zoomInButton = zoomIn.current;
+    const zoomOutButton = zoomOut.current;
+    zoomInButton?.addEventListener('click', zoomInAt);
+    zoomOutButton?.addEventListener('click', zoomOutAt);
 
     /*
      * A map that never loads is the difference between "quiet road" and "this app is
@@ -265,7 +303,7 @@ export function LiveMap({
       const measure = instrumented ? performance.now() : 0;
       const cars = tickWorld(now);
       carsRef.current = cars;
-      snapper.update(cars, now, halfRate ? SNAP_BUDGET_SLOW : SNAP_BUDGET);
+      snapper.update(cars, now, touching > 0 ? 0 : halfRate ? SNAP_BUDGET_SLOW : SNAP_BUDGET);
       renderer.render(
         now,
         (lng, lat) => map.project([lng, lat]),
@@ -283,7 +321,7 @@ export function LiveMap({
               : null,
           nearbyId: live.current.nearbyId,
           selectedId: live.current.selectedId,
-          trails: !halfRate && cars.length <= 40,
+          trails: touching === 0 && !halfRate && cars.length <= 40,
           ambient: cars.length === 0,
           bearing: map.getBearing(),
           zoom: map.getZoom(),
@@ -312,8 +350,12 @@ export function LiveMap({
       dprWatch.removeEventListener('change', resize);
       host.removeEventListener('touchstart', onTouchStart);
       host.removeEventListener('touchmove', onTouchMove);
+      host.removeEventListener('touchend', onTouchEnd);
+      host.removeEventListener('touchcancel', onTouchEnd);
       host.removeEventListener('wheel', holdCamera);
       recentreButton?.removeEventListener('click', follow);
+      zoomInButton?.removeEventListener('click', zoomInAt);
+      zoomOutButton?.removeEventListener('click', zoomOutAt);
       setDisplayOffsetSource(null);
       map.off('click', pick);
       map.remove();
@@ -332,6 +374,34 @@ export function LiveMap({
       <button type="button" data-touch className="map__recentre" ref={recentre} hidden>
         {COPY.map.recentre}
       </button>
+
+      {/* A two-finger pinch is an awkward thing to make while driving. */}
+      <div className="map__zoom">
+        <button
+          type="button"
+          data-touch
+          className="control control--zoom"
+          ref={zoomIn}
+          aria-label={COPY.map.zoomIn}
+          title={COPY.map.zoomIn}
+        >
+          <span className="control__icon" aria-hidden>
+            <PlusIcon />
+          </span>
+        </button>
+        <button
+          type="button"
+          data-touch
+          className="control control--zoom"
+          ref={zoomOut}
+          aria-label={COPY.map.zoomOut}
+          title={COPY.map.zoomOut}
+        >
+          <span className="control__icon" aria-hidden>
+            <MinusIcon />
+          </span>
+        </button>
+      </div>
     </div>
   );
 }

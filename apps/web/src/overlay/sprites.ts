@@ -1,181 +1,62 @@
 import { colourOf, type TeslaModel } from '@teslawave/protocol';
+import { MODEL_ART, type Half, type ModelArt } from './model-art';
 
 /**
  * Top-down car sprites, rasterised once per (model, colour, dpr, variant) and reused.
  *
- * Everything is baked into the bitmap at rasterisation time: the glow, the shading, the
- * shadow. On an Intel Atom a runtime shadowBlur or filter on twenty sprites per frame is the
- * difference between 60 fps and a slideshow, and both are banned by the design system
- * anyway (ADR-0014).
- *
- * What makes a shape read as a car from directly above, in rough order of importance:
- * wheels poking out at the corners, a canopy that is narrower than the body, mirrors, and a
- * front that is clearly not the back. A rounded rectangle with a blob in the middle reads as
- * a bar of soap, which is what this used to be.
+ * The shapes come from `model-art.ts`, where each model is traced as its own outline in real
+ * millimetres. This file is only the painting: it turns those outlines into a bitmap with the
+ * glow, the shading and the contact shadow baked in. On an Intel Atom a runtime shadowBlur or
+ * filter on twenty sprites per frame is the difference between 60 fps and a slideshow, and
+ * both are banned by the design system anyway (ADR-0014).
  */
 export type SpriteVariant = 'other' | 'self';
 
-/** Length of a car in CSS pixels on screen. */
+/**
+ * A Model 3 is this many CSS pixels long, and every other model is drawn to the same scale —
+ * so a Cybertruck really is a fifth longer than a Model 3 on screen, as it is on the road.
+ * The renderer scales by this reference, not by each sprite's own length.
+ */
 export const SPRITE_LENGTH = 58;
+const REFERENCE_LENGTH_MM = MODEL_ART['3'].lengthMm;
 const GLOW_PAD = 16;
 
-/** A point on the right-hand outline, with the corner radius to round it by. */
-type Pt = { x: number; y: number; r?: number };
-
-type ModelSpec = {
-  /** Width over length, from the real car. */
-  width: number;
-  /** Right-hand outline from nose to tail; the left is mirrored. */
-  outline: Pt[];
-  /** Wheel centres as fractions of length, front negative. */
-  axles: [number, number];
-  wheel: { length: number; width: number };
-  /**
-   * The glass roof, which is the most recognisable thing about a Tesla from above: one
-   * continuous panel from the base of the windscreen to the end of the rear glass.
-   */
-  glass: { front: number; roofFront: number; roofRear: number; rear: number; halfWidth: number };
-  /** Panel seams across the body: bonnet, doors, boot. Real cars show their gaps. */
-  seams: number[];
-  /**
-   * The Model 3 has a body-coloured structural bar across the middle of the roof; the Y's
-   * glass is one continuous panel. It is the clearest way to tell them apart from above.
-   */
-  roofBar?: number;
-  /**
-   * The Model X's falcon wing doors hinge off the roof, so their cut lines run up into the
-   * roof glass. Nothing else on the road has this.
-   */
-  falconSeams?: [number, number];
-  mirrors: { y: number; reach: number };
-  /** Cybertruck only: where the vault starts. */
-  bed?: number;
-  angular?: boolean;
-};
-
-/*
- * Proportions come from the real cars (length x width in mm):
- * 3: 4694x1849, Y: 4751x1921, S: 4970x1964, X: 5037x2070, Cybertruck: 5683x2200.
- * The differences are small in numbers and obvious on screen, which is the point.
- */
-const MODELS: Record<TeslaModel, ModelSpec> = {
-  '3': {
-    width: 0.394,
-    outline: [
-      { x: 0.42, y: -0.5, r: 0.3 },
-      { x: 0.88, y: -0.39, r: 0.36 },
-      { x: 1, y: -0.16, r: 0.24 },
-      { x: 1, y: 0.14, r: 0.24 },
-      { x: 0.9, y: 0.41, r: 0.34 },
-      { x: 0.48, y: 0.5, r: 0.3 },
-    ],
-    axles: [-0.29, 0.3],
-    wheel: { length: 0.155, width: 0.07 },
-    // Short bonnet, glass roof running almost to the boot: the Model 3 signature.
-    glass: { front: -0.14, roofFront: 0.01, roofRear: 0.14, rear: 0.24, halfWidth: 0.52 },
-    seams: [-0.14, 0.03, 0.28],
-    roofBar: 0.06,
-    mirrors: { y: -0.12, reach: 0.3 },
-  },
-  Y: {
-    width: 0.404,
-    outline: [
-      { x: 0.52, y: -0.5, r: 0.26 },
-      { x: 0.92, y: -0.4, r: 0.3 },
-      { x: 1, y: -0.19, r: 0.2 },
-      { x: 1, y: 0.22, r: 0.2 },
-      { x: 0.96, y: 0.43, r: 0.24 },
-      { x: 0.6, y: 0.5, r: 0.26 },
-    ],
-    axles: [-0.29, 0.3],
-    wheel: { length: 0.155, width: 0.076 },
-    // Same glass roof, but the hatch ends it abruptly instead of tapering away.
-    glass: { front: -0.16, roofFront: -0.01, roofRear: 0.2, rear: 0.28, halfWidth: 0.56 },
-    seams: [-0.16, 0.02, 0.32],
-    mirrors: { y: -0.14, reach: 0.3 },
-  },
-  S: {
-    width: 0.395,
-    outline: [
-      { x: 0.36, y: -0.5, r: 0.34 },
-      { x: 0.84, y: -0.41, r: 0.4 },
-      { x: 1, y: -0.14, r: 0.28 },
-      { x: 1, y: 0.12, r: 0.28 },
-      { x: 0.86, y: 0.42, r: 0.36 },
-      { x: 0.42, y: 0.5, r: 0.34 },
-    ],
-    axles: [-0.31, 0.31],
-    wheel: { length: 0.15, width: 0.068 },
-    // Long bonnet, long fastback: the glass sits further back than on a 3.
-    glass: { front: -0.09, roofFront: 0.04, roofRear: 0.16, rear: 0.28, halfWidth: 0.5 },
-    seams: [-0.09, 0.06, 0.32],
-    mirrors: { y: -0.07, reach: 0.29 },
-  },
-  X: {
-    width: 0.411,
-    outline: [
-      { x: 0.56, y: -0.5, r: 0.24 },
-      { x: 0.94, y: -0.39, r: 0.28 },
-      { x: 1, y: -0.17, r: 0.2 },
-      { x: 1, y: 0.2, r: 0.2 },
-      { x: 0.94, y: 0.43, r: 0.24 },
-      { x: 0.58, y: 0.5, r: 0.24 },
-    ],
-    axles: [-0.3, 0.3],
-    wheel: { length: 0.155, width: 0.078 },
-    // The panoramic windscreen carries on over the front seats, so the glass starts almost
-    // at the nose. Nothing else on the road looks like this from above.
-    glass: { front: -0.32, roofFront: -0.12, roofRear: 0.18, rear: 0.26, halfWidth: 0.58 },
-    seams: [-0.32, -0.1, 0.3],
-    mirrors: { y: -0.13, reach: 0.3 },
-  },
-  CT: {
-    width: 0.387,
-    outline: [
-      { x: 0.34, y: -0.5 },
-      { x: 0.9, y: -0.3 },
-      { x: 1, y: -0.12 },
-      { x: 1, y: 0.42 },
-      { x: 0.94, y: 0.5 },
-    ],
-    axles: [-0.28, 0.32],
-    wheel: { length: 0.17, width: 0.088 },
-    // One straight sheet of glass over the cabin, then the vault.
-    glass: { front: -0.3, roofFront: -0.16, roofRear: -0.02, rear: 0.02, halfWidth: 0.66 },
-    seams: [-0.3, 0.04],
-    mirrors: { y: -0.06, reach: 0.24 },
-    bed: 0.06,
-    angular: true,
-  },
-};
-
-/** Build a closed, symmetric outline from the right-hand points. */
-function outlinePath(spec: ModelSpec, length: number, halfWidth: number): Path2D {
-  const pts: Pt[] = [];
-  for (const p of spec.outline) pts.push({ x: p.x * halfWidth, y: p.y * length, ...(p.r === undefined ? {} : { r: p.r * halfWidth }) });
-  // Mirror back up the left-hand side.
-  for (let i = spec.outline.length - 1; i >= 0; i--) {
-    const p = spec.outline[i];
-    if (!p) continue;
-    pts.push({ x: -p.x * halfWidth, y: p.y * length, ...(p.r === undefined ? {} : { r: p.r * halfWidth }) });
-  }
-
+/** Trace a half-outline and its mirror image into one closed path, scaled to pixels. */
+function closedPath(half: Half, scale: number): Path2D {
   const path = new Path2D();
-  const n = pts.length;
-  const first = pts[0];
-  if (!first) return path;
-  path.moveTo((first.x + (pts[n - 1]?.x ?? 0)) / 2, (first.y + (pts[n - 1]?.y ?? 0)) / 2);
-  for (let i = 0; i < n; i++) {
-    const current = pts[i];
-    const next = pts[(i + 1) % n];
-    if (!current || !next) continue;
-    const radius = spec.angular ? 0 : (current.r ?? halfWidth * 0.12);
-    if (radius > 0) path.arcTo(current.x, current.y, next.x, next.y, radius);
-    else path.lineTo(current.x, current.y);
+  path.moveTo(half.start[0] * scale, half.start[1] * scale);
+  for (const seg of half.segs)
+    path.bezierCurveTo(
+      seg.c1[0] * scale,
+      seg.c1[1] * scale,
+      seg.c2[0] * scale,
+      seg.c2[1] * scale,
+      seg.to[0] * scale,
+      seg.to[1] * scale,
+    );
+  // Back up the left-hand side: the same curve with x negated, walked in reverse.
+  for (let i = half.segs.length - 1; i >= 0; i--) {
+    const seg = half.segs[i];
+    if (!seg) continue;
+    const from = i === 0 ? half.start : (half.segs[i - 1]?.to ?? half.start);
+    path.bezierCurveTo(
+      -seg.c2[0] * scale,
+      seg.c2[1] * scale,
+      -seg.c1[0] * scale,
+      seg.c1[1] * scale,
+      -from[0] * scale,
+      from[1] * scale,
+    );
   }
   path.closePath();
   return path;
 }
+
+/**
+ * The same outline pushed outward, for the contact shadow. Scaling about the centre would
+ * lengthen the car as well as widen it; this only grows it enough to show at the edges.
+ */
+const grownPath = (half: Half, scale: number, grow: number): Path2D => closedPath(half, scale * grow);
 
 const roundedRect = (x: number, y: number, w: number, h: number, r: number): Path2D => {
   const path = new Path2D();
@@ -187,42 +68,6 @@ const roundedRect = (x: number, y: number, w: number, h: number, r: number): Pat
   path.closePath();
   return path;
 };
-
-/**
- * The glass roof as one continuous panel: narrow where the windscreen meets the bonnet,
- * full width across the roof, narrowing again into the rear glass.
- */
-function glassPath(spec: ModelSpec, length: number, halfWidth: number): Path2D {
-  const g = spec.glass;
-  const w = halfWidth * g.halfWidth;
-  const front = g.front * length;
-  const roofFront = g.roofFront * length;
-  const roofRear = g.roofRear * length;
-  const rear = g.rear * length;
-  const path = new Path2D();
-
-  if (spec.angular) {
-    path.moveTo(-w * 0.58, front);
-    path.lineTo(w * 0.58, front);
-    path.lineTo(w, roofRear);
-    path.lineTo(w * 0.92, rear);
-    path.lineTo(-w * 0.92, rear);
-    path.lineTo(-w, roofRear);
-    path.closePath();
-    return path;
-  }
-
-  path.moveTo(-w * 0.62, front);
-  path.quadraticCurveTo(-w * 0.98, front + (roofFront - front) * 0.6, -w, roofFront);
-  path.lineTo(-w, roofRear);
-  path.quadraticCurveTo(-w * 0.96, rear - (rear - roofRear) * 0.4, -w * 0.5, rear);
-  path.lineTo(w * 0.5, rear);
-  path.quadraticCurveTo(w * 0.96, rear - (rear - roofRear) * 0.4, w, roofRear);
-  path.lineTo(w, roofFront);
-  path.quadraticCurveTo(w * 0.98, front + (roofFront - front) * 0.6, w * 0.62, front);
-  path.closePath();
-  return path;
-}
 
 /** Perceived brightness, 0 to 1, for deciding how much rim light a colour needs. */
 const luminance = (hex: string): number => {
@@ -250,6 +95,13 @@ export type Sprite = { canvas: HTMLCanvasElement; size: number; dpr: number };
 
 const cache = new Map<string, Sprite>();
 
+/** The widest half-width of a traced outline, in millimetres. */
+function halfWidthOf(art: ModelArt): number {
+  let max = 0;
+  for (const seg of art.body.segs) max = Math.max(max, Math.abs(seg.to[0]), Math.abs(seg.c1[0]));
+  return max;
+}
+
 export function getSprite(
   model: TeslaModel,
   colourId: string,
@@ -260,9 +112,12 @@ export function getSprite(
   const cached = cache.get(key);
   if (cached) return cached;
 
-  const spec = MODELS[model];
-  const length = SPRITE_LENGTH * (variant === 'self' ? 1.1 : 1);
-  const halfWidth = (length * spec.width) / 2;
+  const art = MODEL_ART[model];
+  // Millimetres to CSS pixels. One factor for every model, so their relative sizes are real.
+  const scale =
+    (SPRITE_LENGTH / REFERENCE_LENGTH_MM) * (variant === 'self' ? 1.08 : 1);
+  const length = art.lengthMm * scale;
+  const halfWidth = halfWidthOf(art) * scale;
   const size = Math.ceil(length + GLOW_PAD * 2);
   const canvas = document.createElement('canvas');
   canvas.width = Math.ceil(size * dpr);
@@ -275,7 +130,8 @@ export function getSprite(
 
   const base = colourOf(colourId).hex;
   const glowColour = variant === 'self' ? '#6ee7ff' : base;
-  const body = outlinePath(spec, length, halfWidth);
+  const body = closedPath(art.body, scale);
+  const mm = (value: number): number => value * scale;
 
   // 1. A tight baked glow. Enough to lift the car off the map, not enough to become the car.
   const glow = ctx.createRadialGradient(0, 0, length * 0.34, 0, 0, size / 2);
@@ -287,15 +143,20 @@ export function getSprite(
   ctx.arc(0, 0, size / 2, 0, Math.PI * 2);
   ctx.fill();
 
-  // 2. Wheels, under the body and poking out at the corners. The strongest "this is a car" cue.
+  // 2. Wheels, under the body and standing proud at the corners. The strongest "this is a
+  // car" cue there is, and the tyre width and diameter are the real ones.
   ctx.fillStyle = 'rgba(8, 10, 14, 0.96)';
-  const wheelLength = spec.wheel.length * length;
-  const wheelWidth = spec.wheel.width * length;
-  for (const axle of spec.axles)
+  for (const axle of art.wheels.axles)
     for (const side of [-1, 1]) {
-      const x = side * (halfWidth + wheelWidth * 0.3);
+      const x = side * (halfWidth + mm(art.wheels.proudMm) - mm(art.wheels.widthMm) / 2);
       ctx.fill(
-        roundedRect(x, axle * length, wheelWidth, wheelLength, spec.angular ? 1 : wheelWidth * 0.4),
+        roundedRect(
+          x,
+          mm(axle),
+          mm(art.wheels.widthMm),
+          mm(art.wheels.lengthMm),
+          art.angular ? 1 : mm(art.wheels.widthMm) * 0.35,
+        ),
       );
     }
 
@@ -303,21 +164,22 @@ export function getSprite(
   ctx.save();
   ctx.translate(0, length * 0.018);
   ctx.fillStyle = 'rgba(0, 0, 0, 0.32)';
-  ctx.fill(outlinePath(spec, length * 1.015, halfWidth * 1.03));
+  ctx.fill(grownPath(art.body, scale, 1.02));
   ctx.restore();
 
-  // 4. Mirrors.
-  const mirrorY = spec.mirrors.y * length;
-  const mirrorW = spec.mirrors.reach * halfWidth;
+  /*
+   * 4. Mirrors, at the front of the front door where they actually are. They overlap the
+   * bodywork rather than floating beside it: drawn clear of the body they read as antennae.
+   */
   ctx.fillStyle = mix(base, '#000000', 0.35);
   for (const side of [-1, 1])
     ctx.fill(
       roundedRect(
-        side * (halfWidth + mirrorW * 0.35),
-        mirrorY,
-        mirrorW,
-        length * 0.055,
-        spec.angular ? 0.5 : length * 0.02,
+        side * (halfWidth + mm(art.mirrors.reachMm) * 0.16),
+        mm(art.mirrors.y),
+        mm(art.mirrors.reachMm),
+        mm(art.mirrors.chordMm),
+        art.angular ? 0.5 : mm(60),
       ),
     );
 
@@ -333,12 +195,33 @@ export function getSprite(
   ctx.stroke(body);
 
   /*
-   * A rim light along the top edge. Solid Black on a dark map is invisible, and a car you
+   * The tyres again, this time over the paint and clipped to it, so each arch shows the wheel
+   * under it the way an overhead photograph does. Wheels are the strongest "this is a car"
+   * cue there is, and hidden entirely under the bodywork — which is where the real track puts
+   * them — the sprite loses it.
+   */
+  ctx.save();
+  ctx.clip(body);
+  ctx.fillStyle = 'rgba(9, 12, 17, 0.46)';
+  for (const axle of art.wheels.axles)
+    for (const side of [-1, 1])
+      ctx.fill(
+        roundedRect(
+          side * (halfWidth + mm(art.wheels.proudMm) - mm(art.wheels.widthMm) / 2),
+          mm(axle),
+          mm(art.wheels.widthMm),
+          mm(art.wheels.lengthMm),
+          art.angular ? 1 : mm(art.wheels.widthMm) * 0.35,
+        ),
+      );
+  ctx.restore();
+
+  /*
+   * A rim light along the outline. Solid Black on a dark map is invisible, and a car you
    * cannot see is worse than one whose paint is a shade off: the darker the colour, the more
    * rim it gets, so every car keeps a readable silhouette.
    */
-  const brightness = luminance(base);
-  const rim = Math.max(0, 0.5 - brightness) * 0.85;
+  const rim = Math.max(0, 0.5 - luminance(base)) * 0.85;
   if (rim > 0.02) {
     ctx.save();
     ctx.clip(body);
@@ -348,103 +231,107 @@ export function getSprite(
     ctx.restore();
   }
 
-  // 6. The glass roof, in one piece. Darker than any paint, so it reads as glass even on a
-  // Pearl White car, and it is the single most recognisable thing about a Tesla from above.
-  const g = spec.glass;
-  const glass = ctx.createLinearGradient(0, g.front * length, 0, g.rear * length);
-  glass.addColorStop(0, 'rgba(12, 18, 27, 0.95)');
-  glass.addColorStop(0.35, 'rgba(34, 46, 63, 0.92)');
-  glass.addColorStop(0.75, 'rgba(24, 33, 46, 0.93)');
-  glass.addColorStop(1, 'rgba(14, 20, 30, 0.95)');
-  ctx.fillStyle = glass;
-  ctx.fill(glassPath(spec, length, halfWidth));
+  // 6. The greenhouse, in one piece, darker than any paint so it reads as glass even on a
+  // Pearl White car. It is the single most recognisable thing about a Tesla from above.
+  const glass = closedPath(art.glass, scale);
+  const glassFill = ctx.createLinearGradient(0, mm(art.glass.start[1]), 0, length * 0.4);
+  glassFill.addColorStop(0, 'rgba(12, 18, 27, 0.95)');
+  glassFill.addColorStop(0.35, 'rgba(34, 46, 63, 0.92)');
+  glassFill.addColorStop(0.75, 'rgba(24, 33, 46, 0.93)');
+  glassFill.addColorStop(1, 'rgba(14, 20, 30, 0.95)');
+  ctx.fillStyle = glassFill;
+  ctx.fill(glass);
+
+  // The painted header where the windscreen ends and the roof glass begins. On the X it sits
+  // far back, because the windscreen carries on over the front seats.
+  ctx.save();
+  ctx.clip(glass);
+  ctx.fillStyle = mix(base, '#000000', 0.2);
+  ctx.fillRect(-halfWidth, mm(art.headerY) - mm(34), halfWidth * 2, mm(68));
+  ctx.restore();
 
   // The Model 3's roof bar: painted body colour, straight across, splitting the glass in two.
-  if (spec.roofBar !== undefined) {
-    const w = halfWidth * g.halfWidth;
+  // Clipped to the glass, so it stops exactly at the edge of the panel rather than at a
+  // guessed width.
+  if (art.roofBarY !== undefined) {
+    ctx.save();
+    ctx.clip(glass);
     ctx.fillStyle = mix(base, '#000000', 0.12);
-    ctx.fillRect(-w, (spec.roofBar - 0.018) * length, w * 2, length * 0.036);
+    ctx.fillRect(-halfWidth, mm(art.roofBarY) - mm(60), halfWidth * 2, mm(120));
+    ctx.restore();
   }
 
   // The Model X's falcon wing cut lines, running up over the roof glass.
-  if (spec.falconSeams) {
-    const w = halfWidth * g.halfWidth;
-    ctx.strokeStyle = 'rgba(190, 214, 240, 0.28)';
-    ctx.lineWidth = Math.max(0.5, length * 0.012);
-    for (const y of spec.falconSeams) {
-      ctx.beginPath();
-      ctx.moveTo(-w * 1.02, y * length);
-      ctx.lineTo(-w * 0.24, y * length - length * 0.02);
-      ctx.moveTo(w * 1.02, y * length);
-      ctx.lineTo(w * 0.24, y * length - length * 0.02);
-      ctx.stroke();
-    }
+  if (art.falconSeamY) {
+    ctx.save();
+    ctx.clip(glass);
+    // Inward from each flank, not across the whole roof: the hinge line stops short of the
+    // centre, and drawn all the way over it turns the glass into a ladder.
+    ctx.strokeStyle = 'rgba(186, 208, 236, 0.24)';
+    ctx.lineWidth = Math.max(0.4, mm(20));
+    for (const y of art.falconSeamY)
+      for (const side of [-1, 1]) {
+        ctx.beginPath();
+        ctx.moveTo(side * halfWidth, mm(y));
+        ctx.lineTo(side * halfWidth * 0.34, mm(y) - mm(70));
+        ctx.stroke();
+      }
+    ctx.restore();
   }
 
-  // 7. Panel seams: the pillar lines across the glass, and the gaps between bonnet, doors
-  // and boot. Cars are made of panels, and at this size the gaps are most of the realism.
-  ctx.lineWidth = Math.max(0.4, length * 0.009);
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.09)';
-  for (const y of [g.roofFront, g.roofRear]) {
-    const w = halfWidth * g.halfWidth * 0.94;
-    ctx.beginPath();
-    ctx.moveTo(-w, y * length);
-    ctx.lineTo(w, y * length);
-    ctx.stroke();
-  }
-  ctx.strokeStyle = mix(base, '#000000', 0.5);
-  for (const y of spec.seams) {
-    ctx.beginPath();
-    ctx.moveTo(-halfWidth * 0.98, y * length);
-    ctx.lineTo(halfWidth * 0.98, y * length);
-    ctx.stroke();
-  }
-
-  // 8. A soft crease down each side of the bonnet, so the body reads as curved metal.
-  if (!spec.angular) {
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
-    ctx.lineWidth = Math.max(0.4, length * 0.01);
-    for (const side of [-1, 1]) {
-      ctx.beginPath();
-      ctx.moveTo(side * halfWidth * 0.44, -length * 0.44);
-      ctx.lineTo(side * halfWidth * 0.54, g.front * length - length * 0.02);
-      ctx.stroke();
-    }
-  }
-
-  // Cybertruck vault: a flat tonneau where a rear window would be.
-  if (spec.bed !== undefined) {
-    ctx.fillStyle = mix(base, '#000000', 0.5);
-    ctx.beginPath();
-    ctx.moveTo(-halfWidth * 0.9, spec.bed * length);
-    ctx.lineTo(halfWidth * 0.9, spec.bed * length);
-    ctx.lineTo(halfWidth * 0.84, length * 0.43);
-    ctx.lineTo(-halfWidth * 0.84, length * 0.43);
-    ctx.closePath();
-    ctx.fill();
+  // Cybertruck vault: a flat tonneau where a rear screen would be.
+  if (art.vault) {
+    ctx.fillStyle = mix(base, '#000000', 0.24);
+    const vault = closedPath(art.vault, scale);
+    ctx.fill(vault);
     ctx.strokeStyle = 'rgba(255,255,255,0.07)';
-    ctx.stroke();
+    ctx.lineWidth = Math.max(0.4, mm(20));
+    ctx.stroke(vault);
   }
 
-  // 9. Lights. Warm at the nose, red across the tail: you can tell a car's direction at a
+  // 7. Panel gaps: bonnet and boot shut lines, clipped to the body so they stop at the
+  // bodywork. Cars are made of panels, and at this size the gaps are most of the realism.
+  ctx.save();
+  ctx.clip(body);
+  ctx.lineWidth = Math.max(0.4, mm(22));
+  ctx.strokeStyle = mix(base, '#000000', 0.5);
+  for (const y of art.seams) {
+    ctx.beginPath();
+    ctx.moveTo(-halfWidth, mm(y));
+    ctx.lineTo(halfWidth, mm(y));
+    ctx.stroke();
+  }
+  ctx.restore();
+
+  // 8. Lights. Warm at the nose, red across the tail: you can tell a car's direction at a
   // glance in a mirror, and the same has to be true here.
+  ctx.save();
+  ctx.clip(body);
   ctx.fillStyle = 'rgba(255, 242, 219, 0.72)';
-  if (spec.angular) {
-    ctx.fill(roundedRect(0, -length * 0.463, halfWidth * 1.4, length * 0.024, length * 0.008));
+  const lamp = art.headlight;
+  if (lamp.innerMm === 0) {
+    ctx.fill(roundedRect(0, mm(lamp.y), mm(lamp.outerMm) * 2, mm(70), mm(20)));
   } else {
-    const lampW = halfWidth * 0.42;
     for (const side of [-1, 1])
       ctx.fill(
-        roundedRect(side * halfWidth * 0.5, -length * 0.452, lampW, length * 0.026, length * 0.01),
+        roundedRect(
+          side * mm((lamp.innerMm + lamp.outerMm) / 2),
+          mm(lamp.y),
+          mm(lamp.outerMm - lamp.innerMm),
+          mm(80),
+          mm(30),
+        ),
       );
   }
   // The full-width tail bar: on a real one it is the thing you recognise from behind, and
   // here it is what tells you instantly which way a car is pointing.
   ctx.fillStyle = 'rgba(255, 64, 72, 0.92)';
-  const tailW = halfWidth * (spec.angular ? 1.72 : 1.5);
-  ctx.fill(roundedRect(0, length * 0.462, tailW, length * 0.028, length * 0.012));
+  ctx.fill(
+    roundedRect(0, mm(art.taillight.y), mm(art.taillight.halfWidthMm) * 2, mm(85), mm(30)),
+  );
+  ctx.restore();
 
-  // 10. Your own car wears a ring, so you can always find yourself.
+  // 9. Your own car wears a ring, so you can always find yourself.
   if (variant === 'self') {
     ctx.strokeStyle = 'rgba(255,255,255,0.85)';
     ctx.lineWidth = 1.4;
