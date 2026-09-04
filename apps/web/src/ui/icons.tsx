@@ -6,14 +6,14 @@ import type { ReactNode } from 'react';
  */
 type IconProps = { size?: number | undefined };
 
-const Svg = ({ children, size = 26 }: { children: ReactNode; size?: number | undefined }): ReactNode => (
+const Svg = ({ children, size = 24 }: { children: ReactNode; size?: number | undefined }): ReactNode => (
   <svg
     width={size}
     height={size}
     viewBox="0 0 24 24"
     fill="none"
     stroke="currentColor"
-    strokeWidth={1.7}
+    strokeWidth={1.6}
     strokeLinecap="round"
     strokeLinejoin="round"
     aria-hidden
@@ -98,5 +98,42 @@ export const PlusIcon = ({ size }: IconProps): ReactNode => (
 export const MinusIcon = ({ size }: IconProps): ReactNode => (
   <Svg size={size}>
     <path d="M5 12h14" />
+  </Svg>
+);
+
+export const CheckIcon = ({ size }: IconProps): ReactNode => (
+  <Svg size={size}>
+    <path d="M5 12.5l4.5 4.5L19 7.5" />
+  </Svg>
+);
+
+export const ChevronRightIcon = ({ size }: IconProps): ReactNode => (
+  <Svg size={size}>
+    <path d="M9.5 6l6 6-6 6" />
+  </Svg>
+);
+
+/** Back to my car: a crosshair, the symbol every map uses for "where I am". */
+export const LocateIcon = ({ size }: IconProps): ReactNode => (
+  <Svg size={size}>
+    <circle cx="12" cy="12" r="6.5" />
+    <circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none" />
+    <path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3" />
+  </Svg>
+);
+
+export const BackspaceIcon = ({ size }: IconProps): ReactNode => (
+  <Svg size={size}>
+    <path d="M8.5 5.5h11a1.5 1.5 0 0 1 1.5 1.5v10a1.5 1.5 0 0 1-1.5 1.5h-11L3 12Z" />
+    <path d="M11.5 9.5l5 5M16.5 9.5l-5 5" />
+  </Svg>
+);
+
+/** The wave: rings leaving a point. */
+export const WaveIcon = ({ size }: IconProps): ReactNode => (
+  <Svg size={size}>
+    <circle cx="12" cy="12" r="2" fill="currentColor" stroke="none" />
+    <path d="M7.8 7.8a6 6 0 0 0 0 8.4M16.2 7.8a6 6 0 0 1 0 8.4" />
+    <path d="M4.9 4.9a10 10 0 0 0 0 14.2M19.1 4.9a10 10 0 0 1 0 14.2" />
   </Svg>
 );

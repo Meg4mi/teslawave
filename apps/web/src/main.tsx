@@ -25,7 +25,19 @@ if (import.meta.env.DEV) {
   const KitchenSink = lazy(async () => ({
     default: (await import('./screens/KitchenSink')).KitchenSink,
   }));
+  const ArtBoard = lazy(async () => ({
+    default: (await import('./screens/ArtBoard')).ArtBoard,
+  }));
   routes.push(
+    createRoute({
+      getParentRoute: () => rootRoute,
+      path: '/art',
+      component: () => (
+        <Suspense fallback={null}>
+          <ArtBoard />
+        </Suspense>
+      ),
+    }),
     createRoute({
       getParentRoute: () => rootRoute,
       path: '/kitchen-sink',

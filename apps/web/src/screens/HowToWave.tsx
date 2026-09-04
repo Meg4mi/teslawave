@@ -1,5 +1,5 @@
 import { useEffect, useRef, type ReactNode } from 'react';
-import { Button, Sheet } from '../ui/primitives';
+import { Button, Sheet, SheetActions } from '../ui/primitives';
 import { COPY } from '../ui/copy';
 import { getSprite } from '../overlay/sprites';
 import { play, unlockAudio } from '../ui/sound';
@@ -41,7 +41,7 @@ export function HowToWave({ onClose }: { onClose: () => void }): ReactNode {
       const t = ((now - started) % CYCLE_MS) / CYCLE_MS;
       // A fixed-width road down the middle: stretched across a 17" screen it stops reading
       // as a road at all.
-      const road = Math.min(190, width * 0.5);
+      const road = Math.min(230, width * 0.5);
       const centre = width / 2;
       const mine = { x: centre - road * 0.26, y: height * 0.68 };
       const approach = Math.min(1, t / 0.34);
@@ -80,7 +80,7 @@ export function HowToWave({ onClose }: { onClose: () => void }): ReactNode {
         ctx.save();
         ctx.translate(at.x, at.y);
         ctx.rotate(rotation);
-        ctx.scale(0.78 * pulse, 0.78 * pulse);
+        ctx.scale(1.15 * pulse, 1.15 * pulse);
         ctx.drawImage(sprite.canvas, -sprite.size / 2, -sprite.size / 2, sprite.size, sprite.size);
         ctx.restore();
       };
@@ -130,27 +130,28 @@ export function HowToWave({ onClose }: { onClose: () => void }): ReactNode {
   };
 
   return (
-    <Sheet label={COPY.howTo.title} onClose={onClose}>
-      <h2 className="card-sheet__title">{COPY.howTo.title}</h2>
-      <p className="hud__note">{COPY.howTo.lead}</p>
+    <Sheet label={COPY.howTo.title} title={COPY.howTo.title} onClose={onClose}>
+      <p className="sheet__note">{COPY.howTo.lead}</p>
 
       <canvas className="howto__stage" ref={canvasRef} aria-hidden />
 
       <ol className="howto__steps">
         {COPY.howTo.steps.map((step) => (
-          <li key={step}>{step}</li>
+          <li key={step}>
+            <span>{step}</span>
+          </li>
         ))}
       </ol>
-      <p className="hud__note">{COPY.howTo.tapHint}</p>
+      <p className="settings__hint">{COPY.howTo.tapHint}</p>
 
-      <div className="card-sheet__actions">
-        <Button variant="primary" onClick={tryIt}>
-          {COPY.howTo.tryIt}
-        </Button>
+      <SheetActions>
         <Button variant="ghost" onClick={onClose}>
           {COPY.howTo.close}
         </Button>
-      </div>
+        <Button variant="primary" onClick={tryIt}>
+          {COPY.howTo.tryIt}
+        </Button>
+      </SheetActions>
     </Sheet>
   );
 }

@@ -44,6 +44,9 @@ pnpm sim -- --n 20 --center 46.2044,6.1432 --radius 5000
 
 `/kitchen-sink` (development only) renders every signature moment on demand: the boot sonar,
 a wave sent, received and returned, the milestone card, and the whole sprite matrix.
+`/art?colour=deepblue` renders every model large, in one paint, beside its map-sized sprite:
+the cars are one drawing (`overlay/model-art.ts`) rendered as SVG in the UI and baked to a
+bitmap for the map, and this is where a change to the drawing gets judged.
 
 ## Checks
 

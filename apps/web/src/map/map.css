@@ -47,18 +47,34 @@
  */
 .map__recentre {
   position: absolute;
-  top: calc(max(var(--edge), env(safe-area-inset-top)) + 48px);
+  top: max(var(--edge), env(safe-area-inset-top));
   left: 50%;
   z-index: var(--z-hud);
-  min-height: 64px;
-  padding: 0 var(--sp-6);
-  border: 1px solid var(--line);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-height: 56px;
+  padding: 0 var(--sp-5) 0 var(--sp-4);
+  border: 1px solid var(--line-strong);
   border-radius: var(--r-full);
   background: var(--bg-sheet);
+  background-image: var(--noise, none);
+  background-size: 160px 160px;
   color: var(--fg);
-  font: var(--t-body);
+  font: var(--t-strong);
   transform: translateX(-50%);
   cursor: pointer;
+  animation: fade-in var(--d-base) var(--e-out) both;
+}
+
+.map__recentre[hidden] {
+  display: none;
+}
+
+/* Under onboarding the map is scenery: no zoom, no recentre. */
+.map--bare .map__zoom,
+.map--bare .map__recentre {
+  display: none;
 }
 
 .map__recentre:active {
@@ -77,9 +93,33 @@
   z-index: var(--z-hud);
   display: flex;
   flex-direction: column;
-  gap: var(--sp-3);
+  gap: var(--sp-2);
 }
 
 .control--zoom {
   width: var(--touch);
+}
+
+@media (max-width: 720px) {
+  /* Between the two columns of controls, where nothing else lives. */
+  .map__recentre {
+    top: auto;
+    bottom: calc(var(--edge) + 26px + env(safe-area-inset-bottom));
+    left: calc(var(--edge) + 56px + var(--sp-3));
+    right: calc(var(--edge) + 60px + var(--sp-3));
+    justify-content: center;
+    min-height: 56px;
+    padding: 0 var(--sp-3);
+    transform: none;
+    font-size: 15px;
+  }
+
+  .map__zoom {
+    bottom: calc(var(--edge) + 26px + env(safe-area-inset-bottom));
+  }
+
+  .control--zoom {
+    width: 56px;
+    min-height: 56px;
+  }
 }

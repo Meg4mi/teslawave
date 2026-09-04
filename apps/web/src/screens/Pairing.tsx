@@ -8,6 +8,7 @@ import {
   normaliseCode,
 } from '@teslawave/protocol';
 import { Button, Sheet } from '../ui/primitives';
+import { BackspaceIcon } from '../ui/icons';
 import { COPY } from '../ui/copy';
 import type { Identity } from '../identity/store';
 
@@ -68,23 +69,18 @@ export function ShowPairingSheet({
   }, [state]);
 
   return (
-    <Sheet label={COPY.pairing.showTitle} onClose={onClose}>
-      <h2 className="card-sheet__title">{COPY.pairing.showTitle}</h2>
-      <p className="hud__note">{COPY.pairing.showBody}</p>
+    <Sheet label={COPY.pairing.showTitle} title={COPY.pairing.showTitle} onClose={onClose}>
+      <p className="sheet__note">{COPY.pairing.showBody}</p>
 
-      {failed ? <p className="pair__code">—</p> : null}
-      {state ? (
-        <>
-          <p className="pair__code">{state.code}</p>
-          {qrSvg ? <img className="pair__qr" src={qrSvg} alt="" /> : null}
-          <p className="hud__note">{COPY.pairing.expiresIn(mmss(state.expiresAt - now))}</p>
-        </>
-      ) : null}
-
-      <div className="card-sheet__actions">
-        <Button variant="ghost" onClick={onClose}>
-          {COPY.controls.close}
-        </Button>
+      <div className="pair">
+        {failed ? <p className="pair__error">{COPY.pairing.failedToMake}</p> : null}
+        {state ? (
+          <>
+            <p className="pair__code num">{state.code}</p>
+            {qrSvg ? <img className="pair__qr" src={qrSvg} alt="" /> : null}
+            <p className="settings__hint">{COPY.pairing.expiresIn(mmss(state.expiresAt - now))}</p>
+          </>
+        ) : null}
       </div>
     </Sheet>
   );
@@ -131,22 +127,31 @@ export function EnterCodeSheet({
     if (next.length === PAIR_CODE_LEN && isValidCode(next)) void claim(next);
   };
 
-  const slots = Array.from({ length: PAIR_CODE_LEN }, (_, i) => code[i] ?? '·');
+  const slots = Array.from({ length: PAIR_CODE_LEN }, (_, i) => code[i] ?? '');
 
   return (
-    <Sheet label={COPY.pairing.enterTitle} onClose={onClose}>
-      <h2 className="card-sheet__title">{COPY.pairing.enterTitle}</h2>
-      <p className="hud__note">{COPY.pairing.enterBody}</p>
+    <Sheet label={COPY.pairing.enterTitle} title={COPY.pairing.enterTitle} onClose={onClose} wide>
+      <p className="sheet__note">{COPY.pairing.enterBody}</p>
 
       <div className="pair__entry" aria-label={code}>
         {slots.map((ch, i) => (
-          <span key={i} className={`pair__slot ${ch === '·' ? '' : 'pair__slot--filled'}`.trim()}>
+          <span key={i} className={`pair__slot ${ch ? 'pair__slot--filled' : ''}`.trim()}>
             {ch}
           </span>
         ))}
+        <Button
+          variant="icon"
+          className="pair__backspace"
+          label={COPY.pairing.backspace}
+          onClick={() => setCode(code.slice(0, -1))}
+          disabled={busy || code.length === 0}
+        >
+          <BackspaceIcon />
+        </Button>
       </div>
 
-      {error ? <p className="hud__note">{COPY.pairing.failed}</p> : null}
+      {error ? <p className="pair__error">{COPY.pairing.failed}</p> : null}
+      {busy ? <p className="settings__hint" style={{ textAlign: 'center' }}>{COPY.pairing.claiming}</p> : null}
 
       <div className="keypad">
         {[...PAIR_ALPHABET].map((ch) => (
@@ -154,16 +159,6 @@ export function EnterCodeSheet({
             {ch}
           </Button>
         ))}
-        <Button className="keypad__wide" onClick={() => setCode(code.slice(0, -1))} disabled={busy}>
-          ←
-        </Button>
-      </div>
-
-      <div className="card-sheet__actions">
-        <Button variant="ghost" onClick={onClose}>
-          {COPY.controls.close}
-        </Button>
-        {busy ? <span className="hud__note">{COPY.pairing.claiming}</span> : null}
       </div>
     </Sheet>
   );

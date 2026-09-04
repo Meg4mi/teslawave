@@ -1,28 +1,37 @@
+/* --- Around you: three numbers, large, with small labels ----------------------------------- */
 .pulse {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: var(--sp-3);
-  margin: var(--sp-5) 0;
+  margin: 0;
 }
 
 .pulse__item {
-  padding: var(--sp-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-4) var(--sp-4) var(--sp-3);
   border: 1px solid var(--line);
   border-radius: var(--r-md);
   background: var(--bg-1);
 }
 
 .pulse__item dt {
-  font: var(--t-hud);
-  color: var(--fg-dim);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
+  order: 2;
 }
 
 .pulse__item dd {
-  margin: var(--sp-2) 0 0;
-  font-size: 30px;
-  font-weight: 650;
+  order: 1;
+  margin: 0;
+  font: var(--t-display);
+  font-size: 44px;
+  letter-spacing: -0.03em;
+}
+
+/* --- Settings: rows, each one a label, a hint, and one control on the right --------------- */
+.settings {
+  display: flex;
+  flex-direction: column;
 }
 
 .settings__row {
@@ -30,41 +39,98 @@
   align-items: center;
   justify-content: space-between;
   gap: var(--sp-4);
-  padding: var(--sp-3) 0;
+  min-height: 72px;
+  padding: var(--sp-2) 0;
   border-bottom: 1px solid var(--line-soft);
 }
 
-.settings__row:last-of-type {
+.settings__row:last-child {
   border-bottom: 0;
 }
 
 .settings__label {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 3px;
+  min-width: 0;
+  font: var(--t-strong);
 }
 
 .settings__hint {
   font: var(--t-hud);
   font-weight: 450;
+  font-size: 13px;
   color: var(--fg-faint);
 }
 
+.settings__car {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+}
+
+/* --- The garage: the car beside its choices, like onboarding in a sheet ------------------ */
+.garage {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 420px);
+  gap: var(--sp-6);
+  align-items: center;
+}
+
+.garage__stage {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-3);
+  min-width: 0;
+}
+
+.garage__car {
+  width: min(100%, 420px);
+  height: auto;
+  animation: car-in var(--d-slow) var(--e-out) both;
+}
+
+.garage__form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  min-width: 0;
+}
+
+@media (max-width: 860px) {
+  .garage {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--sp-4);
+  }
+
+  .garage__car {
+    width: min(100%, 300px);
+  }
+}
+
+/* --- Pairing ------------------------------------------------------------------------------ */
+.pair {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-4);
+}
+
 .pair__code {
-  margin: var(--sp-5) 0 var(--sp-3);
   font-family: var(--font-num);
-  font-size: clamp(44px, 9vw, 76px);
-  font-weight: 650;
-  letter-spacing: 0.14em;
+  font-size: clamp(48px, 8vw, 84px);
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-indent: 0.18em;
   text-align: center;
-  color: var(--accent);
+  color: var(--fg);
 }
 
 .pair__qr {
   display: block;
   width: min(220px, 46vw);
   height: auto;
-  margin: 0 auto var(--sp-4);
   padding: var(--sp-3);
   background: #fff;
   border-radius: var(--r-md);
@@ -72,27 +138,35 @@
 }
 
 .pair__entry {
-  min-height: 72px;
-  margin: var(--sp-4) 0;
-  padding: 0 var(--sp-4);
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: var(--sp-3);
-  border: 1px solid var(--line);
-  border-radius: var(--r-md);
-  background: var(--bg-1);
-  font-family: var(--font-num);
-  font-size: 34px;
-  letter-spacing: 0.3em;
+  gap: var(--sp-2);
+  min-height: 80px;
 }
 
 .pair__slot {
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 72px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  background: var(--bg-1);
+  font-family: var(--font-num);
+  font-size: 34px;
+  font-weight: 600;
   color: var(--fg-faint);
 }
 
 .pair__slot--filled {
   color: var(--fg);
+  border-color: var(--fg-dim);
+}
+
+.pair__error {
+  color: var(--danger);
+  text-align: center;
 }
 
 /* A keypad of our own: the on-screen keyboard in the car is hostile (brief 2.2). */
@@ -105,16 +179,37 @@
 .keypad .btn {
   padding: 0;
   min-width: 0;
+  border-radius: var(--r-md);
   font-family: var(--font-num);
-  font-size: 20px;
+  font-size: 22px;
+  font-weight: 500;
 }
 
-.keypad__wide {
-  grid-column: span 2;
+.pair__backspace {
+  margin-left: var(--sp-2);
 }
 
 @media (max-width: 720px) {
+  .pulse {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: var(--sp-2);
+  }
+
+  .pulse__item {
+    padding: var(--sp-3);
+  }
+
+  .pulse__item dd {
+    font-size: 32px;
+  }
+
   .keypad {
     grid-template-columns: repeat(6, 1fr);
+  }
+
+  .pair__slot {
+    width: 44px;
+    height: 60px;
+    font-size: 26px;
   }
 }

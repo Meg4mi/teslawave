@@ -26,6 +26,7 @@ export function Hud({
         type="button"
         data-touch
         className={`hud__stats ${live ? '' : 'hud__stats--stale'}`.trim()}
+        aria-label={COPY.pulse.title}
         onClick={onOpenPulse}
       >
         <span className={`hud__dot ${live ? '' : 'hud__dot--offline'}`.trim()} />

@@ -1,35 +1,45 @@
 import type { TeslaModel } from '@teslawave/protocol';
 
 /**
- * The cars, as traced outlines.
+ * The cars, drawn from directly above, in millimetres of the real car.
  *
- * Every model used to be the same parametric shape with different numbers in it: six points
- * down the flank, joined by `arcTo` with a corner radius. That produces a rounded rectangle
- * with a rounded rectangle on top, five times over, and no amount of nudging the numbers gets
- * you past it — a Model S and a Model Y came out as the same object at slightly different
- * proportions.
+ * Each model is its own drawing: a body outline, the greenhouse, every glass panel, the
+ * frunk and boot shut lines, the bonnet creases, the lights, the mirrors, the wheels and the
+ * door cuts. Nothing is a parametric template with different numbers in it — that produced
+ * five rounded rectangles — and nothing is traced from a photograph, which would be a
+ * derivative of someone's copyrighted image. The geometry is authored from published
+ * dimensions and from the features that actually tell the cars apart from above: the
+ * Model 3's split glass roof, the Model Y's single panel and hatch, the Model S's long
+ * bonnet and fastback, the Model X's panoramic windscreen and falcon-wing roof glass, the
+ * Cybertruck's straight lines and vault.
  *
- * So each model is now its own drawing: a chain of cubic bezier segments down the right-hand
- * flank, nose to tail, with the left side mirrored. That is what tracing an overhead view
- * actually produces, and it lets a bonnet curve like a bonnet, a hatchback end bluntly, and a
- * Cybertruck be made entirely of straight lines.
+ * Origin is the centre of the body, negative y toward the nose, positive x to the right.
+ * Symmetric outlines are authored as the right-hand half only and mirrored, so a bonnet
+ * curve and its reflection can never disagree. Curves are written as anchor points and
+ * smoothed into cubic beziers (Catmull-Rom), because anchor points can be checked against a
+ * published width and control points cannot. Corners are flagged where a panel edge really
+ * is a corner.
  *
- * Coordinates are **millimetres of the real car**, origin at the centre of the body, negative
- * y toward the nose. Working in real dimensions means the proportions cannot drift: the
- * published length, width and wheelbase of each car are checkable against the geometry, and
- * `model-art.test.ts` checks them.
- *
- * The one rule the mirroring imposes: a half-outline starts and ends on the centreline, and
- * the curve has to meet its own reflection smoothly there — so the first control point shares
- * its y with the start, and the last shares its y with the end. Otherwise the nose has a
- * crease down the middle. That is also checked.
+ * Both renderers read this file: `car-scene.ts` turns it into a list of paint operations,
+ * `ui/CarSvg.tsx` emits those as SVG, and `overlay/sprites.ts` rasterises them for the map.
+ * `model-art.test.ts` checks the proportions against the published figures.
  */
 
 export type Pt = readonly [number, number];
 export type Cubic = { readonly c1: Pt; readonly c2: Pt; readonly to: Pt };
 
-/** A chain of cubics down the right-hand side. Mirror it to get the closed shape. */
-export type Half = { readonly start: Pt; readonly segs: readonly Cubic[] };
+/**
+ * A chain of cubics. Closed shapes that sit on the centreline are authored as the right-hand
+ * half and mirrored; features that live on one side (a mirror, a headlight) are authored
+ * whole and drawn twice.
+ */
+export type Path = { readonly start: Pt; readonly segs: readonly Cubic[]; readonly closed: boolean };
+
+export type Lamp = {
+  /** Centre line of the lamp, right-hand side, drawn as a thick stroke and mirrored. */
+  readonly path: Path;
+  readonly widthMm: number;
+};
 
 export type Wheels = {
   /** Axle positions in mm, front negative. */
@@ -47,288 +57,505 @@ export type ModelArt = {
   readonly wheelbaseMm: number;
   /** Distance from the nose to the front axle. */
   readonly frontOverhangMm: number;
-  readonly body: Half;
-  /** The greenhouse: windscreen, roof glass and rear screen as one traced panel. */
-  readonly glass: Half;
+  /** The outer silhouette, right half. */
+  readonly body: Path;
+  /** The greenhouse: pillars, roof rails and side glass as one dark frame, right half. */
+  readonly frame: Path;
+  /** Glass panels inside the frame, nose to tail, right halves. */
+  readonly windscreen: Path;
+  readonly roofGlass: readonly Path[];
+  readonly rearGlass?: Path;
+  /** The Model X: two falcon-wing door windows either side of a painted spine. */
+  readonly falconGlass?: Path;
+  /** The Model 3: a painted cross bar splitting the glass roof in two. */
+  readonly roofBar?: { readonly y: number; readonly heightMm: number };
+  /** The Cybertruck: a tonneau over the bed where a rear screen would be. */
+  readonly vault?: Path;
+  /** Frunk and boot shut lines, right half, ending on the centreline. */
+  readonly frunk: Path;
+  readonly boot?: Path;
+  /** Bonnet creases, right side. */
+  readonly creases: readonly Path[];
+  /** Transverse door cuts, as y positions across the shoulder. */
+  readonly doorCuts: readonly number[];
+  readonly headlight: Lamp;
+  readonly taillight: Lamp;
+  readonly mirror: Path;
   readonly wheels: Wheels;
-  readonly mirrors: { readonly y: number; readonly reachMm: number; readonly chordMm: number };
-  /** Transverse panel gaps: bonnet shut line, boot shut line, and so on. */
-  readonly seams: readonly number[];
-  readonly headlight: { readonly y: number; readonly innerMm: number; readonly outerMm: number };
-  readonly taillight: { readonly y: number; readonly halfWidthMm: number };
-  /** Where the windscreen meets the roof glass: a thin painted header across the greenhouse. */
-  readonly headerY: number;
-  /**
-   * The Model 3's structural roof bar, painted body colour, splitting the glass in two. The
-   * Model Y's roof is one uninterrupted panel — from above it is the clearest way to tell the
-   * two apart, and they are the two most common cars on the road.
-   */
-  readonly roofBarY?: number;
-  /**
-   * The Model X's falcon wing doors hinge off the roof, so their cut lines run up into the
-   * roof glass. Nothing else on the road has this.
-   */
-  readonly falconSeamY?: readonly [number, number];
-  /** Cybertruck: no curves anywhere, and a vault where a rear screen would be. */
+  /** No curves anywhere: sharp corners on the wheels and mirrors too. */
   readonly angular?: boolean;
-  readonly vault?: Half;
 };
 
-const straight = (from: Pt, to: Pt): Cubic => ({
-  c1: [from[0] + (to[0] - from[0]) / 3, from[1] + (to[1] - from[1]) / 3],
-  c2: [from[0] + ((to[0] - from[0]) * 2) / 3, from[1] + ((to[1] - from[1]) * 2) / 3],
-  to,
+type Anchor = Pt | { readonly corner: Pt };
+
+const at = (a: Anchor): Pt => (Array.isArray(a) ? (a as Pt) : (a as { corner: Pt }).corner);
+const isCorner = (a: Anchor): boolean => !Array.isArray(a);
+const corner = (pt: Pt): Anchor => ({ corner: pt });
+
+/**
+ * Catmull-Rom through the anchors, as cubics. Where the path starts or ends on the
+ * centreline the phantom point beyond it is the reflection of its neighbour, which gives the
+ * horizontal tangent the mirror needs — otherwise the nose would have a crease down it.
+ * Elsewhere the ends use one-sided tangents.
+ */
+export function smooth(anchors: readonly Anchor[], closed = false, tension = 1): Path {
+  const pts = anchors.map(at);
+  const n = pts.length;
+  const point = (i: number): Pt => {
+    if (i >= 0 && i < n) return pts[i] as Pt;
+    if (closed) return pts[((i % n) + n) % n] as Pt;
+    if (i < 0) {
+      const p0 = pts[0] as Pt;
+      const p1 = pts[1] as Pt;
+      return p0[0] === 0 ? [-p1[0], p1[1]] : [2 * p0[0] - p1[0], 2 * p0[1] - p1[1]];
+    }
+    const pn = pts[n - 1] as Pt;
+    const pm = pts[n - 2] as Pt;
+    return pn[0] === 0 ? [-pm[0], pm[1]] : [2 * pn[0] - pm[0], 2 * pn[1] - pm[1]];
+  };
+  const segs: Cubic[] = [];
+  const count = closed ? n : n - 1;
+  for (let i = 0; i < count; i++) {
+    const p0 = point(i - 1);
+    const p1 = point(i);
+    const p2 = point(i + 1);
+    const p3 = point(i + 2);
+    const cornerIn = isCorner(anchors[i] as Anchor);
+    const cornerOut = isCorner(anchors[(i + 1) % n] as Anchor);
+    const t1: Pt = cornerIn ? [p2[0] - p1[0], p2[1] - p1[1]] : [(p2[0] - p0[0]) / 2, (p2[1] - p0[1]) / 2];
+    const t2: Pt = cornerOut ? [p2[0] - p1[0], p2[1] - p1[1]] : [(p3[0] - p1[0]) / 2, (p3[1] - p1[1]) / 2];
+    segs.push({
+      c1: [p1[0] + (t1[0] * tension) / 3, p1[1] + (t1[1] * tension) / 3],
+      c2: [p2[0] - (t2[0] * tension) / 3, p2[1] - (t2[1] * tension) / 3],
+      to: p2,
+    });
+  }
+  return { start: pts[0] as Pt, segs, closed };
+}
+
+/** Straight lines only, for the Cybertruck. */
+export function polyline(points: readonly Pt[], closed = false): Path {
+  const segs: Cubic[] = [];
+  for (let i = 1; i < points.length; i++) {
+    const from = points[i - 1] as Pt;
+    const to = points[i] as Pt;
+    segs.push({
+      c1: [from[0] + (to[0] - from[0]) / 3, from[1] + (to[1] - from[1]) / 3],
+      c2: [from[0] + ((to[0] - from[0]) * 2) / 3, from[1] + ((to[1] - from[1]) * 2) / 3],
+      to,
+    });
+  }
+  return { start: points[0] as Pt, segs, closed };
+}
+
+const line = (from: Pt, to: Pt): Path => polyline([from, to]);
+
+/** A lamp along a line or a gentle curve, right-hand side. */
+const lamp = (widthMm: number, ...anchors: Anchor[]): Lamp => ({
+  path: anchors.length === 2 ? line(at(anchors[0] as Anchor), at(anchors[1] as Anchor)) : smooth(anchors),
+  widthMm,
 });
 
-/** A closed polygon down the right side, for the Cybertruck, whose panels have no radius. */
-const polyline = (start: Pt, points: readonly Pt[]): Half => {
-  const segs: Cubic[] = [];
-  let from = start;
-  for (const point of points) {
-    segs.push(straight(from, point));
-    from = point;
-  }
-  return { start, segs };
+/** The door mirror: a teardrop hung off the shoulder just behind the A-pillar. */
+const mirror = (bodyX: number, y: number, reach = 175, chord = 240, angular = false): Path => {
+  const pts: Pt[] = [
+    [bodyX - 70, y - chord * 0.5],
+    [bodyX + reach * 0.55, y - chord * 0.46],
+    [bodyX + reach, y - chord * 0.1],
+    [bodyX + reach * 0.88, y + chord * 0.3],
+    [bodyX + reach * 0.3, y + chord * 0.5],
+    [bodyX - 70, y + chord * 0.42],
+  ];
+  return angular ? polyline(pts, true) : smooth(pts, true, 0.9);
 };
 
 export const MODEL_ART: Record<TeslaModel, ModelArt> = {
   /*
-   * Model 3. 4694 x 1849, wheelbase 2875, front overhang 841.
-   * Cab forward: the windscreen base sits close to the front axle, the bonnet is short, and
-   * the glass runs almost to the boot. The tail is a saloon's — blunter than the nose.
+   * Model 3 (2024, Highland). 4720 x 1848, wheelbase 2875, front overhang 850.
+   * Cab-forward saloon: short bonnet, glass running almost to the boot, and a roof in two
+   * panels with a painted cross bar over the B-pillar. Slim headlights swept back into the
+   * fenders; C-shaped tail lamps wrapping the rear corners.
    */
   '3': {
-    lengthMm: 4694,
-    widthMm: 1849,
+    lengthMm: 4720,
+    widthMm: 1848,
     wheelbaseMm: 2875,
-    frontOverhangMm: 841,
-    body: {
-      start: [0, -2347],
-      segs: [
-        { c1: [232, -2347], c2: [430, -2314], to: [566, -2214] },
-        { c1: [690, -2122], c2: [796, -1996], to: [852, -1846] },
-        { c1: [884, -1740], c2: [900, -1620], to: [906, -1480] },
-        { c1: [910, -1160], c2: [908, -840], to: [906, -520] },
-        { c1: [906, -180], c2: [916, 180], to: [924, 560] },
-        { c1: [924, 900], c2: [916, 1180], to: [900, 1436] },
-        { c1: [884, 1690], c2: [852, 1900], to: [796, 2064] },
-        { c1: [740, 2200], c2: [640, 2290], to: [498, 2330] },
-        { c1: [370, 2347], c2: [190, 2347], to: [0, 2347] },
-      ],
-    },
-    glass: {
-      start: [0, -1150],
-      segs: [
-        { c1: [196, -1150], c2: [352, -1096], to: [430, -980] },
-        { c1: [482, -898], c2: [510, -784], to: [518, -630] },
-        { c1: [526, -380], c2: [528, -80], to: [522, 280] },
-        { c1: [516, 570], c2: [500, 800], to: [464, 972] },
-        { c1: [432, 1128], c2: [372, 1240], to: [272, 1300] },
-        { c1: [186, 1330], c2: [92, 1330], to: [0, 1330] },
-      ],
-    },
-    wheels: { axles: [-1506, 1369], lengthMm: 720, widthMm: 245, proudMm: 46 },
-    mirrors: { y: -890, reachMm: 236, chordMm: 196 },
-    seams: [-1180, 1372, 1980],
-    headlight: { y: -2205, innerMm: 300, outerMm: 760 },
-    taillight: { y: 2270, halfWidthMm: 690 },
-    headerY: -640,
-    // Just behind the front seats, where the two roof panels meet.
-    roofBarY: 40,
+    frontOverhangMm: 850,
+    body: smooth([
+      [0, -2360],
+      [400, -2338],
+      [670, -2210],
+      [830, -2010],
+      [896, -1740],
+      [912, -1510],
+      [900, -1200],
+      [896, -500],
+      [902, 400],
+      [914, 1000],
+      [924, 1365],
+      [912, 1720],
+      [870, 1990],
+      [740, 2210],
+      [500, 2330],
+      [0, 2360],
+    ]),
+    frame: smooth([
+      [0, -1265],
+      [520, -1224],
+      [676, -1110],
+      [722, -700],
+      [732, 200],
+      [720, 950],
+      [664, 1500],
+      [464, 1810],
+      [0, 1905],
+    ]),
+    windscreen: smooth([
+      [0, -1225],
+      [500, -1176],
+      [606, -1020],
+      [630, -800],
+      corner([622, -600]),
+      [0, -600],
+    ]),
+    roofGlass: [
+      smooth([[0, -540], corner([604, -540]), corner([608, 60]), [0, 60]]),
+      smooth([[0, 180], corner([606, 180]), [588, 1000], [512, 1520], [340, 1800], [0, 1850]]),
+    ],
+    roofBar: { y: 120, heightMm: 120 },
+    frunk: smooth([
+      [896, -1180],
+      [800, -1380],
+      [778, -1900],
+      [610, -2160],
+      [0, -2262],
+    ]),
+    boot: smooth([
+      [880, 1990],
+      [740, 2200],
+      [0, 2290],
+    ]),
+    creases: [
+      smooth([
+        [330, -1300],
+        [300, -1720],
+        [240, -2090],
+      ]),
+    ],
+    doorCuts: [-1120, 80, 1060],
+    headlight: lamp(110, [430, -2230], [810, -2000]),
+    taillight: lamp(90, [826, 2000], [700, 2160], [470, 2255]),
+    mirror: mirror(896, -1010),
+    wheels: { axles: [-1510, 1365], lengthMm: 700, widthMm: 245, proudMm: 46 },
   },
 
   /*
-   * Model Y. 4751 x 1921, wheelbase 2890, front overhang 863.
-   * Taller and boxier than the 3, so in plan the flanks are more nearly parallel and the tail
-   * is a blunt hatch. One uninterrupted glass roof, running back to the tailgate.
+   * Model Y (2025, Juniper). 4792 x 1921, wheelbase 2890, front overhang 870.
+   * Taller and boxier than the 3, so in plan the flanks are nearly parallel and the tail is
+   * a blunt hatch. One uninterrupted glass roof back to the liftgate, and a thin light bar
+   * across both the nose and the tail.
    */
   Y: {
-    lengthMm: 4751,
+    lengthMm: 4792,
     widthMm: 1921,
     wheelbaseMm: 2890,
-    frontOverhangMm: 863,
-    body: {
-      start: [0, -2375],
-      segs: [
-        { c1: [252, -2375], c2: [468, -2340], to: [618, -2232] },
-        { c1: [746, -2136], c2: [836, -2004], to: [886, -1856] },
-        { c1: [914, -1750], c2: [934, -1630], to: [942, -1490] },
-        { c1: [948, -1120], c2: [948, -740], to: [948, -360] },
-        { c1: [950, 40], c2: [956, 440], to: [960, 820] },
-        { c1: [960, 1120], c2: [954, 1400], to: [942, 1660] },
-        { c1: [930, 1880], c2: [910, 2060], to: [872, 2196] },
-        { c1: [838, 2296], c2: [746, 2352], to: [592, 2364] },
-        { c1: [420, 2375], c2: [210, 2375], to: [0, 2375] },
-      ],
-    },
-    glass: {
-      start: [0, -1200],
-      segs: [
-        { c1: [204, -1200], c2: [364, -1140], to: [444, -1014] },
-        { c1: [498, -930], c2: [528, -812], to: [538, -650] },
-        { c1: [546, -340], c2: [550, 20], to: [550, 420] },
-        { c1: [550, 760], c2: [546, 1040], to: [534, 1256] },
-        { c1: [522, 1430], c2: [496, 1570], to: [434, 1654] },
-        { c1: [356, 1740], c2: [190, 1760], to: [0, 1760] },
-      ],
-    },
-    wheels: { axles: [-1512, 1378], lengthMm: 740, widthMm: 255, proudMm: 46 },
-    mirrors: { y: -906, reachMm: 240, chordMm: 200 },
-    seams: [-1230, 1792],
-    headlight: { y: -2222, innerMm: 320, outerMm: 800 },
-    taillight: { y: 2306, halfWidthMm: 740 },
-    headerY: -660,
+    frontOverhangMm: 870,
+    body: smooth([
+      [0, -2396],
+      [420, -2372],
+      [700, -2240],
+      [866, -2020],
+      [936, -1760],
+      [950, -1526],
+      [944, -1200],
+      [942, -500],
+      [948, 300],
+      [956, 900],
+      [960, 1364],
+      [952, 1760],
+      [920, 2060],
+      [800, 2270],
+      [520, 2372],
+      [0, 2396],
+    ]),
+    frame: smooth([
+      [0, -1290],
+      [540, -1244],
+      [706, -1130],
+      [760, -700],
+      [770, 300],
+      [764, 1300],
+      [716, 1860],
+      [504, 2140],
+      [0, 2200],
+    ]),
+    windscreen: smooth([
+      [0, -1250],
+      [520, -1196],
+      [636, -1030],
+      [658, -820],
+      corner([650, -620]),
+      [0, -620],
+    ]),
+    roofGlass: [
+      smooth([[0, -560], corner([636, -560]), corner([646, 700]), corner([634, 1430]), [0, 1445]]),
+    ],
+    rearGlass: smooth([[0, 1560], corner([616, 1560]), [570, 1915], [370, 2110], [0, 2150]]),
+    frunk: smooth([
+      [944, -1220],
+      [845, -1440],
+      [822, -1950],
+      [650, -2200],
+      [0, -2300],
+    ]),
+    boot: smooth([
+      [900, 2160],
+      [720, 2300],
+      [0, 2350],
+    ]),
+    creases: [
+      smooth([
+        [340, -1330],
+        [310, -1760],
+        [250, -2140],
+      ]),
+    ],
+    doorCuts: [-1150, 90, 1110],
+    headlight: lamp(60, [0, -2300], [520, -2262], [760, -2140]),
+    taillight: lamp(72, [0, 2296], [560, 2276], [840, 2140]),
+    mirror: mirror(944, -1040, 155, 200),
+    wheels: { axles: [-1526, 1364], lengthMm: 720, widthMm: 255, proudMm: 46 },
   },
 
   /*
-   * Model S. 4970 x 1964, wheelbase 2960, front overhang 1000.
-   * The long one: a bonnet half again as long as the 3's, and a fastback whose rear screen
-   * runs most of the way to the tail rather than stopping at a boot lid.
+   * Model S (2021). 4970 x 1964, wheelbase 2960, front overhang 1000.
+   * The long one: a bonnet half again as long as the 3's, slim horizontal headlights, a
+   * fastback whose rear screen runs most of the way to the tail, and a full-width light bar.
    */
   S: {
     lengthMm: 4970,
     widthMm: 1964,
     wheelbaseMm: 2960,
     frontOverhangMm: 1000,
-    body: {
-      start: [0, -2485],
-      segs: [
-        { c1: [206, -2485], c2: [408, -2444], to: [540, -2334] },
-        { c1: [676, -2216], c2: [792, -2056], to: [856, -1870] },
-        { c1: [900, -1730], c2: [928, -1600], to: [938, -1450] },
-        { c1: [948, -1080], c2: [950, -700], to: [950, -320] },
-        { c1: [956, 60], c2: [972, 440], to: [982, 820] },
-        { c1: [980, 1120], c2: [968, 1400], to: [944, 1660] },
-        { c1: [920, 1890], c2: [878, 2100], to: [808, 2276] },
-        { c1: [744, 2396], c2: [630, 2462], to: [470, 2478] },
-        { c1: [330, 2485], c2: [166, 2485], to: [0, 2485] },
-      ],
-    },
-    glass: {
-      start: [0, -980],
-      segs: [
-        { c1: [188, -980], c2: [340, -916], to: [420, -790] },
-        { c1: [472, -706], c2: [500, -578], to: [508, -400] },
-        { c1: [516, -60], c2: [516, 300], to: [510, 660] },
-        { c1: [502, 1000], c2: [482, 1300], to: [436, 1560] },
-        { c1: [396, 1786], c2: [322, 1930], to: [206, 1998] },
-        { c1: [130, 2040], c2: [64, 2050], to: [0, 2050] },
-      ],
-    },
-    wheels: { axles: [-1485, 1475], lengthMm: 740, widthMm: 250, proudMm: 44 },
-    mirrors: { y: -710, reachMm: 234, chordMm: 194 },
-    seams: [-1000, 2076],
-    headlight: { y: -2320, innerMm: 300, outerMm: 780 },
-    taillight: { y: 2420, halfWidthMm: 700 },
-    headerY: -420,
+    body: smooth([
+      [0, -2485],
+      [400, -2460],
+      [660, -2340],
+      [850, -2120],
+      [944, -1820],
+      [966, -1485],
+      [956, -1100],
+      [950, -300],
+      [958, 500],
+      [972, 1100],
+      [982, 1475],
+      [970, 1820],
+      [930, 2090],
+      [820, 2310],
+      [560, 2445],
+      [0, 2485],
+    ]),
+    frame: smooth([
+      [0, -930],
+      [520, -888],
+      [706, -790],
+      [760, -300],
+      [770, 500],
+      [756, 1210],
+      [668, 1740],
+      [466, 2010],
+      [0, 2080],
+    ]),
+    windscreen: smooth([
+      [0, -890],
+      [500, -846],
+      [618, -700],
+      [652, -500],
+      corner([646, -300]),
+      [0, -300],
+    ]),
+    roofGlass: [smooth([[0, -240], corner([638, -240]), corner([644, 760]), [0, 760]])],
+    rearGlass: smooth([[0, 860], corner([628, 860]), [580, 1400], [464, 1800], [290, 1990], [0, 2020]]),
+    frunk: smooth([
+      [956, -1000],
+      [866, -1240],
+      [850, -2000],
+      [650, -2300],
+      [0, -2400],
+    ]),
+    boot: smooth([
+      [910, 2100],
+      [740, 2320],
+      [0, 2410],
+    ]),
+    creases: [
+      smooth([
+        [330, -960],
+        [320, -1600],
+        [270, -2200],
+      ]),
+    ],
+    doorCuts: [-800, 260, 1250],
+    headlight: lamp(90, [470, -2380], [870, -2130]),
+    taillight: lamp(64, [0, 2382], [600, 2362], [886, 2230]),
+    mirror: mirror(956, -740),
+    wheels: { axles: [-1485, 1475], lengthMm: 740, widthMm: 255, proudMm: 46 },
   },
 
   /*
-   * Model X. 5037 x 1999, wheelbase 2965, front overhang 1006.
-   * Two things nothing else on the road has, and both show from directly above: the
-   * panoramic windscreen carries on over the front seats, so the glass starts near the front
-   * axle; and the falcon wing doors cut two lines across the roof.
+   * Model X (2021). 5057 x 1999, wheelbase 2965, front overhang 1030.
+   * Two things nothing else on the road has, and both show from above: the panoramic
+   * windscreen carries on over the front seats, so the glass starts near the front axle;
+   * and the falcon-wing doors each carry a window in the roof, either side of a painted spine.
    */
   X: {
-    lengthMm: 5037,
+    lengthMm: 5057,
     widthMm: 1999,
     wheelbaseMm: 2965,
-    frontOverhangMm: 1006,
-    body: {
-      start: [0, -2518],
-      segs: [
-        { c1: [262, -2518], c2: [486, -2478], to: [640, -2364] },
-        { c1: [776, -2258], c2: [872, -2120], to: [922, -1950] },
-        { c1: [956, -1830], c2: [978, -1700], to: [986, -1552] },
-        { c1: [994, -1180], c2: [996, -800], to: [996, -420] },
-        { c1: [998, -20], c2: [999, 400], to: [999, 800] },
-        { c1: [996, 1120], c2: [988, 1420], to: [972, 1700] },
-        { c1: [956, 1940], c2: [928, 2140], to: [876, 2306] },
-        { c1: [830, 2424], c2: [716, 2494], to: [548, 2512] },
-        { c1: [386, 2518], c2: [192, 2518], to: [0, 2518] },
-      ],
-    },
-    glass: {
-      start: [0, -1740],
-      segs: [
-        { c1: [174, -1740], c2: [322, -1656], to: [404, -1500] },
-        { c1: [468, -1380], c2: [508, -1218], to: [524, -1020] },
-        { c1: [542, -640], c2: [550, -240], to: [550, 200] },
-        { c1: [550, 620], c2: [544, 1000], to: [526, 1310] },
-        { c1: [510, 1546], c2: [476, 1728], to: [404, 1844] },
-        { c1: [336, 1950], c2: [180, 1984], to: [0, 1984] },
-      ],
-    },
-    wheels: { axles: [-1512, 1453], lengthMm: 760, widthMm: 265, proudMm: 46 },
-    mirrors: { y: -930, reachMm: 244, chordMm: 202 },
-    seams: [-1760, 2012],
-    headlight: { y: -2360, innerMm: 320, outerMm: 820 },
-    taillight: { y: 2450, halfWidthMm: 760 },
-    // Where the windscreen glass ends and the roof glass begins: on the X that join is much
-    // further back than on anything else, because the windscreen goes over your head.
-    headerY: -1020,
-    falconSeamY: [-380, 560],
+    frontOverhangMm: 1030,
+    body: smooth([
+      [0, -2528],
+      [440, -2498],
+      [740, -2370],
+      [910, -2140],
+      [978, -1850],
+      [990, -1499],
+      [984, -1100],
+      [984, -300],
+      [990, 500],
+      [996, 1100],
+      [999, 1466],
+      [990, 1820],
+      [950, 2130],
+      [830, 2360],
+      [560, 2492],
+      [0, 2528],
+    ]),
+    frame: smooth([
+      [0, -1500],
+      [560, -1448],
+      [736, -1320],
+      [794, -800],
+      [806, 200],
+      [798, 1300],
+      [736, 1900],
+      [504, 2180],
+      [0, 2240],
+    ]),
+    windscreen: smooth([
+      [0, -1450],
+      [540, -1400],
+      [666, -1210],
+      [696, -900],
+      [692, -400],
+      corner([686, -160]),
+      [0, -160],
+    ]),
+    roofGlass: [],
+    falconGlass: smooth(
+      [corner([150, -80]), corner([666, -80]), corner([676, 1350]), corner([150, 1400])],
+      true,
+    ),
+    rearGlass: smooth([[0, 1520], corner([618, 1520]), [552, 1990], [330, 2170], [0, 2200]]),
+    frunk: smooth([
+      [984, -1420],
+      [890, -1600],
+      [880, -2060],
+      [660, -2340],
+      [0, -2440],
+    ]),
+    boot: smooth([
+      [930, 2150],
+      [750, 2370],
+      [0, 2455],
+    ]),
+    creases: [
+      smooth([
+        [330, -1500],
+        [310, -1900],
+        [270, -2250],
+      ]),
+    ],
+    doorCuts: [-1340, 60, 1450],
+    headlight: lamp(90, [480, -2420], [890, -2180]),
+    taillight: lamp(64, [0, 2424], [620, 2404], [900, 2270]),
+    mirror: mirror(984, -1180, 185, 250),
+    wheels: { axles: [-1499, 1466], lengthMm: 760, widthMm: 265, proudMm: 48 },
   },
 
   /*
-   * Cybertruck. 5683 x 2200, wheelbase 3644, front overhang 1000.
-   * Straight lines throughout, which is why it gets polylines rather than curves: a blunt
-   * leading edge, chamfered front corners, parallel flanks, a squared tail, and a vault
-   * behind the cabin where every other model has a rear screen.
+   * Cybertruck. 5683 x 2200, wheelbase 3635, front overhang 1000.
+   * Straight lines throughout: a blunt front with chamfered corners, trapezoid wheel flares,
+   * a windscreen the size of a table, a full-width light bar at each end, and a vault behind
+   * the cabin where every other model has a rear screen.
    */
   CT: {
     lengthMm: 5683,
     widthMm: 2200,
-    wheelbaseMm: 3644,
+    wheelbaseMm: 3635,
     frontOverhangMm: 1000,
-    body: polyline(
+    body: polyline([
       [0, -2841],
-      [
-        [560, -2841],
-        [962, -2540],
-        [1076, -2140],
-        [1100, -1480],
-        [1100, 1480],
-        [1088, 2280],
-        [1008, 2694],
-        [700, 2841],
-        [0, 2841],
-      ],
-    ),
-    // A flat-edged trapezoid: the windscreen's leading edge is a straight line across the
-    // wedge, and it barely tapers on its way back to the roof.
-    glass: polyline(
-      [0, -1620],
-      [
-        [700, -1620],
-        [686, -900],
-        [672, 180],
-        [0, 180],
-      ],
-    ),
-    wheels: { axles: [-1841, 1803], lengthMm: 880, widthMm: 300, proudMm: 56 },
-    mirrors: { y: -1130, reachMm: 236, chordMm: 176 },
-    seams: [-1620, 300],
-    headlight: { y: -2800, innerMm: 0, outerMm: 900 },
-    taillight: { y: 2800, halfWidthMm: 900 },
-    headerY: -900,
+      [800, -2841],
+      [960, -2720],
+      [1040, -2380],
+      [1100, -2100],
+      [1100, -1560],
+      [1050, -1380],
+      [1050, 1300],
+      [1100, 1500],
+      [1100, 2100],
+      [1080, 2450],
+      [1000, 2760],
+      [800, 2841],
+      [0, 2841],
+    ]),
+    frame: polyline([
+      [0, -1800],
+      [900, -1800],
+      [780, -130],
+      [750, 320],
+      [0, 320],
+    ]),
+    windscreen: polyline([
+      [0, -1740],
+      [840, -1740],
+      [740, -160],
+      [0, -160],
+    ]),
+    roofGlass: [polyline([[0, -90], [720, -90], [706, 250], [0, 250]])],
+    vault: polyline([
+      [0, 390],
+      [840, 390],
+      [860, 2470],
+      [0, 2470],
+    ]),
+    frunk: polyline([
+      [1050, -1720],
+      [1040, -2330],
+      [880, -2680],
+      [0, -2710],
+    ]),
+    boot: polyline([
+      [1000, 2480],
+      [900, 2700],
+      [0, 2720],
+    ]),
+    creases: [line([360, -1860], [330, -2600])],
+    doorCuts: [-1500, 40, 1330],
+    headlight: lamp(70, [0, -2730], [800, -2730], [960, -2630]),
+    taillight: lamp(80, [0, 2752], [880, 2752], [1010, 2640]),
+    mirror: mirror(1050, -1350, 190, 230, true),
+    wheels: { axles: [-1841, 1794], lengthMm: 880, widthMm: 315, proudMm: 50 },
     angular: true,
-    vault: polyline(
-      [0, 300],
-      [
-        [860, 300],
-        [880, 2400],
-        [0, 2400],
-      ],
-    ),
   },
 };
 
 /** Every point the curve actually passes through, at `steps` samples per segment. */
-export function samplePoints(half: Half, steps = 12): Pt[] {
-  const out: Pt[] = [half.start];
-  let from = half.start;
-  for (const seg of half.segs) {
+export function samplePoints(path: Path, steps = 12): Pt[] {
+  const out: Pt[] = [path.start];
+  let from = path.start;
+  for (const seg of path.segs) {
     for (let i = 1; i <= steps; i++) {
       const t = i / steps;
       const u = 1 - t;
@@ -342,5 +569,39 @@ export function samplePoints(half: Half, steps = 12): Pt[] {
   return out;
 }
 
-/** The last point of a half-outline, which by construction sits on the centreline. */
-export const endOf = (half: Half): Pt => half.segs.at(-1)?.to ?? half.start;
+/** The last point of a path, which for a mirrored half sits on the centreline. */
+export const endOf = (path: Path): Pt => path.segs.at(-1)?.to ?? path.start;
+
+const num = (v: number): string => (Math.round(v * 10) / 10).toString();
+
+/** SVG path data for a path as authored, or its reflection across the centreline. */
+export function pathData(path: Path, mirror = false): string {
+  const sx = mirror ? -1 : 1;
+  let d = `M${num(sx * path.start[0])} ${num(path.start[1])}`;
+  for (const seg of path.segs)
+    d += `C${num(sx * seg.c1[0])} ${num(seg.c1[1])} ${num(sx * seg.c2[0])} ${num(seg.c2[1])} ${num(sx * seg.to[0])} ${num(seg.to[1])}`;
+  return path.closed ? `${d}Z` : d;
+}
+
+/**
+ * SVG path data for a half-outline and its mirror image as one closed shape: down the right
+ * flank, then back up the left as the same curve with x negated, walked in reverse.
+ */
+export function mirroredPathData(half: Path): string {
+  let d = `M${num(half.start[0])} ${num(half.start[1])}`;
+  for (const seg of half.segs)
+    d += `C${num(seg.c1[0])} ${num(seg.c1[1])} ${num(seg.c2[0])} ${num(seg.c2[1])} ${num(seg.to[0])} ${num(seg.to[1])}`;
+  for (let i = half.segs.length - 1; i >= 0; i--) {
+    const seg = half.segs[i] as Cubic;
+    const from = i === 0 ? half.start : ((half.segs[i - 1] as Cubic).to as Pt);
+    d += `C${num(-seg.c2[0])} ${num(seg.c2[1])} ${num(-seg.c1[0])} ${num(seg.c1[1])} ${num(-from[0])} ${num(from[1])}`;
+  }
+  return `${d}Z`;
+}
+
+/** The widest half-width of an outline, in millimetres. */
+export function halfWidthOf(path: Path): number {
+  let max = 0;
+  for (const p of samplePoints(path, 8)) max = Math.max(max, Math.abs(p[0]));
+  return max;
+}

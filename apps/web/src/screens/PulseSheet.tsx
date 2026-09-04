@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { Button, Counter, Sheet } from '../ui/primitives';
+import { Counter, Sheet } from '../ui/primitives';
 import { COPY } from '../ui/copy';
 import type { Summary } from '../sim/world';
 
@@ -12,34 +12,28 @@ export function PulseSheet({
   onClose: () => void;
 }): ReactNode {
   return (
-    <Sheet label={COPY.pulse.title} onClose={onClose}>
-      <h2 className="card-sheet__title">{COPY.pulse.title}</h2>
+    <Sheet label={COPY.pulse.title} title={COPY.pulse.title} onClose={onClose}>
       <dl className="pulse">
         <div className="pulse__item">
-          <dt>{COPY.pulse.online}</dt>
+          <dt className="eyebrow">{COPY.pulse.online}</dt>
           <dd className="num">
             <Counter value={summary.online} />
           </dd>
         </div>
         <div className="pulse__item">
-          <dt>{COPY.pulse.waves}</dt>
+          <dt className="eyebrow">{COPY.pulse.waves}</dt>
           <dd className="num">
             <Counter value={summary.wavesToday} />
           </dd>
         </div>
         <div className="pulse__item">
-          <dt>{COPY.wave.counter}</dt>
+          <dt className="eyebrow">{COPY.pulse.mine}</dt>
           <dd className="num">
             <Counter value={summary.selfWaves} />
           </dd>
         </div>
       </dl>
-      <p className="hud__note">{COPY.pulse.note}</p>
-      <div className="card-sheet__actions">
-        <Button variant="ghost" onClick={onClose}>
-          {COPY.controls.close}
-        </Button>
-      </div>
+      <p className="sheet__note">{COPY.pulse.note}</p>
     </Sheet>
   );
 }

@@ -8,7 +8,7 @@ import { buildStyle } from './style';
 import { createRoadSnapper } from './snap';
 import { MAPLIBRE_WORKER_URL } from './maplibre-worker-url';
 import { COPY } from '../ui/copy';
-import { MinusIcon, PlusIcon } from '../ui/icons';
+import { LocateIcon, MinusIcon, PlusIcon } from '../ui/icons';
 import { recordFrameCost } from '../app/testHook';
 import { isE2E } from '../config/env';
 import './map.css';
@@ -24,6 +24,8 @@ export type LiveMapProps = {
   onReady: (renderer: Renderer) => void;
   /** False once it is clear the tiles are not coming, so the app can say so. */
   onTiles: (loaded: boolean) => void;
+  /** Scenery only: no zoom or recentre controls, while onboarding sits over the map. */
+  bare?: boolean;
 };
 
 // Without this the worker request falls through to the SPA handler, which answers with
@@ -83,6 +85,7 @@ export function LiveMap({
   onSelect,
   onReady,
   onTiles,
+  bare = false,
 }: LiveMapProps): ReactNode {
   const container = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -399,12 +402,13 @@ export function LiveMap({
   }, []);
 
   return (
-    <div className="map">
+    <div className={`map ${bare ? 'map--bare' : ''}`.trim()}>
       <div className="map__gl" ref={container} />
       <canvas className="map__overlay" ref={canvasRef} aria-hidden />
       <div className="map__vignette" aria-hidden />
       {/* Only while you have the map. Six seconds after you let go it goes away by itself. */}
       <button type="button" data-touch className="map__recentre" ref={recentre} hidden>
+        <LocateIcon size={22} />
         {COPY.map.recentre}
       </button>
 

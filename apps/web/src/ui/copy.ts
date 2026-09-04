@@ -11,9 +11,10 @@ export const COPY = {
   onboarding: {
     intro: 'Wave at other Teslas',
     sub: 'See who is around you, and say hi.',
-    pickModel: 'Your car',
+    pickModel: 'Model',
     pickColour: 'Colour',
     nick: 'Name (optional)',
+    nickPlaceholder: 'What other drivers see',
     nickHint: 'Easier to type on your phone.',
     go: 'Go',
     // Name the situation, not the mechanism: nobody has a mental model for "pairing".
@@ -41,6 +42,7 @@ export const COPY = {
       `TeslaWave is over its free capacity for today. Back at ${time}.`,
     reconnecting: 'Reconnecting…',
     recentre: 'Back to my car',
+    nearby: 'nearby',
     zoomIn: 'Zoom in',
     zoomOut: 'Zoom out',
     tilesOffline: 'Map tiles are not loading. Cars and waves still work.',
@@ -95,6 +97,7 @@ export const COPY = {
     title: 'Around you',
     online: 'Drivers online',
     waves: 'Waves today',
+    mine: 'Your waves',
     note: 'Counted across the map cells you are in, never a database of people.',
   },
 
@@ -111,6 +114,8 @@ export const COPY = {
     claim: 'Continue',
     claiming: 'Checking…',
     failed: 'That code is not valid any more. Make a new one on your phone.',
+    failedToMake: 'Could not make a code right now. Try again in a moment.',
+    backspace: 'Delete the last character',
     done: 'Paired. Same car, same waves.',
   },
 
@@ -122,6 +127,17 @@ export const COPY = {
     50: 'Fifty waves. Quietly prolific.',
     100: 'A hundred waves. Genuinely one of the regulars.',
   } as Record<number, string>,
+
+  settings: {
+    car: 'Your car',
+    visible: 'Visible to others',
+    visibleHint: 'Drivers around you can see your car and wave.',
+    sound: 'Sounds',
+    soundHint: 'The chime when a wave lands.',
+    northUp: 'North up',
+    northUpHint: 'Off, the map turns with you.',
+    phone: 'Use this on my car',
+  },
 
   controls: {
     invisible: 'Invisible',

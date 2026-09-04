@@ -1,23 +1,43 @@
 import { describe, expect, it } from 'vitest';
 import { TESLA_MODELS, type TeslaModel } from '@teslawave/protocol';
-import { MODEL_ART, endOf, samplePoints, type Half, type ModelArt, type Pt } from './model-art';
+import {
+  MODEL_ART,
+  endOf,
+  mirroredPathData,
+  pathData,
+  samplePoints,
+  type ModelArt,
+  type Path,
+  type Pt,
+} from './model-art';
+import { buildCarScene } from './car-scene';
 
 /**
- * Hand-traced geometry has no compiler. These are the checks that stand in for one: the
+ * Hand-authored geometry has no compiler. These are the checks that stand in for one: the
  * proportions must match the real cars, the curves must meet their own mirror image without a
- * crease, and no two models may come out as the same shape — which is exactly what the old
- * parametric sprites did.
+ * crease, every panel must sit inside the body, and no two models may come out as the same
+ * shape — which is exactly what the old parametric sprites did.
  */
 const art = (model: TeslaModel): ModelArt => MODEL_ART[model];
 
-const extentX = (half: Half): number =>
-  samplePoints(half).reduce((max, [x]) => Math.max(max, Math.abs(x)), 0);
+const extentX = (path: Path): number =>
+  samplePoints(path).reduce((max, [x]) => Math.max(max, Math.abs(x)), 0);
 
-const extentY = (half: Half): { front: number; rear: number } =>
-  samplePoints(half).reduce(
+const extentY = (path: Path): { front: number; rear: number } =>
+  samplePoints(path).reduce(
     (acc, [, y]) => ({ front: Math.min(acc.front, y), rear: Math.max(acc.rear, y) }),
     { front: Infinity, rear: -Infinity },
   );
+
+/** Everything authored as a right-hand half and closed by its mirror image. */
+const halves = (spec: ModelArt): Path[] => [
+  spec.body,
+  spec.frame,
+  spec.windscreen,
+  ...spec.roofGlass,
+  ...(spec.rearGlass ? [spec.rearGlass] : []),
+  ...(spec.vault ? [spec.vault] : []),
+];
 
 describe('model art', () => {
   it('covers every model on the wire', () => {
@@ -44,7 +64,7 @@ describe('model art', () => {
       });
 
       it('meets its own mirror image without a crease', () => {
-        for (const half of [spec.body, spec.glass, ...(spec.vault ? [spec.vault] : [])]) {
+        for (const half of halves(spec)) {
           expect(half.start[0]).toBe(0);
           expect(endOf(half)[0]).toBe(0);
           // A horizontal tangent at each end, or the join shows as a point down the centre.
@@ -54,40 +74,69 @@ describe('model art', () => {
         }
       });
 
-      it('keeps the glass inside the body', () => {
-        expect(extentX(spec.glass)).toBeLessThan(extentX(spec.body));
-        const body = extentY(spec.body);
-        const glass = extentY(spec.glass);
-        expect(glass.front).toBeGreaterThan(body.front);
-        expect(glass.rear).toBeLessThan(body.rear);
+      it('ends its shut lines on the centreline', () => {
+        for (const seam of [spec.frunk, ...(spec.boot ? [spec.boot] : [])]) {
+          expect(endOf(seam)[0]).toBe(0);
+          expect(seam.start[0]).toBeGreaterThan(spec.widthMm * 0.4);
+        }
       });
 
-      it('keeps its wheels and lights on the car', () => {
+      it('keeps the glass inside the body, and the panels inside the frame', () => {
+        expect(extentX(spec.frame)).toBeLessThan(extentX(spec.body));
+        const body = extentY(spec.body);
+        const frame = extentY(spec.frame);
+        expect(frame.front).toBeGreaterThan(body.front);
+        expect(frame.rear).toBeLessThan(body.rear);
+        for (const panel of [spec.windscreen, ...spec.roofGlass, ...(spec.rearGlass ? [spec.rearGlass] : [])]) {
+          expect(extentX(panel)).toBeLessThan(extentX(spec.frame));
+          const p = extentY(panel);
+          expect(p.front).toBeGreaterThanOrEqual(frame.front);
+          expect(p.rear).toBeLessThanOrEqual(frame.rear);
+        }
+        if (spec.falconGlass) expect(extentX(spec.falconGlass)).toBeLessThan(extentX(spec.frame));
+      });
+
+      it('keeps its wheels, mirrors and lights on the car', () => {
         for (const axle of spec.wheels.axles)
           expect(Math.abs(axle) + spec.wheels.lengthMm / 2).toBeLessThan(spec.lengthMm / 2);
-        expect(spec.headlight.y).toBeLessThan(spec.wheels.axles[0]);
-        expect(spec.taillight.y).toBeGreaterThan(spec.wheels.axles[1]);
-        expect(spec.taillight.halfWidthMm).toBeLessThan(spec.widthMm / 2);
+        expect(extentY(spec.headlight.path).rear).toBeLessThan(spec.wheels.axles[0]);
+        expect(extentY(spec.taillight.path).front).toBeGreaterThan(spec.wheels.axles[1]);
+        expect(extentX(spec.taillight.path)).toBeLessThan(spec.widthMm / 2);
+        // The mirror hangs off the shoulder, just behind the windscreen's base.
+        expect(extentX(spec.mirror)).toBeGreaterThan(extentX(spec.body));
+        expect(extentY(spec.mirror).front).toBeGreaterThan(extentY(spec.frame).front);
+        for (const y of spec.doorCuts) expect(Math.abs(y)).toBeLessThan(spec.lengthMm / 2 - 500);
+      });
+
+      it('builds a scene both renderers can draw', () => {
+        const scene = buildCarScene(model, 'pearl');
+        expect(scene.ops.length).toBeGreaterThan(20);
+        for (const op of scene.ops) {
+          expect(op.d).toMatch(/^M-?\d/);
+          if (op.clip) expect(scene.clips[op.clip]).toBeDefined();
+        }
       });
     });
   }
 
-  it('gives the Model 3 a roof bar and the Model Y one uninterrupted panel', () => {
+  it('gives the Model 3 a roof bar and two panels, and the Model Y one uninterrupted panel', () => {
     // The clearest way to tell apart the two most common cars on the road, from above.
-    expect(art('3').roofBarY).toBeDefined();
-    expect(art('Y').roofBarY).toBeUndefined();
+    expect(art('3').roofBar).toBeDefined();
+    expect(art('3').roofGlass).toHaveLength(2);
+    expect(art('Y').roofBar).toBeUndefined();
+    expect(art('Y').roofGlass).toHaveLength(1);
   });
 
   it('runs the Model Y glass back to the tailgate and stops the 3 at the boot', () => {
-    const y = extentY(art('Y').glass).rear / art('Y').lengthMm;
-    const three = extentY(art('3').glass).rear / art('3').lengthMm;
+    const y = extentY(art('Y').frame).rear / art('Y').lengthMm;
+    const three = extentY(art('3').frame).rear / art('3').lengthMm;
     expect(y).toBeGreaterThan(three + 0.05);
   });
 
   it('gives the Model S the longest bonnet and the Model X the shortest', () => {
     const bonnet = (model: TeslaModel): number => {
       const spec = art(model);
-      return (extentY(spec.glass).front - extentY(spec.body).front) / spec.lengthMm;
+      return (extentY(spec.frame).front - extentY(spec.body).front) / spec.lengthMm;
     };
     // The X's panoramic windscreen starts near the front axle; the S has a bonnet to spare.
     expect(bonnet('S')).toBeGreaterThan(bonnet('3'));
@@ -95,9 +144,9 @@ describe('model art', () => {
     expect(bonnet('X')).toBeLessThan(bonnet('Y'));
   });
 
-  it('gives the Model X falcon wing seams and nothing else', () => {
+  it('gives the Model X falcon-wing roof glass and nothing else', () => {
     for (const model of TESLA_MODELS)
-      expect(art(model).falconSeamY === undefined).toBe(model !== 'X');
+      expect(art(model).falconGlass === undefined).toBe(model !== 'X');
   });
 
   it('builds the Cybertruck out of straight lines', () => {
@@ -117,18 +166,25 @@ describe('model art', () => {
     }
   });
 
+  it('emits SVG path data that closes where it should', () => {
+    const body = mirroredPathData(art('3').body);
+    expect(body.startsWith('M0 -2360')).toBe(true);
+    expect(body.endsWith('Z')).toBe(true);
+    expect(pathData(art('3').frunk).endsWith('Z')).toBe(false);
+    // The mirrored copy negates x and nothing else.
+    expect(pathData(art('3').mirror, true)).toContain('M-');
+  });
+
   it('draws five cars, not one car five times', () => {
     /*
-     * Silhouette signature: the half-width of the body and of the greenhouse at eight stations
-     * down the car, as a percentage of its length. Length is divided out on purpose — two
-     * models that differ only in scale should still fail this. The old parametric sprites
-     * would have: a Model 3 and a Model S have almost the same width-to-length ratio, so the
-     * body outline alone barely separates them. What separates them is the glass.
+     * Silhouette signature: the half-width of the body and of the greenhouse at twelve
+     * stations down the car, as a percentage of its length. Length is divided out on purpose:
+     * two models that differ only in scale should still fail this.
      */
     const signature = (model: TeslaModel): number[] => {
       const spec = art(model);
       const body = samplePoints(spec.body, 24);
-      const glass = samplePoints(spec.glass, 24);
+      const glass = samplePoints(spec.frame, 24);
       const at = (points: readonly Pt[], y: number): number => {
         const near = points.reduce((best, p) =>
           Math.abs(p[1] - y) < Math.abs(best[1] - y) ? p : best,
