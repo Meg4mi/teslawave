@@ -22,7 +22,7 @@ jobs:
       - id: usage
         continue-on-error: true
         env:
-          CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+          CF_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID || secrets.CF_ACCOUNT_ID }}
           CF_ANALYTICS_TOKEN: ${{ secrets.CF_ANALYTICS_TOKEN }}
         run: node scripts/usage-report.mjs
 

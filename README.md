@@ -85,7 +85,29 @@ pnpm --filter @teslawave/worker db:remote
 pnpm deploy                           # -> teslawave.<account>.workers.dev
 ```
 
-From CI, or anywhere without a browser, use a scoped API token instead of `wrangler login`:
+### From GitHub Actions (no token ever leaves GitHub)
+
+`.github/workflows/deploy.yml` runs the full check suite, makes sure the D1 database exists,
+applies migrations, deploys, and then smoke-tests the live URL - including opening a real
+WebSocket to a real Durable Object, because a green deploy is not evidence that anything
+works.
+
+Add these in the repository settings once:
+
+| Where | Name | Value |
+|---|---|---|
+| Secrets and variables -> Actions -> **Secrets** | `CLOUDFLARE_API_TOKEN` | a token with the four permissions below |
+| Secrets and variables -> Actions -> **Variables** | `CLOUDFLARE_ACCOUNT_ID` | your account id (an identifier, not a secret) |
+| Variables, optional | `DEPLOY_URL` | set once the custom domain is live, so smoke tests hit it |
+| Secrets, optional | `CF_ANALYTICS_TOKEN` | read-only token for the daily usage report |
+
+It deploys on a push to `main`, on a manual run, or on any commit whose message contains
+`[deploy]` - that last one exists to bootstrap the first deploy, since `workflow_dispatch`
+only appears once the workflow is on the default branch.
+
+### From a terminal
+
+Use a scoped API token instead of `wrangler login`:
 
 ```bash
 export CLOUDFLARE_ACCOUNT_ID=...     # Workers & Pages -> Overview
