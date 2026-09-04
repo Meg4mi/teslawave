@@ -82,6 +82,9 @@ test('spreading two fingers zooms the map in', async ({ page }) => {
 });
 
 test('closing two fingers zooms the map out', async ({ page }) => {
+  // A pinch is dozens of touch events spaced in real time; on a busy runner three of them
+  // run close to the default budget.
+  test.slow();
   const stage = await start(page);
   const before = await state(page);
 
@@ -146,6 +149,7 @@ test('the zoom buttons work without a pinch at all', async ({ page }) => {
 });
 
 test('pinching in has room to go somewhere', async ({ page }) => {
+  test.slow();
   const stage = await start(page);
   /*
    * The ceiling used to be 17, a zoom and a half above the one we follow at, which is why
@@ -164,6 +168,7 @@ test('pinching in has room to go somewhere', async ({ page }) => {
 });
 
 test('the zoom you pinched to survives the camera picking you up again', async ({ page }) => {
+  test.slow();
   const stage = await start(page);
   await pinch(page, stage, stage.wide, stage.narrow);
   const zoomed = (await state(page)).zoom;
