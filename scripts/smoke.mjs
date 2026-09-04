@@ -65,6 +65,20 @@ await check('an unknown path falls back to the app (SPA routing)', async () => {
   return String(res.status);
 });
 
+await check('the MapLibre worker is served as JavaScript', async () => {
+  // Served as index.html by the SPA fallback once already, which renders the map blank while
+  // everything else looks healthy. Never again without this failing loudly.
+  for (const path of ['/maplibre/maplibre-gl-worker.mjs', '/maplibre/maplibre-gl-shared.mjs']) {
+    const res = await fetch(`${base}${path}`);
+    expect(res.ok, `${path} returned ${res.status}`);
+    const type = res.headers.get('content-type') ?? '';
+    expect(/javascript|ecmascript/.test(type), `${path} served as ${type}`);
+    const body = await res.text();
+    expect(!body.includes('<div id="root">'), `${path} is the app shell, not the module`);
+  }
+  return 'worker and shared chunk present';
+});
+
 await check('/api/whereami answers', async () => {
   const res = await fetch(`${base}/api/whereami`);
   expect(res.ok, `returned ${res.status}`);

@@ -16,6 +16,7 @@ export type HookCar = {
 
 declare global {
   interface Window {
+    __twMap?: { getStyle: () => { layers: unknown[] } };
     __tw: {
       cars: () => HookCar[];
       summary: () => { online: number; near: number; selfWaves: number; nearby: { id: string } | null };

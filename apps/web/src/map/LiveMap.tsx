@@ -1,10 +1,11 @@
 import { useEffect, useRef, type ReactNode } from 'react';
-import { AttributionControl, Map as MlMap } from 'maplibre-gl';
+import { AttributionControl, Map as MlMap, prewarm, setWorkerUrl } from 'maplibre-gl';
 import type { MapMouseEvent, MapTouchEvent } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { getSelfPlacement, tickWorld, type RenderCar } from '../sim/world';
 import { createRenderer, type Renderer } from '../overlay/renderer';
 import { ATTRIBUTION, buildStyle } from './style';
+import { MAPLIBRE_WORKER_URL } from '../../vite-maplibre-worker';
 import { recordFrameCost } from '../app/testHook';
 import { isE2E } from '../config/env';
 import './map.css';
@@ -19,6 +20,13 @@ export type LiveMapProps = {
   /** False once it is clear the tiles are not coming, so the app can say so. */
   onTiles: (loaded: boolean) => void;
 };
+
+// Without this the worker request falls through to the SPA handler, which answers with
+// index.html, and the map silently renders nothing. See vite-maplibre-worker.ts.
+setWorkerUrl(MAPLIBRE_WORKER_URL);
+// Start the worker before the map asks for it: it shaves the wait before the first tile, and
+// a worker that cannot load fails now, loudly, instead of looking like an empty map.
+prewarm();
 
 const FOLLOW_ZOOM = 15.5;
 const SLOW_FRAME_MS = 28;
