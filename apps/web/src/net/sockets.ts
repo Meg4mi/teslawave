@@ -71,13 +71,18 @@ export function createNet(handlers: {
   onMessage: (msg: ServerMsg) => void;
   onStatus: (status: NetStatus) => void;
   onCellsDropped: (cells: string[]) => void;
+  /** The full set of cells we are subscribed to right now, whenever it changes. */
+  onCells: (cells: string[]) => void;
 }): Net {
   const hubs = new Map<string, Hub>();
   let profile: NetProfile | null = null;
   let hidden = false;
   let lastSent: SentPos | null = null;
+  /** The last position we were given, so a reconnected socket can say where we are at once. */
+  let lastFuzzed: { lat: number; lng: number; heading: number; speed: number } | null = null;
   let status: NetStatus = 'idle';
   let running = false;
+  let subscribed: string[] = [];
 
   const setStatus = (next: NetStatus): void => {
     if (status === next) return;
@@ -178,6 +183,14 @@ export function createNet(handlers: {
         sendTo(hub, hello);
         hub.helloSent = true;
       }
+      // Say where we are straight away rather than waiting for the send policy. A stopped car
+      // only reports every 30 s, so after a dropped socket it would sit invisible to everyone
+      // else for half a minute — and the hub evicts at 60 s, so a second blip erases it.
+      if (lastFuzzed && !hidden && profile && !profile.spectator) {
+        const now = Date.now();
+        sendTo(hub, { t: 'pos', ...lastFuzzed, ts: now });
+        lastSent = { heading: lastFuzzed.heading, speed: lastFuzzed.speed, sentAt: now };
+      }
       hub.keepalive = window.setInterval(() => {
         // Answered by the runtime without waking the durable object: free keepalive.
         if (ws.readyState === WebSocket.OPEN) ws.send('ping');
@@ -248,7 +261,42 @@ export function createNet(handlers: {
         if (dropped.length > 0) handlers.onCellsDropped(dropped);
       }
     }
+
+    // The cells we actually hold a socket for — not `cells`, which can name a hub we dropped
+    // at MAX_SOCKETS_PER_CLIENT. Counts are summed over this set, so it has to be the truth.
+    const held = [...hubs.values()].flatMap((h) => h.cells).sort();
+    if (held.length !== subscribed.length || held.some((cell, i) => cell !== subscribed[i])) {
+      subscribed = held;
+      handlers.onCells(held);
+    }
     refreshStatus();
+  };
+
+  /**
+   * Bring every socket back now, without waiting out a backoff.
+   *
+   * A tab that was hidden, or a car that drove through a tunnel, comes back with sockets the
+   * browser froze: `onclose` may never have fired, so the connection looks open and is dead.
+   * Anything that has not heard from the hub recently is torn down and reopened immediately,
+   * and the next fix is sent even if the send policy would have skipped it — otherwise the
+   * hub evicts us at 60 s and everyone else watches a ghost.
+   */
+  const wake = (): void => {
+    if (!running) return;
+    const now = Date.now();
+    for (const hub of hubs.values()) {
+      const fresh = hub.ws?.readyState === WebSocket.OPEN && now - hub.lastInbound < STALE_MS;
+      if (fresh) continue;
+      teardown(hub);
+      hub.attempts = 0;
+      open(hub);
+    }
+    lastSent = null;
+    refreshStatus();
+  };
+
+  const onVisibility = (): void => {
+    if (document.visibilityState === 'visible') wake();
   };
 
   return {
@@ -256,13 +304,23 @@ export function createNet(handlers: {
       profile = next;
       running = true;
       lastSent = null;
+      lastFuzzed = null;
+      subscribed = [];
+      document.addEventListener('visibilitychange', onVisibility);
+      window.addEventListener('online', wake);
+      window.addEventListener('pageshow', wake);
       setStatus('connecting');
     },
 
     stop() {
       running = false;
+      document.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('online', wake);
+      window.removeEventListener('pageshow', wake);
       for (const hub of hubs.values()) teardown(hub);
       hubs.clear();
+      subscribed = [];
+      handlers.onCells([]);
       setStatus('idle');
     },
 
@@ -281,6 +339,7 @@ export function createNet(handlers: {
 
     update(fuzzed) {
       if (!running || !profile) return false;
+      lastFuzzed = fuzzed;
       const cells = cellsWithin(fuzzed.lat, fuzzed.lng, NEIGHBOUR_RADIUS_M, CELL_PRECISION);
       ensureHubs(cells);
       if (hidden || profile.spectator) return false;

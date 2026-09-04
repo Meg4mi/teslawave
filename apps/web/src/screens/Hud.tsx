@@ -20,7 +20,14 @@ export function Hud({
 
   return (
     <div className="hud">
-      <button type="button" data-touch className="hud__stats" onClick={onOpenPulse}>
+      {/* While the socket is down these numbers are whatever the hub last said, which may be
+          minutes old. Dimming them is the honest version of "we don't know right now". */}
+      <button
+        type="button"
+        data-touch
+        className={`hud__stats ${live ? '' : 'hud__stats--stale'}`.trim()}
+        onClick={onOpenPulse}
+      >
         <span className={`hud__dot ${live ? '' : 'hud__dot--offline'}`.trim()} />
         <span className="hud__row">
           <Counter value={summary.online} />

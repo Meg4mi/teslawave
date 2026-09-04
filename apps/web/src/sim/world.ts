@@ -51,6 +51,12 @@ const TRAIL_SAMPLE_MS = 500;
 
 const cars = new Map<string, WorldCar>();
 const cellStats = new Map<string, { online: number; wavesToday: number; lastWaveTs: number | null }>();
+/**
+ * The cells we are subscribed to right now. Counts are summed over these only: cellStats
+ * used to accumulate every cell ever seen, so "N online" grew all drive as you crossed cells
+ * and never came back down.
+ */
+let subscribed = new Set<string>();
 const listeners = new Set<() => void>();
 
 let clockOffset = 0;
@@ -76,6 +82,7 @@ export const serverNow = (): number => Date.now() + clockOffset;
 export function resetWorld(id: string): void {
   cars.clear();
   cellStats.clear();
+  subscribed = new Set();
   selfId = id;
   selfWaves = 0;
   selfPlacement = null;
@@ -95,6 +102,11 @@ export function resetWorld(id: string): void {
     serverNow: Date.now(),
   };
   for (const listener of listeners) listener();
+}
+
+export function setSubscribedCells(cells: readonly string[]): void {
+  subscribed = new Set(cells);
+  for (const cell of [...cellStats.keys()]) if (!subscribed.has(cell)) cellStats.delete(cell);
 }
 
 export function setSelfPlacement(placement: Placement | null): void {
@@ -159,6 +171,9 @@ export function applyServerMsg(msg: ServerMsg): void {
       // Server time is wall clock; `now` here is the monotonic timeline. Never mix them.
       clockOffset = msg.now - Date.now();
       if (msg.you) selfWaves = msg.you.waves;
+      // A welcome is a fresh start for these cells: after a reconnect the counts from before
+      // the drop are stale, and keeping them double-counts everyone.
+      for (const cell of msg.cells) cellStats.delete(cell);
       for (const car of msg.snapshot) upsert(car, now);
       break;
     }
@@ -194,34 +209,64 @@ export function getCar(id: string): WorldCar | undefined {
 }
 
 /**
- * Called from the render loop. `nowMs` is the monotonic frame time (trails, entry rings);
- * sample interpolation runs on server time.
+ * Drop drivers who stopped reporting. The server evicts at the same age; the client does it
+ * too so a dropped socket cannot leave ghosts on the map.
+ *
+ * Called from the render loop and from a wall-clock heartbeat, because browsers stop
+ * animation frames on a hidden tab: a backgrounded map used to come back still showing cars
+ * that had left minutes earlier.
  */
-export function tickWorld(nowMs: number): RenderCar[] {
+export function pruneExpired(): number {
   const server = serverNow();
-  const out: RenderCar[] = [];
-  const trailDue = nowMs - lastTrailAt >= TRAIL_SAMPLE_MS;
-
-  for (const [id, car] of cars) {
-    // The server evicts at 60 s; the client does the same so a dropped socket cannot
-    // leave ghosts on the map.
+  let removed = 0;
+  for (const [id, car] of cars)
     if (server - car.lastServerTs > PRESENCE_EXPIRY_MS) {
       cars.delete(id);
-      continue;
+      removed++;
     }
+  return removed;
+}
+
+/** Render states for the current server time. Does not touch trails, so it is safe to call
+ * outside the render loop. */
+function placements(server: number): RenderCar[] {
+  const out: RenderCar[] = [];
+  const from = selfReported ?? selfPlacement;
+  for (const car of cars.values()) {
     const placement = sample(car.track, server);
     if (!placement) continue;
-    if (trailDue) {
-      car.trail.push({ lat: placement.lat, lng: placement.lng, at: nowMs });
-      while (car.trail.length > 0 && nowMs - (car.trail[0]?.at ?? nowMs) > TRAIL_MS) car.trail.shift();
-    }
-    const from = selfReported ?? selfPlacement;
     const distanceM = from
       ? haversineM(from.lat, from.lng, placement.lat, placement.lng)
       : Number.POSITIVE_INFINITY;
     out.push({ ...car, placement, distanceM });
   }
-  if (trailDue) lastTrailAt = nowMs;
+  return out;
+}
+
+/** Recompute the summary now, outside the render loop. */
+export function refreshSummary(): void {
+  const server = serverNow();
+  lastSummaryAt = 0;
+  updateSummary(placements(server), server);
+}
+
+/**
+ * Called from the render loop. `nowMs` is the monotonic frame time (trails, entry rings);
+ * sample interpolation runs on server time.
+ */
+export function tickWorld(nowMs: number): RenderCar[] {
+  const server = serverNow();
+  pruneExpired();
+  const out = placements(server);
+
+  if (nowMs - lastTrailAt >= TRAIL_SAMPLE_MS) {
+    lastTrailAt = nowMs;
+    // `trail` is the same array as on the stored car: the spread copies the reference.
+    for (const car of out) {
+      car.trail.push({ lat: car.placement.lat, lng: car.placement.lng, at: nowMs });
+      while (car.trail.length > 0 && nowMs - (car.trail[0]?.at ?? nowMs) > TRAIL_MS) car.trail.shift();
+    }
+  }
 
   if (nowMs - lastSummaryAt >= SUMMARY_INTERVAL_MS) {
     lastSummaryAt = nowMs;
@@ -234,7 +279,8 @@ function updateSummary(rendered: RenderCar[], server: number): void {
   let online = 0;
   let wavesToday = 0;
   let lastWaveTs: number | null = null;
-  for (const stats of cellStats.values()) {
+  for (const [cell, stats] of cellStats) {
+    if (!subscribed.has(cell)) continue;
     online += stats.online;
     wavesToday += stats.wavesToday;
     if (stats.lastWaveTs !== null && (lastWaveTs === null || stats.lastWaveTs > lastWaveTs))

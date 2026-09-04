@@ -7,6 +7,7 @@ import {
   resetWorld,
   setSelfPlacement,
   setSelfReported,
+  setSubscribedCells,
   tickWorld,
 } from './world';
 
@@ -91,6 +92,7 @@ describe('world', () => {
   });
 
   it('accumulates counters across the cells you are subscribed to', () => {
+    setSubscribedCells(['u0hq', 'u0hr']);
     applyServerMsg(diff({ cell: 'u0hq', online: 3, wavesToday: 2 }));
     applyServerMsg(diff({ cell: 'u0hr', online: 4, wavesToday: 5 }));
     tickWorld(performance.now() + 2_000);
@@ -98,7 +100,31 @@ describe('world', () => {
     expect(getSummary().wavesToday).toBe(7);
   });
 
+  it('stops counting a cell once you have driven out of it', () => {
+    setSubscribedCells(['u0hq', 'u0hr']);
+    applyServerMsg(diff({ cell: 'u0hq', online: 3, wavesToday: 2 }));
+    applyServerMsg(diff({ cell: 'u0hr', online: 4, wavesToday: 5 }));
+    // Crossing a cell boundary: u0hr is behind us now. Its count used to stay in the total
+    // for the rest of the drive, so "N online" only ever grew.
+    setSubscribedCells(['u0hq', 'u0hx']);
+    tickWorld(performance.now() + 2_000);
+    expect(getSummary().online).toBe(3);
+    expect(getSummary().wavesToday).toBe(2);
+  });
+
+  it('drops a reconnected cell\'s stale count instead of double-counting it', () => {
+    setSubscribedCells(['u0hq']);
+    applyServerMsg(diff({ cell: 'u0hq', online: 5, wavesToday: 1 }));
+    tickWorld(performance.now() + 2_000);
+    expect(getSummary().online).toBe(5);
+    // A welcome means the hub is telling us the truth from scratch for these cells.
+    applyServerMsg(welcome([]));
+    tickWorld(performance.now() + 4_000);
+    expect(getSummary().online).toBe(0);
+  });
+
   it('forgets the cells of a hub socket that went away', () => {
+    setSubscribedCells(['u0hq']);
     applyServerMsg(welcome([car()]));
     applyServerMsg(diff({ online: 5 }));
     dropCells(['u0hq']);

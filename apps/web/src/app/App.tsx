@@ -24,9 +24,12 @@ import {
   getCar,
   getSelfWaves,
   getSummary,
+  pruneExpired,
+  refreshSummary,
   resetWorld,
   setSelfPlacement,
   setSelfReported,
+  setSubscribedCells,
   subscribeSummary,
 } from '../sim/world';
 import { newId, useIdentity } from '../identity/store';
@@ -188,6 +191,7 @@ export function App(): ReactNode {
       onMessage: onServerMsg,
       onStatus: setStatus,
       onCellsDropped: dropCells,
+      onCells: setSubscribedCells,
     });
     netRef.current = net;
     resetWorld(identity.id);
@@ -204,6 +208,19 @@ export function App(): ReactNode {
       netRef.current = null;
     };
   }, [identity, spectator, onServerMsg]);
+
+  /**
+   * Wall-clock heartbeat. The render loop expires cars, but a hidden tab gets no animation
+   * frames at all, so a phone put in a pocket used to come back showing drivers who had left
+   * minutes earlier. An interval keeps firing (throttled, but firing) while hidden.
+   */
+  useEffect(() => {
+    if (!identity) return;
+    const beat = window.setInterval(() => {
+      if (pruneExpired() > 0 || document.visibilityState === 'visible') refreshSummary();
+    }, 5_000);
+    return () => clearInterval(beat);
+  }, [identity]);
 
   useEffect(() => {
     netRef.current?.setHidden(!prefs.sharing);
@@ -419,7 +436,7 @@ export function App(): ReactNode {
         </div>
       ) : null}
 
-      <Toast toast={toast} onDone={() => setToast(null)} />
+      <Toast key={toast?.id ?? 'none'} toast={toast} onDone={() => setToast(null)} />
 
       {selected ? (
         <CarCard

@@ -31,6 +31,10 @@
   background: var(--fg-faint);
 }
 
+.hud__stats--stale .hud__row {
+  color: var(--fg-faint);
+}
+
 .hud__sep {
   color: var(--fg-faint);
 }

@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import './primitives.css';
 
 export function Sheet({
@@ -124,20 +124,30 @@ export function ControlButton({
 export type ToastContent = { id: number; text: string; icon?: ReactNode; warm?: boolean };
 
 export function Toast({ toast, onDone }: { toast: ToastContent | null; onDone: () => void }): ReactNode {
-  // Keyed by toast id in the parent, so every toast mounts fresh and starts un-dismissed.
-  const [leaving, setLeaving] = useState(false);
+  // The dismiss timers must depend on *which* toast this is and nothing else. They used to
+  // depend on the `onDone` callback, which the parent re-creates on every render — and the map
+  // re-renders twice a second, so the timers were cleared and restarted forever and the toast
+  // stayed on screen for the rest of the drive. `leaving` is stored as an id rather than a
+  // boolean for the same reason: it needs no reset when the next toast arrives.
+  const done = useRef(onDone);
+  useEffect(() => {
+    done.current = onDone;
+  });
+  const [leavingId, setLeavingId] = useState<number | null>(null);
+  const id = toast?.id ?? null;
 
   useEffect(() => {
-    if (!toast) return;
-    const hide = setTimeout(() => setLeaving(true), 3_400);
-    const done = setTimeout(onDone, 3_700);
+    if (id === null) return;
+    const hide = setTimeout(() => setLeavingId(id), 3_400);
+    const finish = setTimeout(() => done.current(), 3_700);
     return () => {
       clearTimeout(hide);
-      clearTimeout(done);
+      clearTimeout(finish);
     };
-  }, [toast, onDone]);
+  }, [id]);
 
   if (!toast) return null;
+  const leaving = leavingId === toast.id;
   return (
     <div
       className={`toast ${leaving ? 'toast--leaving' : ''}`.trim()}
