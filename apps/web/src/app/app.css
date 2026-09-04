@@ -78,12 +78,51 @@
   gap: var(--sp-3);
 }
 
-.controls .btn {
+.control {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  width: 76px;
+  min-height: var(--touch);
+  padding: var(--sp-2) 2px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
   background: var(--bg-sheet);
-  border-color: var(--line);
+  background-image: var(--noise, none);
+  background-size: 160px 160px;
+  color: var(--fg-dim);
+  transition:
+    transform var(--d-fast) var(--e-out),
+    border-color var(--d-fast) linear,
+    color var(--d-fast) linear;
 }
 
-.controls .btn[aria-pressed='true'] {
+.control:active {
+  transform: scale(0.95);
+}
+
+.control:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.control__icon {
+  display: grid;
+  place-items: center;
+  height: 26px;
+}
+
+.control__label {
+  font: 600 10px/1 var(--font);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+/* Pressed means "this mode is on", and the only accent on screen belongs to it. */
+.control[aria-pressed='true'] {
   border-color: var(--accent);
   color: var(--accent);
 }

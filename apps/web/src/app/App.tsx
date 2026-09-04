@@ -31,7 +31,16 @@ import {
 } from '../sim/world';
 import { newId, useIdentity } from '../identity/store';
 import { play, setMuted, unlockAudio } from '../ui/sound';
-import { Toast, type ToastContent } from '../ui/primitives';
+import { ControlButton, Toast, type ToastContent } from '../ui/primitives';
+import {
+  EyeIcon,
+  EyeOffIcon,
+  NorthUpIcon,
+  SettingsIcon,
+  SoundOffIcon,
+  SoundOnIcon,
+  TrackUpIcon,
+} from '../ui/icons';
 import { CarChip } from '../ui/CarChip';
 import { COPY } from '../ui/copy';
 import { Disclaimer } from '../ui/Disclaimer';
@@ -59,6 +68,7 @@ export function App(): ReactNode {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [toast, setToast] = useState<ToastContent | null>(null);
   const [milestone, setMilestone] = useState<number | null>(null);
+  const [tiles, setTiles] = useState(true);
   const netRef = useRef<Net | null>(null);
   const rendererRef = useRef<Renderer | null>(null);
   const sentWaves = useRef(new Map<string, number>());
@@ -292,6 +302,7 @@ export function App(): ReactNode {
         self={selfCar}
         onSelect={setSelectedId}
         onReady={onMapReady}
+        onTiles={setTiles}
       />
 
       <Hud summary={summary} status={status} onOpenPulse={() => setSheet('pulse')} />
@@ -299,6 +310,11 @@ export function App(): ReactNode {
       {spectator ? (
         <div className="hud" style={{ top: 'auto', bottom: 'calc(var(--edge) + 8px)' }}>
           <p className="hud__banner">{COPY.map.spectator}</p>
+        </div>
+      ) : null}
+      {!tiles ? (
+        <div className="hud" style={{ top: 'auto', bottom: 'calc(var(--edge) + 60px)' }}>
+          <p className="hud__banner">{COPY.map.tilesOffline}</p>
         </div>
       ) : null}
       {status === 'budget' ? (
@@ -312,47 +328,37 @@ export function App(): ReactNode {
         </div>
       ) : null}
 
-      <div className="controls">
-        <button
-          type="button"
-          data-touch
-          className="btn btn--icon"
-          aria-pressed={!prefs.sharing}
-          aria-label={COPY.controls.invisible}
+      {/* Labelled, not cryptic: on a touch screen there is no hover, so a tooltip would
+          never appear. Each control says what it does and what state it is in. */}
+      <nav className="controls" aria-label={COPY.controls.settings}>
+        <ControlButton
+          label={prefs.sharing ? COPY.controls.visible : COPY.controls.invisible}
+          title={prefs.sharing ? COPY.controls.goInvisible : COPY.controls.goVisible}
+          active={!prefs.sharing}
+          icon={prefs.sharing ? <EyeIcon /> : <EyeOffIcon />}
           onClick={() => setPrefs({ sharing: !prefs.sharing })}
-        >
-          {prefs.sharing ? '◉' : '◌'}
-        </button>
-        <button
-          type="button"
-          data-touch
-          className="btn btn--icon"
-          aria-pressed={prefs.muted}
-          aria-label={COPY.controls.mute}
+        />
+        <ControlButton
+          label={prefs.muted ? COPY.controls.muted : COPY.controls.sound}
+          title={prefs.muted ? COPY.controls.unmute : COPY.controls.mute}
+          active={prefs.muted}
+          icon={prefs.muted ? <SoundOffIcon /> : <SoundOnIcon />}
           onClick={() => setPrefs({ muted: !prefs.muted })}
-        >
-          {prefs.muted ? '🔇' : '🔈'}
-        </button>
-        <button
-          type="button"
-          data-touch
-          className="btn btn--icon"
-          aria-pressed={prefs.northUp}
-          aria-label={prefs.northUp ? COPY.controls.northUp : COPY.controls.trackUp}
+        />
+        <ControlButton
+          label={prefs.northUp ? COPY.controls.northUp : COPY.controls.trackUp}
+          title={prefs.northUp ? COPY.controls.orientationNorth : COPY.controls.orientation}
+          active={prefs.northUp}
+          icon={prefs.northUp ? <NorthUpIcon /> : <TrackUpIcon />}
           onClick={() => setPrefs({ northUp: !prefs.northUp })}
-        >
-          {prefs.northUp ? 'N' : '△'}
-        </button>
-        <button
-          type="button"
-          data-touch
-          className="btn btn--icon"
-          aria-label={COPY.controls.settings}
+        />
+        <ControlButton
+          label={COPY.controls.settings}
+          title={COPY.controls.settings}
+          icon={<SettingsIcon />}
           onClick={() => setSheet('settings')}
-        >
-          ⋯
-        </button>
-      </div>
+        />
+      </nav>
 
       <WaveButton target={nearby} onWave={wave} />
 

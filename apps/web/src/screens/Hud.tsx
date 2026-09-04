@@ -35,8 +35,12 @@ export function Hud({
         </span>
       </button>
 
-      {summary.near === 0 ? <p className="hud__note">{COPY.map.quiet(summary.online)}</p> : null}
-      {status === 'reconnecting' ? <p className="hud__note">{COPY.map.reconnecting}</p> : null}
+      {/* One state at a time: a driver glancing at this should read one line, not three. */}
+      {status === 'reconnecting' || status === 'connecting' ? (
+        <p className="hud__note">{COPY.map.reconnecting}</p>
+      ) : summary.near === 0 ? (
+        <p className="hud__note">{COPY.map.quiet(summary.online)}</p>
+      ) : null}
     </div>
   );
 }

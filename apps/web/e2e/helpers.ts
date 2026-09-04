@@ -27,10 +27,13 @@ declare global {
   }
 }
 
-/** Onboard once: pick the defaults and tap Go. */
+/**
+ * Onboard once: pick the defaults and tap Go. `exact` matters: Playwright matches accessible
+ * names by substring by default, and the map controls include "Go invisible".
+ */
 export async function onboard(page: Page, url: string): Promise<void> {
   await page.goto(url);
-  await page.getByRole('button', { name: 'Go' }).click();
+  await page.getByRole('button', { name: 'Go', exact: true }).click();
   await page.waitForFunction(() => typeof window.__tw !== 'undefined');
 }
 

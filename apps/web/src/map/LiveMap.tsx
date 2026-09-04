@@ -16,6 +16,8 @@ export type LiveMapProps = {
   self: { model: string; colour: string } | null;
   onSelect: (id: string | null) => void;
   onReady: (renderer: Renderer) => void;
+  /** False once it is clear the tiles are not coming, so the app can say so. */
+  onTiles: (loaded: boolean) => void;
 };
 
 const FOLLOW_ZOOM = 15.5;
@@ -36,6 +38,7 @@ export function LiveMap({
   self,
   onSelect,
   onReady,
+  onTiles,
 }: LiveMapProps): ReactNode {
   const container = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -70,11 +73,34 @@ export function LiveMap({
       pixelRatio: window.devicePixelRatio,
     });
     map.addControl(new AttributionControl({ compact: true, customAttribution: ATTRIBUTION }));
+    if (isE2E()) {
+      // A handle for debugging the style from a browser console or a test.
+      (window as unknown as { __twMap: MlMap }).__twMap = map;
+      map.on('error', (event) => console.error('maplibre:', event.error?.message ?? event));
+    }
     map.touchZoomRotate.disableRotation();
     mapRef.current = map;
 
     const renderer = createRenderer(canvas);
     onReady(renderer);
+
+    /*
+     * A map that never loads is the difference between "quiet road" and "this app is
+     * broken". Underground car parks, flaky LTE and a tile host having a bad day all look
+     * the same from here, so after a grace period we say so rather than showing a void.
+     */
+    let tilesReported = false;
+    const reportTiles = (loaded: boolean): void => {
+      if (tilesReported && loaded) return;
+      tilesReported = true;
+      onTiles(loaded);
+    };
+    const tileWatchdog = window.setTimeout(() => {
+      if (!map.isSourceLoaded('openmaptiles')) reportTiles(false);
+    }, 12_000);
+    map.on('sourcedata', (event) => {
+      if (event.sourceId === 'openmaptiles' && event.isSourceLoaded) reportTiles(true);
+    });
 
     let dpr = window.devicePixelRatio;
     const resize = (): void => {
@@ -189,6 +215,7 @@ export function LiveMap({
     map.on('click', pick);
 
     return () => {
+      clearTimeout(tileWatchdog);
       cancelAnimationFrame(raf);
       observer.disconnect();
       dprWatch.removeEventListener('change', resize);

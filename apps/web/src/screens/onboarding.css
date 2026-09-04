@@ -45,7 +45,8 @@
 }
 
 .onboarding__legend {
-  display: block;
+  display: flex;
+  align-items: baseline;
   padding: 0;
   margin-bottom: var(--sp-3);
   font: var(--t-hud);
@@ -94,15 +95,24 @@
 }
 
 .onboarding__colours {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  /* All ten fit on one row on a car screen; they wrap evenly on a phone. */
+  grid-template-columns: repeat(auto-fit, minmax(56px, 1fr));
   gap: var(--sp-2);
+}
+
+.onboarding__chosen {
+  margin-left: var(--sp-3);
+  color: var(--fg);
+  text-transform: none;
+  letter-spacing: 0;
 }
 
 .swatch {
   display: grid;
   place-items: center;
-  width: var(--touch);
+  width: 100%;
+  min-width: 48px;
   height: var(--touch);
   border-radius: var(--r-full);
   border: 1px solid transparent;
@@ -156,6 +166,14 @@
   align-items: center;
   gap: var(--sp-3);
   margin-top: var(--sp-2);
+}
+
+.onboarding__secondary {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  flex-wrap: wrap;
+  margin-top: calc(-1 * var(--sp-3));
 }
 
 .onboarding__go {

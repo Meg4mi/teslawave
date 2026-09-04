@@ -122,18 +122,23 @@ export function createRenderer(canvas: HTMLCanvasElement) {
         }
       }
 
-      // 3. Your heading cone, so "track up" feels deliberate.
+      // 3. Your heading cone, so "track up" feels deliberate. Two faint arcs rather than a
+      // filled wedge: a solid triangle over a dark map reads as a grey shadow, not as light.
       if (self) {
         const p = project(self.lng, self.lat);
         const angle = ((self.heading - bearing) * Math.PI) / 180 - Math.PI / 2;
         const spread = (CONE_SPREAD * Math.PI) / 180;
-        ctx.globalAlpha = 0.08;
-        ctx.fillStyle = '#6ee7ff';
-        ctx.beginPath();
-        ctx.moveTo(p.x, p.y);
-        ctx.arc(p.x, p.y, CONE_LENGTH, angle - spread, angle + spread);
-        ctx.closePath();
-        ctx.fill();
+        ctx.strokeStyle = '#6ee7ff';
+        ctx.lineWidth = 1.2;
+        for (const [radius, alpha] of [
+          [CONE_LENGTH * 0.55, 0.22],
+          [CONE_LENGTH, 0.12],
+        ] as const) {
+          ctx.globalAlpha = alpha;
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, radius, angle - spread, angle + spread);
+          ctx.stroke();
+        }
         ctx.globalAlpha = 1;
       }
 

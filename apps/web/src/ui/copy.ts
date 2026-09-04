@@ -16,7 +16,8 @@ export const COPY = {
     nick: 'Name (optional)',
     nickHint: 'Easier to type on your phone.',
     go: 'Go',
-    havePairingCode: 'I have a code',
+    havePairingCode: 'Continue from my phone',
+    havePairingCodeHint: 'Already set up on your phone? Enter its six-character code.',
     privacy: 'Your position is blurred before it leaves your car, and never stored.',
   },
 
@@ -36,6 +37,7 @@ export const COPY = {
     budget: (time: string): string =>
       `TeslaWave is over its free capacity for today. Back at ${time}.`,
     reconnecting: 'Reconnecting…',
+    tilesOffline: 'Map tiles are not loading. Cars and waves still work.',
   },
 
   wave: {
@@ -65,11 +67,14 @@ export const COPY = {
   },
 
   pairing: {
-    showTitle: 'Show on my Tesla',
-    showBody: 'Open teslawave.app on your car screen, tap "I have a code", and type this.',
+    showTitle: 'Continue on my Tesla',
+    showAction: 'Send my setup to my car',
+    showBody:
+      'On the car screen, open teslawave.app, tap "Continue from my phone", and type this code. Your car then shows the same car, name and wave count.',
     expiresIn: (mmss: string): string => `Expires in ${mmss}`,
-    enterTitle: 'Enter your code',
-    enterBody: 'Six characters, from your phone.',
+    enterTitle: 'Enter the code from your phone',
+    enterBody:
+      'Set up on your phone first, tap "Send my setup to my car" there, and type the six characters it shows.',
     claim: 'Continue',
     claiming: 'Checking…',
     failed: 'That code is not valid any more. Make a new one on your phone.',
@@ -86,12 +91,20 @@ export const COPY = {
   } as Record<number, string>,
 
   controls: {
-    invisible: 'Invisible mode',
+    invisible: 'Invisible',
     visible: 'Visible',
-    mute: 'Mute sounds',
+    goInvisible: 'Go invisible',
+    goVisible: 'Become visible',
+    invisibleHint: 'Nobody can see you or wave at you.',
+    visibleHint: 'Other drivers can see you and wave.',
+    mute: 'Mute',
     unmute: 'Unmute',
+    sound: 'Sound',
+    muted: 'Muted',
     northUp: 'North up',
     trackUp: 'Track up',
+    orientation: 'Map turns with you',
+    orientationNorth: 'Map stays north up',
     settings: 'Settings',
     close: 'Close',
   },

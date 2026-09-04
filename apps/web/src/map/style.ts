@@ -13,15 +13,23 @@ import type { StyleSpecification } from 'maplibre-gl';
 const OPENFREEMAP_TILES = 'https://tiles.openfreemap.org/planet';
 const OPENFREEMAP_GLYPHS = 'https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf';
 
-const GROUND = '#07090c';
-const WATER = '#0a1420';
-const LAND = '#0a0d12';
-const ROAD_MAJOR = '#2b3340';
-const ROAD_MID = '#232a35';
-const ROAD_MINOR = '#1a2028';
-const BOUNDARY = '#232a35';
-const LABEL = '#7d8896';
-const LABEL_HALO = '#05070a';
+/*
+ * Contrast ratios against the ground, measured, not eyeballed. The first version of this
+ * palette had roads at 1.2-1.6:1 and water at 1.08:1, which is why the map looked like a
+ * black screen with a car on it: it was rendering perfectly and none of it was visible.
+ * "Near-monochrome" is a colour decision, not a licence to be invisible.
+ */
+const GROUND = '#0e1319';
+const WATER = '#22405f'; // 1.75:1
+const LAND = '#16211a'; // 1.14:1, a hint of green for parks and woodland, not a lawn
+const ROAD_MOTORWAY = '#7a8ca8'; // 5.46:1
+const ROAD_PRIMARY = '#5f7089'; // 3.70:1
+const ROAD_SECONDARY = '#4a586d'; // 2.58:1
+const ROAD_MINOR = '#3a4557'; // 1.93:1
+const ROAD_CASING = '#161d26';
+const BOUNDARY = '#333d4c';
+const LABEL = '#aab6c6'; // 9.07:1
+const LABEL_HALO = '#080b0f';
 
 export function buildStyle(): StyleSpecification {
   return {
@@ -38,7 +46,7 @@ export function buildStyle(): StyleSpecification {
         type: 'fill',
         source: 'openmaptiles',
         'source-layer': 'landcover',
-        paint: { 'fill-color': LAND, 'fill-opacity': 0.6 },
+        paint: { 'fill-color': LAND, 'fill-opacity': 0.8 },
       },
       {
         id: 'water',
@@ -52,11 +60,12 @@ export function buildStyle(): StyleSpecification {
         type: 'line',
         source: 'openmaptiles',
         'source-layer': 'transportation',
-        filter: ['in', 'class', 'minor', 'service', 'track'],
+        filter: ['in', ['get', 'class'], ['literal', ['minor', 'service', 'track']]],
         minzoom: 12,
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
         paint: {
           'line-color': ROAD_MINOR,
-          'line-width': ['interpolate', ['linear'], ['zoom'], 12, 0.6, 16, 3],
+          'line-width': ['interpolate', ['linear'], ['zoom'], 12, 0.8, 16, 3.5],
         },
       },
       {
@@ -64,10 +73,11 @@ export function buildStyle(): StyleSpecification {
         type: 'line',
         source: 'openmaptiles',
         'source-layer': 'transportation',
-        filter: ['in', 'class', 'secondary', 'tertiary'],
+        filter: ['in', ['get', 'class'], ['literal', ['secondary', 'tertiary']]],
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
         paint: {
-          'line-color': ROAD_MID,
-          'line-width': ['interpolate', ['linear'], ['zoom'], 9, 0.6, 16, 5],
+          'line-color': ROAD_SECONDARY,
+          'line-width': ['interpolate', ['linear'], ['zoom'], 9, 0.8, 16, 5.5],
         },
       },
       {
@@ -75,10 +85,26 @@ export function buildStyle(): StyleSpecification {
         type: 'line',
         source: 'openmaptiles',
         'source-layer': 'transportation',
-        filter: ['in', 'class', 'primary', 'trunk'],
+        filter: ['in', ['get', 'class'], ['literal', ['primary', 'trunk']]],
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
         paint: {
-          'line-color': ROAD_MAJOR,
-          'line-width': ['interpolate', ['linear'], ['zoom'], 7, 0.8, 16, 7],
+          'line-color': ROAD_PRIMARY,
+          'line-width': ['interpolate', ['linear'], ['zoom'], 7, 1, 16, 7],
+        },
+      },
+      {
+        // One casing, on motorways only: it is what makes the main arteries read as roads
+        // rather than as bright lines, and it costs a single extra line layer.
+        id: 'road-motorway-casing',
+        type: 'line',
+        source: 'openmaptiles',
+        'source-layer': 'transportation',
+        filter: ['==', ['get', 'class'], 'motorway'],
+        minzoom: 10,
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: {
+          'line-color': ROAD_CASING,
+          'line-width': ['interpolate', ['linear'], ['zoom'], 10, 3, 16, 13],
         },
       },
       {
@@ -86,10 +112,11 @@ export function buildStyle(): StyleSpecification {
         type: 'line',
         source: 'openmaptiles',
         'source-layer': 'transportation',
-        filter: ['==', 'class', 'motorway'],
+        filter: ['==', ['get', 'class'], 'motorway'],
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
         paint: {
-          'line-color': ROAD_MAJOR,
-          'line-width': ['interpolate', ['linear'], ['zoom'], 5, 0.8, 16, 9],
+          'line-color': ROAD_MOTORWAY,
+          'line-width': ['interpolate', ['linear'], ['zoom'], 5, 1, 16, 9],
         },
       },
       {
@@ -97,7 +124,7 @@ export function buildStyle(): StyleSpecification {
         type: 'line',
         source: 'openmaptiles',
         'source-layer': 'boundary',
-        filter: ['<=', 'admin_level', 2],
+        filter: ['<=', ['get', 'admin_level'], 2],
         paint: { 'line-color': BOUNDARY, 'line-width': 0.8, 'line-dasharray': [3, 3] },
       },
       {

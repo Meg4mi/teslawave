@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from 'react';
 import {
   CAR_COLOURS,
+  colourOf,
   MODEL_LABELS,
   NICK_MAX_LEN,
   TESLA_MODELS,
@@ -58,7 +59,11 @@ export function Onboarding({
         </fieldset>
 
         <fieldset className="onboarding__group">
-          <legend className="onboarding__legend">{COPY.onboarding.pickColour}</legend>
+          <legend className="onboarding__legend">
+            {COPY.onboarding.pickColour}
+            {/* Ten dark circles with no names, on a screen with no hover, is a guessing game. */}
+            <span className="onboarding__chosen">{colourOf(colour).label}</span>
+          </legend>
           <div className="onboarding__colours">
             {CAR_COLOURS.map((c) => (
               <button
@@ -99,9 +104,13 @@ export function Onboarding({
           >
             {COPY.onboarding.go}
           </Button>
+        </div>
+
+        <div className="onboarding__secondary">
           <Button variant="ghost" onClick={onHaveCode}>
             {COPY.onboarding.havePairingCode}
           </Button>
+          <span className="onboarding__hint">{COPY.onboarding.havePairingCodeHint}</span>
         </div>
 
         <p className="onboarding__privacy">{COPY.onboarding.privacy}</p>

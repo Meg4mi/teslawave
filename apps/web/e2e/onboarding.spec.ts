@@ -14,14 +14,14 @@ test('onboarding reaches the map, and the identity survives a reload', async ({ 
   await page.reload();
   await page.waitForFunction(() => typeof window.__tw !== 'undefined');
   // No onboarding sheet the second time.
-  await expect(page.getByRole('button', { name: 'Go' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Go', exact: true })).toHaveCount(0);
   expect(await page.evaluate(() => window.__tw.identity()?.id)).toBe(id);
 });
 
 test('the disclaimer is on screen before and after onboarding', async ({ page }) => {
   await page.goto(simUrl(GENEVA.lat, GENEVA.lng));
   await expect(page.getByText(/Not affiliated with, endorsed or sponsored by Tesla/)).toBeVisible();
-  await page.getByRole('button', { name: 'Go' }).click();
+  await page.getByRole('button', { name: 'Go', exact: true }).click();
   await expect(page.getByText(/Not affiliated with, endorsed or sponsored by Tesla/)).toBeVisible();
 });
 
@@ -59,7 +59,7 @@ test('a driver who refuses location becomes a spectator instead of a dead end', 
   const context = await browser.newContext({ permissions: [] });
   const page = await context.newPage();
   await page.goto('/?e2e');
-  await page.getByRole('button', { name: 'Go' }).click();
+  await page.getByRole('button', { name: 'Go', exact: true }).click();
   await expect(page.getByText(/You can see others, they cannot see you/)).toBeVisible({
     timeout: 20_000,
   });

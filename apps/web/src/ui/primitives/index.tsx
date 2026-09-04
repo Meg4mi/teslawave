@@ -88,6 +88,39 @@ export function Counter({
   );
 }
 
+/**
+ * A map control: icon plus a always-visible label. A car screen has no hover, so anything
+ * that only explains itself in a tooltip explains itself to nobody.
+ */
+export function ControlButton({
+  icon,
+  label,
+  title,
+  active = false,
+  onClick,
+}: {
+  icon: ReactNode;
+  label: string;
+  title: string;
+  active?: boolean;
+  onClick: () => void;
+}): ReactNode {
+  return (
+    <button
+      type="button"
+      data-touch
+      className="control"
+      aria-pressed={active}
+      aria-label={title}
+      title={title}
+      onClick={onClick}
+    >
+      <span className="control__icon">{icon}</span>
+      <span className="control__label">{label}</span>
+    </button>
+  );
+}
+
 export type ToastContent = { id: number; text: string; icon?: ReactNode; warm?: boolean };
 
 export function Toast({ toast, onDone }: { toast: ToastContent | null; onDone: () => void }): ReactNode {
