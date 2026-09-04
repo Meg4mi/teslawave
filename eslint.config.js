@@ -12,7 +12,7 @@ import tseslint from 'typescript-eslint';
  * Never disable these.
  */
 export default tseslint.config(
-  { ignores: ['**/dist/**', '**/node_modules/**', '**/.wrangler/**', '**/playwright-report/**'] },
+  { ignores: ['**/dist/**', '**/node_modules/**', '**/.wrangler/**', '**/playwright-report/**', '**/test-results/**'] },
   js.configs.recommended,
   ...tseslint.configs.strict,
   {

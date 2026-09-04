@@ -36,6 +36,12 @@ const clean = async (page: Page, screen: string): Promise<void> => {
   expect(await spills(page), `${screen} spills past the screen edge`).toEqual([]);
 };
 
+/** Close the open sheet and wait for its scrim to go, so the next tap lands on the map. */
+const close = async (page: Page, name: string): Promise<void> => {
+  await page.getByRole('button', { name, exact: true }).click();
+  await expect(page.locator('.scrim')).toHaveCount(0);
+};
+
 test('no screen spills past the edge of the viewport', async ({ page }) => {
   await page.goto(simUrl(GENEVA.lat, GENEVA.lng));
   await clean(page, 'onboarding');
@@ -47,11 +53,11 @@ test('no screen spills past the edge of the viewport', async ({ page }) => {
 
   await page.getByRole('button', { name: 'How waving works' }).first().click();
   await clean(page, 'how to wave');
-  await page.getByRole('button', { name: 'Got it' }).click();
+  await close(page, 'Got it');
 
   await page.getByRole('button', { name: 'I already set this up on my phone' }).click();
   await clean(page, 'code entry');
-  await page.getByRole('button', { name: 'Close', exact: true }).click();
+  await close(page, 'Close');
 
   await page.getByRole('button', { name: 'Go', exact: true }).click();
   await page.waitForFunction(() => typeof window.__tw !== 'undefined');
@@ -61,13 +67,13 @@ test('no screen spills past the edge of the viewport', async ({ page }) => {
   await clean(page, 'settings');
   await page.getByRole('button', { name: 'Change', exact: true }).click();
   await clean(page, 'garage');
-  await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await close(page, 'Cancel');
 
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await page.getByRole('button', { name: 'Use this on my car', exact: true }).click();
   await expect(page.locator('.pair__code')).toBeVisible();
   await clean(page, 'pairing code');
-  await page.getByRole('button', { name: 'Close', exact: true }).click();
+  await close(page, 'Close');
 
   await page.locator('.hud__stats').click();
   await clean(page, 'around you');
