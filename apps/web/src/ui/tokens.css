@@ -1,0 +1,133 @@
+/*
+ * The only place colours, spacing, type and easings are defined.
+ *
+ * Every usual trick for "premium" is banned by the MCU 2 budget: no filter, no
+ * backdrop-filter, no blur, no animated box-shadow. Depth comes from pre-baked pixels
+ * (sprite glows, a tiled noise texture, a painted vignette) and motion is composited:
+ * transform and opacity only. See docs/decisions/0014-design-without-blur.md.
+ */
+:root {
+  /* Ground: near-black, slightly blue. Never pure #000, which smears on the car screen. */
+  --bg-0: #07090c;
+  --bg-1: #0b0e13;
+  --bg-2: #11151c;
+  --bg-sheet: rgba(11, 14, 19, 0.94);
+  --line: #1c222c;
+  --line-soft: #151a22;
+
+  --fg: #e8edf5;
+  --fg-dim: #9aa6b8;
+  --fg-faint: #5d6878;
+
+  /* One accent: this is you, and this is a wave. Nothing else may use it. */
+  --accent: #6ee7ff;
+  --accent-deep: #1d7f96;
+  /* Rationed to the wave moment only. */
+  --accent-warm: #ffd08a;
+  --ok: #7ee0a8;
+  --danger: #ff8b8b;
+
+  --r-sm: 10px;
+  --r-md: 16px;
+  --r-lg: 24px;
+  --r-full: 999px;
+
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 24px;
+  --sp-6: 32px;
+  --sp-7: 48px;
+  --sp-8: 64px;
+
+  /* Nothing interactive comes closer than this to a screen edge (brief 6). */
+  --edge: 40px;
+  /* Minimum touch target on a car screen. */
+  --touch: 64px;
+
+  /* Pre-baked texture: what stands in for frosted glass, since blur is banned. */
+  --noise: url('/noise.png');
+
+  --font: system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  --font-num: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  --t-hud: 600 13px/1.2 var(--font);
+  --t-body: 450 16px/1.4 var(--font);
+  --t-title: 600 22px/1.2 var(--font);
+  --t-hero: 650 34px/1.05 var(--font);
+
+  /* Motion is the personality. Everything entering settles; one thing overshoots. */
+  --e-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --e-inout: cubic-bezier(0.65, 0, 0.35, 1);
+  --e-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --d-fast: 120ms;
+  --d-base: 220ms;
+  --d-slow: 420ms;
+  --d-story: 900ms;
+}
+
+* {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+body {
+  background: var(--bg-0);
+  color: var(--fg);
+  font: var(--t-body);
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  touch-action: manipulation;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+
+input {
+  font: inherit;
+  color: inherit;
+}
+
+/* Counters must never reflow as digits change. */
+.num {
+  font-family: var(--font-num);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* A driver who asked for less motion gets less motion, everywhere. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+  }
+}

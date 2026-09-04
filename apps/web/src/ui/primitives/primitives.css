@@ -1,0 +1,169 @@
+/* Shared surfaces. Flat colour plus a hairline and a tiled noise texture: no blur anywhere. */
+.surface {
+  position: relative;
+  background-color: var(--bg-sheet);
+  background-image: var(--noise, none);
+  background-repeat: repeat;
+  background-size: 160px 160px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+}
+
+.sheet {
+  position: fixed;
+  left: 50%;
+  bottom: 0;
+  width: min(760px, 100%);
+  max-height: min(88vh, 720px);
+  padding: var(--sp-5) var(--sp-5) calc(var(--sp-5) + env(safe-area-inset-bottom));
+  overflow-y: auto;
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+  transform: translate(-50%, 0);
+  animation: sheet-in var(--d-base) var(--e-out) both;
+  z-index: 40;
+}
+
+@keyframes sheet-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 24px);
+  }
+}
+
+.scrim {
+  position: fixed;
+  inset: 0;
+  background: rgba(4, 6, 9, 0.62);
+  animation: fade-in var(--d-base) var(--e-out) both;
+  z-index: 30;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
+  min-height: var(--touch);
+  min-width: var(--touch);
+  padding: 0 var(--sp-5);
+  border-radius: var(--r-md);
+  border: 1px solid var(--line);
+  background: var(--bg-2);
+  color: var(--fg);
+  font-weight: 600;
+  transition:
+    transform var(--d-fast) var(--e-out),
+    opacity var(--d-fast) linear,
+    border-color var(--d-fast) linear;
+}
+
+.btn:active {
+  transform: scale(0.96);
+}
+
+.btn[disabled] {
+  opacity: 0.45;
+}
+
+.btn--primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #04222b;
+}
+
+.btn--ghost {
+  background: transparent;
+  border-color: transparent;
+  color: var(--fg-dim);
+}
+
+.btn--icon {
+  padding: 0;
+  border-radius: var(--r-full);
+}
+
+.card {
+  padding: var(--sp-4);
+  border-radius: var(--r-md);
+  border: 1px solid var(--line);
+  background: var(--bg-1);
+}
+
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: calc(var(--edge) + var(--sp-6));
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  max-width: min(520px, calc(100vw - 2 * var(--edge)));
+  padding: var(--sp-3) var(--sp-4);
+  border-radius: var(--r-full);
+  border: 1px solid var(--line);
+  background: var(--bg-sheet);
+  transform: translate(-50%, 0);
+  animation: toast-in var(--d-base) var(--e-spring) both;
+  z-index: 50;
+  pointer-events: none;
+}
+
+.toast--leaving {
+  animation: toast-out var(--d-base) var(--e-out) both;
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 16px) scale(0.96);
+  }
+}
+
+@keyframes toast-out {
+  to {
+    opacity: 0;
+    transform: translate(-50%, 8px);
+  }
+}
+
+/* Digits roll up when a counter changes: the small reward beat after a wave. */
+.counter {
+  display: inline-flex;
+  overflow: hidden;
+  height: 1em;
+  line-height: 1;
+  vertical-align: -0.08em;
+}
+
+.counter__digit {
+  display: inline-block;
+  animation: digit-roll var(--d-base) var(--e-out) both;
+}
+
+@keyframes digit-roll {
+  from {
+    transform: translateY(0.9em);
+    opacity: 0;
+  }
+}
+
+.counter--celebrate {
+  animation: counter-halo var(--d-slow) var(--e-out) both;
+}
+
+@keyframes counter-halo {
+  0% {
+    color: var(--accent-warm);
+    transform: scale(1.14);
+  }
+  100% {
+    color: inherit;
+    transform: scale(1);
+  }
+}
