@@ -201,12 +201,31 @@ visibly ends in a control.
   twenty cars and their trails. It now recovers the map's affine transform once per frame
   from three real projections and checks it against a fourth.
 - Trails were sixty strokes per car. They are quantised into six alpha levels, one path each,
-  and a car far off the screen has no trail walked at all.
+  and a car far off the screen has no trail walked at all. Not a measurable win on the CI
+  rasteriser (see the table); expected to be one on a GPU canvas.
 - The vector map was always drawn at the device's pixel ratio. Once frames are measured slow,
   it drops to 1x for the rest of the session; the cars stay at full density.
 
-The perf spec (20 cars, 6x CPU throttling, budget 8 ms mean for our own per-frame work)
-still gates all of this; its numbers for this change are recorded below once measured. The composite number in CI still says nothing about a
+Perf spec numbers, 20 cars at 6x CPU throttling, our own per-frame work, mean over three
+runs each (single runs vary by about a millisecond: 30 samples at 5–6 fps in a container with
+no GPU):
+
+| Case | Before | After |
+|---|---|---|
+| Panning | 5.6 ms | 6.9 ms, or 5.8 ms with the wave button's CSS animations disabled |
+| Turning 25°/s | 5.8 ms | 4.0 ms |
+| Panning, trails off | 4.7 ms | 5.8 ms |
+
+Two things that table taught. Trails cost about a millisecond on both sides: on a software
+rasteriser the batched paths draw no faster than the per-segment strokes did, so the
+batching's gain, if any, is on the GPU canvas the car actually has and is not proven here.
+And the panning number is now sensitive to CSS on screen: with the 300 m range the wave
+button is up for most of the test, and its transform/opacity animations are composited on
+the CPU in this container and steal cycles from our frame. On the car they run on the GPU,
+which is the whole reason ADR-0014 allows them; but they were trimmed anyway (the halo flares
+once and holds, the icon rings three times and rests) because the cheapest animation is the
+one that is not running. Budget is 8 ms; a single run can still touch it, which is why the
+gate is advisory in CI. The composite number in CI still says nothing about a
 car (no GPU); the resolution latch in particular needs a real screen at density 2 to judge.
 
 Worth checking on the car: whether the wave button now appears for cars that are plainly

@@ -40,6 +40,9 @@ frame rather than drawing cars in the wrong place.
 **Trails are quantised into six alpha levels** and drawn as one path per level, so a trail
 is at most six strokes instead of sixty. The fade only ever falls from the car backwards, so
 each level is one contiguous run. Trails of cars far off the screen are not walked at all.
+On CI's software rasteriser this draws no faster than the per-segment version did (the
+geometry is the same, and Skia strokes it either way); the saving is in draw calls, which is
+what a GPU canvas charges for. It is kept on that expectation and needs a car to confirm.
 
 ## Rejected alternatives
 

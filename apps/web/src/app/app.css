@@ -223,26 +223,34 @@
   animation: wave-in var(--d-slow) var(--e-spring) both;
 }
 
-/* A ring of the accent breathing just outside the button: the approach, made visible. */
+/*
+ * A ring of the accent just outside the button: the approach, made visible. It flares once
+ * as the button lands and then holds. It used to breathe for as long as the button was up,
+ * and on the perf spec that one looping 600 px layer cost a millisecond of every frame in
+ * software compositing — the rings on the icon are a tenth of the area and stay animated.
+ */
 .wave__halo {
   position: absolute;
   inset: -6px;
   border-radius: inherit;
   border: 2px solid var(--accent);
-  opacity: 0;
+  opacity: 0.35;
   pointer-events: none;
-  animation: wave-halo 2.4s var(--e-inout) infinite;
+  animation: wave-halo 1.4s var(--e-out) both;
 }
 
 @keyframes wave-halo {
   0% {
-    opacity: 0.6;
-    transform: scale(1);
-  }
-  70%,
-  100% {
     opacity: 0;
-    transform: scale(1.05);
+    transform: scale(0.97);
+  }
+  30% {
+    opacity: 0.8;
+    transform: scale(1.03);
+  }
+  100% {
+    opacity: 0.35;
+    transform: scale(1);
   }
 }
 
@@ -308,7 +316,7 @@
   }
 }
 
-/* The wave itself: rings leaving the icon, in time with the halo. */
+/* The wave itself: rings leaving the icon. Small, so the loop costs next to nothing. */
 .wave__icon {
   position: relative;
   flex: none;
@@ -321,19 +329,16 @@
   color: var(--accent-deep);
 }
 
-.wave__icon::before,
-.wave__icon::after {
+/* One ring, three times: it announces the button and then rests, so a car that stays
+   alongside is not a screen that never stops moving. */
+.wave__icon::before {
   content: '';
   position: absolute;
   inset: 0;
   border-radius: inherit;
   border: 1.5px solid var(--accent-deep);
   opacity: 0;
-  animation: wave-ring 2.4s var(--e-out) infinite;
-}
-
-.wave__icon::after {
-  animation-delay: 0.6s;
+  animation: wave-ring 2s var(--e-out) 3;
 }
 
 @keyframes wave-ring {
