@@ -127,6 +127,8 @@
   padding: 0;
   margin: 0;
   min-width: 0;
+  /* So the segmented control can measure the column it is in, not the screen. */
+  container-type: inline-size;
 }
 
 .field__label {
@@ -161,13 +163,16 @@
   border: 1px solid var(--line);
   border-radius: var(--r-full);
   background: var(--bg-1);
+  overflow: hidden;
 }
 
 .seg__item {
   flex: 1 1 0;
   min-width: 0;
   min-height: 56px;
-  padding: 0 var(--sp-2);
+  padding: 0 var(--sp-1);
+  overflow: hidden;
+  text-overflow: ellipsis;
   border-radius: var(--r-full);
   font: var(--t-hud);
   font-weight: 600;
@@ -196,6 +201,17 @@
 
 .seg__short {
   display: none;
+}
+
+/* A narrow column cannot fit five model names: "3 · Y · S · X · Cyber" instead. */
+@container (max-width: 480px) {
+  .seg__long {
+    display: none;
+  }
+
+  .seg__short {
+    display: inline;
+  }
 }
 
 /* The paint: real swatches, lit from the top left. */

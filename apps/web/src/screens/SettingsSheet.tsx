@@ -39,7 +39,7 @@ export function SettingsSheet({
           <span className="settings__car">
             <CarSvg model={identity.model} colour={identity.colour} size={96} heading={90} />
             <span className="settings__label">
-              {identity.nick ?? MODEL_LABELS[identity.model]}
+              <span className="settings__name">{identity.nick ?? MODEL_LABELS[identity.model]}</span>
               <span className="settings__hint">
                 {identity.nick ? `${MODEL_LABELS[identity.model]} · ` : ''}
                 {colourOf(identity.colour).label} · {COPY.garage.tapHint}

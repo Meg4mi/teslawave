@@ -54,6 +54,15 @@
   gap: 3px;
   min-width: 0;
   font: var(--t-strong);
+  overflow-wrap: anywhere;
+}
+
+/* The first line is a name a driver typed: one line, cut short, never a second row. */
+.settings__name {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .settings__hint {
@@ -71,6 +80,12 @@
   display: flex;
   align-items: center;
   gap: var(--sp-3);
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.settings__car svg {
+  flex: none;
 }
 
 /* --- The garage: the car beside its choices, like onboarding in a sheet ------------------ */
@@ -207,8 +222,19 @@
     font-size: 32px;
   }
 
+  /* Six across, and shorter keys, so the whole keypad fits a small phone without scrolling. */
   .keypad {
     grid-template-columns: repeat(6, 1fr);
+    gap: var(--sp-1) var(--sp-2);
+  }
+
+  .keypad .btn {
+    min-height: 52px;
+    font-size: 20px;
+  }
+
+  .pair__entry {
+    min-height: 64px;
   }
 
   .pair__slot {
