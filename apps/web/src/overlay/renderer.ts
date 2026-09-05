@@ -11,18 +11,48 @@ import { getSprite, SPRITE_LENGTH } from './sprites';
  */
 export type Project = (lng: number, lat: number) => { x: number; y: number };
 
-export type Ripple = {
-  lng: number;
-  lat: number;
+/**
+ * One wave, as a choreography on a single clock rather than a ring here and a dot there.
+ *
+ * `null` for either end means your own car. A wave you send flies from you to them and lands
+ * on them; a wave you receive flies from them to you, and its rings leave *their* car and
+ * grow until they have washed over the whole screen, so the wave physically arrives at you.
+ * Nothing under a second reads on a car screen watched from the corner of an eye, so the
+ * whole sequence takes about two and a half, and every part of it is a stroke, an arc or a
+ * scale: no gradient, no blur, nothing allocated per frame (ADR-0014, ADR-0022).
+ */
+export type WaveKind = 'sent' | 'received';
+
+export type WaveBurst = {
+  kind: WaveKind;
+  fromId: string | null;
+  toId: string | null;
   startedAt: number;
-  ms: number;
-  colour: string;
-  rings: number;
-  /** Follows a car instead of staying put on the map. */
-  followId?: string;
 };
 
-export type Flight = { fromId: string | null; toId: string; startedAt: number; ms: number };
+/** The clock every part of a wave runs on, in milliseconds from the tap or the message. */
+export const WAVE_TIMING = {
+  /** The comet's flight from one car to the other. */
+  flightMs: 600,
+  /** When the comet lands: the target pops and its impact ring leaves. */
+  impactAt: 520,
+  popMs: 520,
+  impactRingMs: 700,
+  /** The solid line joining the two cars, bright at first, gone by the time the rings are. */
+  linkMs: 1_000,
+  /** Shockwave rings: this many, this far apart, each living this long. */
+  rings: 5,
+  ringGapMs: 200,
+  ringMs: 1_600,
+  /** Everything is over by here. */
+  totalMs: 2_600,
+} as const;
+
+const WAVE_COLOUR: Record<WaveKind, string> = { sent: '#6ee7ff', received: '#ffd08a' };
+/** How far a sent wave's rings travel from the car it lands on. Yours is a nod, not a flood. */
+const SENT_RING_REACH_PX = 260;
+const COMET_RADIUS = 9;
+const COMET_GHOSTS = 6;
 
 export type RenderOptions = {
   cars: RenderCar[];
@@ -64,8 +94,7 @@ const CONE_LENGTH = 60;
 const CONE_SPREAD = 12;
 
 export function createRenderer(canvas: HTMLCanvasElement) {
-  const ripples: Ripple[] = [];
-  const flights: Flight[] = [];
+  const waves: WaveBurst[] = [];
   let sonarStartedAt = 0;
 
   const positionOf = (id: string, cars: RenderCar[]): { lat: number; lng: number } | null => {
@@ -74,14 +103,9 @@ export function createRenderer(canvas: HTMLCanvasElement) {
   };
 
   return {
-    addRipple(ripple: Omit<Ripple, 'startedAt'>): void {
-      ripples.push({ ...ripple, startedAt: performance.now() });
-      if (ripples.length > 24) ripples.shift();
-    },
-
-    addFlight(flight: Omit<Flight, 'startedAt'>): void {
-      flights.push({ ...flight, startedAt: performance.now() });
-      if (flights.length > 8) flights.shift();
+    addWave(wave: Omit<WaveBurst, 'startedAt'>): void {
+      waves.push({ ...wave, startedAt: performance.now() });
+      if (waves.length > 8) waves.shift();
     },
 
     playSonar(): void {
@@ -101,6 +125,23 @@ export function createRenderer(canvas: HTMLCanvasElement) {
 
       const { cars, self, nearbyId, selectedId, bearing, zoom } = options;
       const sizeScale = spriteScaleFor(zoom, SPRITE_LENGTH);
+
+      for (let i = waves.length - 1; i >= 0; i--) {
+        const wave = waves[i];
+        if (wave && now - wave.startedAt >= WAVE_TIMING.totalMs) waves.splice(i, 1);
+      }
+      const endOf = (id: string | null): { lat: number; lng: number } | null =>
+        id === null ? self : positionOf(id, cars);
+      /** The pop a car makes when a wave lands on it: a single half-sine, 30% larger at peak. */
+      const popOf = (id: string | null): number => {
+        let scale = 1;
+        for (const wave of waves) {
+          if (wave.toId !== id) continue;
+          const t = (now - wave.startedAt - WAVE_TIMING.impactAt) / WAVE_TIMING.popMs;
+          if (t > 0 && t < 1) scale = Math.max(scale, 1 + 0.3 * Math.sin(Math.PI * t));
+        }
+        return scale;
+      };
 
       // 1. Trails, under everything. Traffic reads as light painting from above.
       if (options.trails) {
@@ -163,6 +204,25 @@ export function createRenderer(canvas: HTMLCanvasElement) {
         }
       }
 
+      // 2b. A wave lights the line between the two cars up solid, then lets it go.
+      for (const wave of waves) {
+        const t = (now - wave.startedAt) / WAVE_TIMING.linkMs;
+        if (t >= 1) continue;
+        const from = endOf(wave.fromId);
+        const to = endOf(wave.toId);
+        if (!from || !to) continue;
+        const a = project(from.lng, from.lat);
+        const b = project(to.lng, to.lat);
+        ctx.globalAlpha = 0.85 * (1 - t);
+        ctx.strokeStyle = WAVE_COLOUR[wave.kind];
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(b.x, b.y);
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+      }
+
       // 3. Your heading cone, so "track up" feels deliberate. Two faint arcs rather than a
       // filled wedge: a solid triangle over a dark map reads as a grey shadow, not as light.
       if (self) {
@@ -199,6 +259,7 @@ export function createRenderer(canvas: HTMLCanvasElement) {
           scale *= 1 + 0.06 * Math.sin((now / 1_600) * Math.PI * 2);
         }
         if (car.id === selectedId) scale *= 1.08;
+        scale *= popOf(car.id);
         ctx.globalAlpha = appearing;
         ctx.scale(scale, scale);
         ctx.drawImage(sprite.canvas, -sprite.size / 2, -sprite.size / 2, sprite.size, sprite.size);
@@ -234,61 +295,86 @@ export function createRenderer(canvas: HTMLCanvasElement) {
         ctx.save();
         ctx.translate(p.x, p.y);
         ctx.rotate(((self.heading - bearing) * Math.PI) / 180);
-        ctx.scale(sizeScale, sizeScale);
+        const scale = sizeScale * popOf(null);
+        ctx.scale(scale, scale);
         ctx.drawImage(sprite.canvas, -sprite.size / 2, -sprite.size / 2, sprite.size, sprite.size);
         ctx.restore();
       }
 
-      // 6. Waves in flight: a dot thrown from one car to the other.
-      for (let i = flights.length - 1; i >= 0; i--) {
-        const flight = flights[i];
-        if (!flight) continue;
-        const t = (now - flight.startedAt) / flight.ms;
-        if (t >= 1) {
-          flights.splice(i, 1);
-          continue;
-        }
-        const from = flight.fromId ? positionOf(flight.fromId, cars) : self;
-        const to = positionOf(flight.toId, cars) ?? (flight.toId === 'self' ? self : null);
-        if (!from || !to) continue;
-        const a = project(from.lng, from.lat);
-        const b = project(to.lng, to.lat);
-        const eased = 1 - (1 - t) * (1 - t);
-        ctx.globalAlpha = 1 - t * 0.3;
-        ctx.fillStyle = '#6ee7ff';
-        ctx.beginPath();
-        ctx.arc(a.x + (b.x - a.x) * eased, a.y + (b.y - a.y) * eased, 5, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.globalAlpha = 1;
-      }
+      // 6. Waves: the comet, the impact, and the rings, all on one clock.
+      for (const wave of waves) {
+        const age = now - wave.startedAt;
+        const colour = WAVE_COLOUR[wave.kind];
+        const from = endOf(wave.fromId);
+        const to = endOf(wave.toId);
+        ctx.strokeStyle = colour;
+        ctx.fillStyle = colour;
 
-      // 7. Ripples: three rings leaving a car.
-      for (let i = ripples.length - 1; i >= 0; i--) {
-        const ripple = ripples[i];
-        if (!ripple) continue;
-        const t = (now - ripple.startedAt) / ripple.ms;
-        if (t >= 1) {
-          ripples.splice(i, 1);
-          continue;
+        // The comet: a head and a handful of fading ghosts behind it, thrown from one car to
+        // the other. Seven arcs, so it costs what the old five-pixel dot cost.
+        if (from && to && age < WAVE_TIMING.flightMs) {
+          const a = project(from.lng, from.lat);
+          const b = project(to.lng, to.lat);
+          for (let k = COMET_GHOSTS; k >= 0; k--) {
+            const t = age / WAVE_TIMING.flightMs - k * 0.03;
+            if (t <= 0) continue;
+            const eased = 1 - (1 - t) * (1 - t);
+            ctx.globalAlpha = k === 0 ? 1 : 0.7 * (1 - k / (COMET_GHOSTS + 1));
+            ctx.beginPath();
+            ctx.arc(
+              a.x + (b.x - a.x) * eased,
+              a.y + (b.y - a.y) * eased,
+              COMET_RADIUS - k,
+              0,
+              Math.PI * 2,
+            );
+            ctx.fill();
+          }
         }
-        const anchor = ripple.followId ? positionOf(ripple.followId, cars) : ripple;
-        if (!anchor) continue;
-        const p = project(anchor.lng, anchor.lat);
-        ctx.strokeStyle = ripple.colour;
-        ctx.lineWidth = 2;
-        for (let ring = 0; ring < ripple.rings; ring++) {
-          const offset = ring / ripple.rings / 2;
-          const rt = t - offset;
-          if (rt <= 0 || rt >= 1) continue;
-          ctx.globalAlpha = 0.6 * (1 - rt);
+
+        // The impact ring: leaves the car the wave lands on as it pops.
+        const impactT = (age - WAVE_TIMING.impactAt) / WAVE_TIMING.impactRingMs;
+        if (to && impactT > 0 && impactT < 1) {
+          const p = project(to.lng, to.lat);
+          const eased = 1 - (1 - impactT) * (1 - impactT);
+          ctx.globalAlpha = 0.9 * (1 - impactT);
+          ctx.lineWidth = 3;
           ctx.beginPath();
-          ctx.arc(p.x, p.y, 14 + rt * 70, 0, Math.PI * 2);
+          ctx.arc(p.x, p.y, SPRITE_LENGTH * (0.5 + eased * 1.3), 0, Math.PI * 2);
           ctx.stroke();
         }
+
+        // The shockwave. Yours leaves the car you waved at and travels a little way; one you
+        // receive leaves the sender the moment it arrives and grows until it has crossed the
+        // whole screen, whichever corner they are in. Large arcs are still one stroke each:
+        // the boot sonar has always drawn one this size.
+        const received = wave.kind === 'received';
+        const anchor = received ? from : to;
+        const ringsStartAt = received ? 0 : WAVE_TIMING.impactAt;
+        if (anchor) {
+          const p = project(anchor.lng, anchor.lat);
+          const reach = received
+            ? Math.hypot(Math.max(p.x, width - p.x), Math.max(p.y, height - p.y)) * 1.05
+            : SENT_RING_REACH_PX;
+          const rings = received ? WAVE_TIMING.rings : 3;
+          ctx.lineWidth = received ? 5 : 3;
+          for (let ring = 0; ring < rings; ring++) {
+            const rt = (age - ringsStartAt - ring * WAVE_TIMING.ringGapMs) / WAVE_TIMING.ringMs;
+            if (rt <= 0 || rt >= 1) continue;
+            // A gentle ease and a fade that holds, then drops: with a sharper ease and a
+            // linear fade each ring had left the screen, faint, by half its life, and the
+            // whole shockwave was over in a second.
+            const eased = 1 - (1 - rt) * (1 - rt * 0.5);
+            ctx.globalAlpha = 0.85 * (1 - rt * rt);
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, 20 + eased * (reach - 20), 0, Math.PI * 2);
+            ctx.stroke();
+          }
+        }
         ctx.globalAlpha = 1;
       }
 
-      // 8. The boot sonar sweep, and the ambient one when the road is quiet.
+      // 7. The boot sonar sweep, and the ambient one when the road is quiet.
       const sonarT = Math.max(0, (now - sonarStartedAt) / 900);
       if (sonarStartedAt > 0 && sonarT < 1) {
         ctx.globalAlpha = 0.4 * (1 - sonarT);

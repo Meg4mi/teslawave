@@ -17,11 +17,18 @@ demand so they can be judged side by side.
 - [ ] **Approach** — both sprites breathe, a dashed cyan line joins the two cars, the wave
       button rises with a countdown bar running out under the car's name, and an accent halo
       breathing around it.
-- [ ] **Wave sent** — press compresses, three rings leave your car, the button collapses into
-      a dot that flies to the other car, and the sent chime plays.
-- [ ] **Wave received** — warm rings on the sender, a toast carrying their actual sprite, the
-      counter rolls up with a warm halo, and a chime that is audibly different from "sent".
-- [ ] **Waved back** — both within four seconds reads as its own beat, with its own copy.
+- [ ] **Wave sent** — press compresses, the button collapses, a cyan comet flies from your car
+      to theirs, the line between you lights up, their car pops as it lands and three rings
+      leave it, and the sent chime plays. About two seconds, never more.
+- [ ] **Wave received** — a warm comet arrives, your car pops, five warm rings leave *their*
+      car and cross the whole screen, the screen edges flash once, a card at the top shows
+      their car large with "waved at you", the counter rolls up, and a chime that is audibly
+      different from "sent". It must be noticed with the eyes on the road, sound off.
+- [ ] **Waved back** — both within four seconds reads as its own beat: the card says "waved
+      back". After an unprompted wave, the button comes back warm as "Wave back" for the
+      sender, even if their window had already run out.
+- [ ] Every part of a wave is transform, opacity, or a canvas stroke; the edge flash leaves the
+      DOM within a second (ADR-0022).
 
 ## The rest
 

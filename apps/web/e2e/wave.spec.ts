@@ -22,9 +22,13 @@ test('two cars in range can wave, and both counters move', async ({ browser }) =
   await expect(waveButton).toHaveAttribute('aria-label', /^Wave at the/);
   await waveButton.click();
 
-  // The toast specifically: receiving your first wave also raises the milestone card, and
-  // both are status regions.
-  await expect(pageB.locator('.toast')).toContainText(/waved at you|Waved back/, {
+  // The received card specifically: receiving your first wave also raises the milestone
+  // card, and both are status regions.
+  await expect(pageB.locator('.wave-card')).toContainText(/waved at you|waved back/, {
+    timeout: 15_000,
+  });
+  // The nod can be returned: their wave re-arms B's button for A, warm, verb first.
+  await expect(pageB.locator('.wave.wave--back .wave__verb')).toHaveText('Wave back', {
     timeout: 15_000,
   });
   // The reward beat: a first wave is a milestone, and it is personal, not a ranking.

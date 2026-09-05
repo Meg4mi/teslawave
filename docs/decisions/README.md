@@ -27,3 +27,4 @@ Format: Context / Decision / Rejected alternatives / Consequences (`0000-templat
 | [0019](0019-own-car-is-interpolated-too.md) | Your own car is interpolated too, and the camera pauses on touch-down |
 | [0020](0020-one-car-drawing-two-renderers.md) | One car drawing, rendered as SVG in the UI and baked to bitmap on the map |
 | [0021](0021-map-resolution-follows-the-frame-rate.md) | The map's resolution follows the measured frame rate, and the overlay projects for itself |
+| [0022](0022-the-wave-is-an-event-on-the-whole-screen.md) | The wave is an event on the whole screen, not a ripple on one sprite |

@@ -75,6 +75,38 @@ describe('WaveButton', () => {
     expect(button()).not.toBeNull();
   });
 
+  it('comes back as "Wave back" when a car it already prompted for waves at you', () => {
+    const onWave = vi.fn();
+    show('a', onWave);
+    act(() => vi.advanceTimersByTime(WAVE_PROMPT_TTL_MS + 1));
+    act(() => vi.advanceTimersByTime(1_000));
+    expect(button()).toBeNull();
+
+    // Their wave bumps the prompt: a fresh window for the same car, warm, verb first.
+    const back = { ...target('a'), back: true, prompt: 1 };
+    act(() => root.render(<WaveButton target={back} onWave={onWave} />));
+    expect(button()).not.toBeNull();
+    expect(button()?.classList.contains('wave--back')).toBe(true);
+    expect(button()?.querySelector('.wave__verb')?.textContent).toBe('Wave back');
+    expect(button()?.getAttribute('aria-label')).toMatch(/^Wave back at the/);
+
+    // The same prompt again, twice a second, is not a new one.
+    for (let i = 0; i < 12; i++) {
+      act(() => vi.advanceTimersByTime(1_000));
+      act(() => root.render(<WaveButton target={{ ...back }} onWave={onWave} />));
+    }
+    expect(button()).toBeNull();
+
+    // The offer lapses and the parent hands the same car back with no prompt: still nothing,
+    // because a car that is merely still alongside is not a new approach.
+    show('a', onWave);
+    expect(button()).toBeNull();
+
+    // A later wave from them is.
+    act(() => root.render(<WaveButton target={{ ...back, prompt: 2 }} onWave={onWave} />));
+    expect(button()).not.toBeNull();
+  });
+
   it('disappears when the car goes out of range', () => {
     show('a');
     show(null);

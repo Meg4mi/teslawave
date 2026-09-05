@@ -377,6 +377,147 @@
   }
 }
 
+/*
+ * They waved first. The same button, warm: the halo, the well and the icon take the wave
+ * colour, and the verb is "Wave back". One glance, one tap, and the nod is returned.
+ */
+.wave--back {
+  border-color: var(--accent-warm);
+}
+
+.wave--back .wave__halo {
+  border-color: var(--accent-warm);
+  opacity: 0.7;
+}
+
+.wave--back .wave__car {
+  border-color: rgba(255, 208, 138, 0.55);
+}
+
+.wave--back .wave__countdown {
+  background: linear-gradient(90deg, #b8843a, var(--accent-warm));
+}
+
+.wave--back .wave__icon {
+  background: rgba(255, 208, 138, 0.22);
+  color: #8a5a1a;
+}
+
+.wave--back .wave__icon::before {
+  border-color: #b8843a;
+}
+
+/* --- A received wave, on the whole screen -------------------------------------------------- */
+/*
+ * The edge flash. Peripheral vision catches the edges of the screen lighting up without the
+ * driver looking at the map, which is the whole point when the chime cannot be relied on.
+ * One static gradient, painted once, and a single opacity animation: it exists for under a
+ * second and is then unmounted, so it is never a resident layer (ADR-0022). Under every
+ * control, so nothing the driver might be reading is tinted.
+ */
+.wave-flash {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-flash);
+  pointer-events: none;
+  background: radial-gradient(
+    120% 100% at 50% 50%,
+    rgba(255, 208, 138, 0) 44%,
+    rgba(255, 208, 138, 0.18) 72%,
+    rgba(255, 208, 138, 0.6) 100%
+  );
+  opacity: 0;
+  animation: wave-flash 900ms var(--e-out) both;
+}
+
+@keyframes wave-flash {
+  0% {
+    opacity: 0;
+  }
+  18% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+/*
+ * The card: their car, large, and two words. Top centre, clear of the HUD on the left and of
+ * the wave button and milestone card at the bottom. Sized to be read from the driver's seat,
+ * not from a phone held close.
+ */
+.wave-card {
+  position: absolute;
+  left: 50%;
+  top: max(var(--edge), env(safe-area-inset-top));
+  z-index: var(--z-milestone);
+  display: flex;
+  align-items: center;
+  gap: var(--sp-5);
+  padding: var(--sp-3) var(--sp-7) var(--sp-3) var(--sp-3);
+  border-radius: var(--r-full);
+  border: 1.5px solid var(--accent-warm);
+  background: var(--bg-sheet);
+  background-image: var(--noise, none);
+  background-size: 160px 160px;
+  color: var(--fg);
+  white-space: nowrap;
+  pointer-events: none;
+  transform: translate(-50%, 0);
+  animation: wave-card-in var(--d-slow) var(--e-spring) both;
+}
+
+.wave-card__car {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 112px;
+  height: 112px;
+  border-radius: var(--r-full);
+  border: 1px solid rgba(255, 208, 138, 0.45);
+  background: radial-gradient(circle at 50% 36%, #3a3020 0%, #1a1712 68%, #0f0e0b 100%);
+}
+
+.wave-card__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.wave-card__who {
+  font-weight: 700;
+  font-size: 32px;
+  letter-spacing: -0.02em;
+  line-height: 1.05;
+  text-transform: capitalize;
+}
+
+.wave-card__what {
+  font-weight: 500;
+  font-size: 22px;
+  line-height: 1.1;
+  color: var(--accent-warm);
+}
+
+.wave-card--leaving {
+  animation: wave-card-out var(--d-base) var(--e-out) both;
+}
+
+@keyframes wave-card-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -24px) scale(0.92);
+  }
+}
+
+@keyframes wave-card-out {
+  to {
+    opacity: 0;
+    transform: translate(-50%, -10px) scale(0.97);
+  }
+}
+
 /* --- The car card ----------------------------------------------------------------------- */
 .card-sheet__head {
   display: flex;
@@ -391,7 +532,8 @@
   width: 168px;
   height: 96px;
   border-radius: var(--r-md);
-  background: radial-gradient(60% 80% at 50% 50%, rgba(110, 231, 255, 0.08), rgba(110, 231, 255, 0)),
+  background:
+    radial-gradient(60% 80% at 50% 50%, rgba(110, 231, 255, 0.08), rgba(110, 231, 255, 0)),
     var(--bg-1);
   border: 1px solid var(--line-soft);
 }
@@ -602,6 +744,33 @@
       opacity: 0;
       transform: translateY(10px) scale(0.97);
     }
+  }
+
+  .wave-card {
+    top: calc(var(--edge) + 104px);
+    gap: var(--sp-3);
+    padding: var(--sp-2) var(--sp-5) var(--sp-2) var(--sp-2);
+    max-width: calc(100vw - 2 * var(--edge));
+  }
+
+  .wave-card__car {
+    width: 72px;
+    height: 72px;
+  }
+
+  .wave-card__car svg {
+    width: 60px;
+    height: auto;
+  }
+
+  .wave-card__who {
+    font-size: 20px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .wave-card__what {
+    font-size: 15px;
   }
 
   .card-sheet__head {
