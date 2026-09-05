@@ -1,6 +1,7 @@
 import {
   BRAND,
   MODEL_LABELS,
+  PARKED_HIDE_MS,
   PRESENCE_EXPIRY_MS,
   colourOf,
   isColourId,
@@ -84,7 +85,7 @@ export const EN = {
     havePairingCode: 'I already set this up on my phone',
     havePairingCodeHint: 'Bring your name and wave count across with a short code.',
     howItWorks: 'How waving works',
-    privacy: 'Your position is shared only while you are visible, and never stored.',
+    privacy: `Your position is shared only while you are visible, never stored, and hidden once you have been parked ${n(PARKED_HIDE_MS / 60_000)} minutes.`,
   },
 
   map: {
@@ -103,6 +104,7 @@ export const EN = {
     spectator: 'Location is off. You can see others, they cannot see you.',
     spectatorRetry: 'Turn it on',
     hidden: 'You are invisible. Nobody can see you or wave at you.',
+    parked: 'Parked for a while, so you are hidden. You are back on the map when you move.',
     paused: 'TeslaWave is paused. Back shortly.',
     budget: (time: string): string =>
       `TeslaWave is over its free capacity for today. Back at ${time}.`,
@@ -241,7 +243,7 @@ export const EN = {
       `${brand} is built so that there is nothing to leak. No account, no email, no trip history.`,
     leavesTitle: 'What leaves your car',
     leaves: [
-      'Your GPS position, as it is, while you are visible. It is used only to show you to the drivers around you.',
+      `Your GPS position, as it is, while you are visible and moving. A car parked for ${n(PARKED_HIDE_MS / 60_000)} minutes is hidden until it moves, so nobody can watch where you stop. The position is used only to show you to the drivers around you.`,
       'Your heading and speed, so other cars glide instead of jumping.',
       'The model and colour you picked, and a nickname if you typed one.',
       'A random secret generated in your browser. Other drivers see only a hash of it, which is not linked to you or to Tesla and cannot be used to pose as you.',

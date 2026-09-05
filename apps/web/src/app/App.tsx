@@ -97,6 +97,8 @@ export function App(): ReactNode {
     at: number;
   } | null>(null);
   const [tiles, setTiles] = useState(true);
+  /** Parked for PARKED_HIDE_MS: hidden by the clock until the car moves (ADR-0026). */
+  const [parked, setParked] = useState(false);
   const [origin, setOrigin] = useState<{ lat: number; lng: number } | null>(null);
   const netRef = useRef<Net | null>(null);
   const rendererRef = useRef<Renderer | null>(null);
@@ -237,6 +239,7 @@ export function App(): ReactNode {
       onStatus: setStatus,
       onCellsDropped: dropCells,
       onCells: setSubscribedCells,
+      onParked: setParked,
     });
     netRef.current = net;
     resetWorld(identityId);
@@ -405,15 +408,16 @@ export function App(): ReactNode {
   }, []);
 
   const selected = selectedId ? getCar(selectedId) : undefined;
+  // No wave button while hidden, by hand or by the clock: the hub would refuse the wave.
   const nearby = useMemo(
-    () => (prefs.sharing && !spectator ? summary.nearby : null),
-    [summary.nearby, prefs.sharing, spectator],
+    () => (prefs.sharing && !spectator && !parked ? summary.nearby : null),
+    [summary.nearby, prefs.sharing, spectator, parked],
   );
   // The car that just waved at you takes the button over while it is still on the map. Not
   // memoised: the button is built to take a fresh object every render, and whether they are
   // still on the map is a question for the world, which the summary re-renders us for.
   const waveTarget: WaveTarget | null =
-    backFrom && prefs.sharing && !spectator && getCar(backFrom.id)
+    backFrom && prefs.sharing && !spectator && !parked && getCar(backFrom.id)
       ? { ...backFrom, back: true, prompt: backFrom.at }
       : nearby;
   // Stable while the car is: the map re-renders twice a second for the HUD, and a fresh
@@ -478,6 +482,11 @@ export function App(): ReactNode {
       {spectator ? (
         <div className="hud hud--foot">
           <p className="hud__banner">{copy.map.spectator}</p>
+        </div>
+      ) : null}
+      {parked && prefs.sharing ? (
+        <div className="hud hud--foot">
+          <p className="hud__banner">{copy.map.parked}</p>
         </div>
       ) : null}
       {status === 'budget' ? (

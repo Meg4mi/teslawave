@@ -2,7 +2,9 @@ import {
   CELL_PRECISION,
   MAX_SOCKETS_PER_CLIENT,
   NEIGHBOUR_RADIUS_M,
+  PARKED_HIDE_MS,
   POS_INTERVAL_STATIONARY_MS,
+  STATIONARY_SPEED_KMH,
   cellsWithin,
   groupByHub,
   parseServerMsg,
@@ -93,10 +95,16 @@ export function createNet(handlers: {
   onCellsDropped: (cells: string[]) => void;
   /** The full set of cells we are subscribed to right now, whenever it changes. */
   onCells: (cells: string[]) => void;
+  /** The car has sat still for PARKED_HIDE_MS and is hidden, or has moved and is back. */
+  onParked?: (parked: boolean) => void;
 }): Net {
   const hubs = new Map<string, Hub>();
   let profile: NetProfile | null = null;
   let hidden = false;
+  /** When the car last came to a stop, or null while it is moving. */
+  let stoppedSince: number | null = null;
+  /** Hidden by the clock rather than by the driver: parked for PARKED_HIDE_MS (ADR-0026). */
+  let parked = false;
   let lastSent: SentPos | null = null;
   /** The last position we were given, so a reconnected socket can say where we are at once. */
   let lastFuzzed: { lat: number; lng: number; heading: number; speed: number } | null = null;
@@ -109,6 +117,40 @@ export function createNet(handlers: {
    * policy's memory and is cleared on purpose by `wake` so the next fix goes straight out.
    */
   let lastSentAt = 0;
+
+  /** Hidden by the driver's hand or by the parking clock: the hub is told the same thing. */
+  const invisible = (): boolean => hidden || parked;
+
+  const syncVisibility = (): void => {
+    for (const hub of hubs.values()) sendTo(hub, { t: invisible() ? 'hide' : 'show' });
+  };
+
+  /**
+   * Park or unpark on the strength of the latest speed. A car that stops keeps reporting at
+   * the stationary cadence for PARKED_HIDE_MS, so a red light or a short stop changes nothing;
+   * after that it is dropped from the hub and stays off the map until it moves.
+   */
+  const noteMotion = (speed: number, now: number): void => {
+    if (speed >= STATIONARY_SPEED_KMH) {
+      stoppedSince = null;
+      if (!parked) return;
+      parked = false;
+      // Straight back on the map: the send policy would otherwise wait out its interval.
+      lastSent = null;
+      handlers.onParked?.(false);
+      syncVisibility();
+      return;
+    }
+    stoppedSince ??= now;
+    checkParked(now);
+  };
+
+  const checkParked = (now: number): void => {
+    if (parked || stoppedSince === null || now - stoppedSince < PARKED_HIDE_MS) return;
+    parked = true;
+    handlers.onParked?.(true);
+    syncVisibility();
+  };
 
   const setStatus = (next: NetStatus): void => {
     if (status === next) return;
@@ -172,9 +214,12 @@ export function createNet(handlers: {
    * fixes sends nothing extra (ADR-0009, which rejected send-on-change for exactly this).
    */
   const feedIfQuiet = (): void => {
-    if (!running || !profile || hidden || profile.spectator || !lastFuzzed) return;
-    if (![...hubs.values()].some((h) => h.ws?.readyState === WebSocket.OPEN)) return;
+    if (!running || !profile || profile.spectator || !lastFuzzed) return;
     const now = Date.now();
+    // A parked car's fixes are exactly the ones that stop arriving, so the clock runs here too.
+    checkParked(now);
+    if (invisible()) return;
+    if (![...hubs.values()].some((h) => h.ws?.readyState === WebSocket.OPEN)) return;
     if (now - lastSentAt < POS_INTERVAL_STATIONARY_MS) return;
     sendPos(lastFuzzed, now);
   };
@@ -243,10 +288,12 @@ export function createNet(handlers: {
         sendTo(hub, hello);
         hub.helloSent = true;
       }
+      // A fresh socket starts visible on the hub's side; tell it otherwise at once.
+      if (invisible()) sendTo(hub, { t: 'hide' });
       // Say where we are straight away rather than waiting for the send policy. A stopped car
       // only reports every 30 s, so after a dropped socket it would sit invisible to everyone
       // else for half a minute — and the hub evicts at 60 s, so a second blip erases it.
-      if (lastFuzzed && !hidden && profile && !profile.spectator) {
+      if (lastFuzzed && !invisible() && profile && !profile.spectator) {
         const now = Date.now();
         sendTo(hub, { t: 'pos', ...lastFuzzed, ts: now });
         lastSent = { heading: lastFuzzed.heading, speed: lastFuzzed.speed, sentAt: now };
@@ -366,6 +413,8 @@ export function createNet(handlers: {
       running = true;
       lastSent = null;
       lastFuzzed = null;
+      stoppedSince = null;
+      parked = false;
       subscribed = [];
       document.addEventListener('visibilitychange', onVisibility);
       window.addEventListener('online', wake);
@@ -399,7 +448,7 @@ export function createNet(handlers: {
 
     setHidden(next) {
       hidden = next;
-      for (const hub of hubs.values()) sendTo(hub, { t: hidden ? 'hide' : 'show' });
+      syncVisibility();
     },
 
     update(fuzzed) {
@@ -407,7 +456,9 @@ export function createNet(handlers: {
       lastFuzzed = fuzzed;
       const cells = cellsWithin(fuzzed.lat, fuzzed.lng, NEIGHBOUR_RADIUS_M, CELL_PRECISION);
       ensureHubs(cells);
-      if (hidden || profile.spectator) return false;
+      if (profile.spectator) return false;
+      noteMotion(fuzzed.speed, Date.now());
+      if (invisible()) return false;
 
       const now = Date.now();
       if (!shouldSendPos(lastSent, fuzzed, now)) return false;

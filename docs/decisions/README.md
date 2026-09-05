@@ -31,3 +31,4 @@ Format: Context / Decision / Rejected alternatives / Consequences (`0000-templat
 | [0023](0023-one-catalogue-per-language.md) | One catalogue per language, with grammar inside it, and the language detected not asked |
 | [0024](0024-exact-positions.md) | Positions are sent exactly, and drawn exactly where they were sent |
 | [0025](0025-identity-is-a-hashed-secret.md) | A driver's id is the hash of a secret only their browser holds |
+| [0026](0026-a-parked-car-is-hidden.md) | A car parked for ten minutes is hidden until it moves |

@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  PARKED_HIDE_MS,
   POS_INTERVAL_STATIONARY_MS,
   PRESENCE_EXPIRY_MS,
   type ClientMsg,
@@ -61,6 +62,7 @@ describe('net', () => {
   let net: Net;
   let cells: string[][];
   let messages: ServerMsg[];
+  let parkedEvents: boolean[];
 
   beforeEach(() => {
     vi.useFakeTimers();
@@ -68,11 +70,13 @@ describe('net', () => {
     vi.stubGlobal('WebSocket', FakeSocket);
     cells = [];
     messages = [];
+    parkedEvents = [];
     net = createNet({
       onMessage: (m) => messages.push(m),
       onStatus: () => undefined,
       onCellsDropped: () => undefined,
       onCells: (c) => cells.push(c),
+      onParked: (p) => parkedEvents.push(p),
     });
     net.start({ ...PROFILE });
   });
@@ -200,6 +204,74 @@ describe('net', () => {
 
     // A hub we hold no socket for cannot take a wave, and the caller is told so.
     expect(net.send({ t: 'wave', to: 'x'.repeat(32) }, 'zz')).toBe(false);
+  });
+
+  it('hides a car parked for PARKED_HIDE_MS, whether or not fixes keep coming', () => {
+    net.update({ ...GENEVA, speed: 0 });
+    const ws = only();
+    ws.connect();
+    // Fixes for the first half, then the device goes quiet, as a parked car's does.
+    for (let s = 0; s < PARKED_HIDE_MS / 2 / 1_000; s++) {
+      vi.advanceTimersByTime(1_000);
+      ws.onmessage?.({ data: 'pong' });
+      net.update({ ...GENEVA, speed: 0 });
+    }
+    expect(parkedEvents).toEqual([]);
+    // The hub keeps answering pings, which is all it hears from a quiet device.
+    const wait = (ms: number): void => {
+      for (let t = 0; t < ms; t += 5_000) {
+        vi.advanceTimersByTime(5_000);
+        ws.onmessage?.({ data: 'pong' });
+      }
+    };
+    wait(PARKED_HIDE_MS / 2 + 5_000);
+    expect(parkedEvents).toEqual([true]);
+    expect(only()).toBe(ws);
+    const kinds = ws.msgs().map((m) => m.t);
+    expect(kinds.at(-1)).toBe('hide');
+
+    // Parked: nothing goes out, however long it sits there.
+    const before = posTimes(ws).length;
+    wait(30 * 60_000);
+    expect(posTimes(ws)).toHaveLength(before);
+    // A fix that arrives while parked does not leak the position either.
+    expect(net.update({ ...GENEVA, speed: 0 })).toBe(false);
+    expect(posTimes(ws)).toHaveLength(before);
+
+    // Moving again: back on the map at once, in that order.
+    expect(net.update({ ...GENEVA, speed: 30 })).toBe(true);
+    expect(parkedEvents).toEqual([true, false]);
+    const tail = ws.msgs().map((m) => m.t).slice(-2);
+    expect(tail).toEqual(['show', 'pos']);
+  });
+
+  it('does not count a red light as parking', () => {
+    net.update({ ...GENEVA, speed: 50 });
+    const ws = only();
+    ws.connect();
+    for (let s = 0; s < 120; s++) {
+      vi.advanceTimersByTime(1_000);
+      net.update({ ...GENEVA, speed: 0 });
+    }
+    net.update({ ...GENEVA, speed: 30 });
+    vi.advanceTimersByTime(PARKED_HIDE_MS);
+    expect(parkedEvents).toEqual([]);
+    expect(ws.msgs().some((m) => m.t === 'hide')).toBe(false);
+  });
+
+  it('tells a fresh socket it is hidden, so a reconnect cannot unhide a parked car', () => {
+    net.update({ ...GENEVA, speed: 0 });
+    const first = only();
+    first.connect();
+    vi.advanceTimersByTime(PARKED_HIDE_MS + 5_000);
+    expect(parkedEvents).toEqual([true]);
+    first.freeze();
+    vi.advanceTimersByTime(70_000);
+    document.dispatchEvent(new Event('visibilitychange'));
+    const fresh = only();
+    expect(fresh).not.toBe(first);
+    fresh.connect();
+    expect(fresh.msgs().map((m) => m.t)).toEqual(['hello', 'hide']);
   });
 
   it('stays quiet while invisible, even when no fixes arrive', () => {

@@ -6,7 +6,7 @@ The design goal is that there is nothing to leak. No account, no email, no trip 
 
 | Data | Notes |
 |---|---|
-| Position | The GPS fix as the device reports it, while you are visible. Drivers consent to this when they tap "Go"; it was blurred by 50-100 m until ADR-0024. |
+| Position | The GPS fix as the device reports it, while you are visible and moving. A car parked for ten minutes is hidden until it moves again (ADR-0026). Drivers consent to this when they tap "Go"; it was blurred by 50-100 m until ADR-0024. |
 | Heading and speed | So other cars glide instead of jumping between updates. |
 | Model and colour | Chosen by hand. No Tesla account, no Fleet API, no VIN. |
 | Nickname | Optional, at most 16 characters. |
@@ -41,6 +41,8 @@ intent: the hub's storage effects are asserted to contain only counter keys.
 - Sharing is off until you tap "Go".
 - Invisible mode is one tap: your position is dropped from the hub immediately and you
   disappear from every other screen within about two seconds.
+- A car that has not moved for ten minutes is hidden the same way, without a tap, and comes
+  back the moment it moves. Where you stop is not something the map shows.
 - Refusing location permission gives spectator mode: you can see other drivers, they cannot
   see you, and you are not counted as online.
 - Clearing site data removes your identity and your wave count. There is no server-side
