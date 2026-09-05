@@ -64,7 +64,8 @@ export const COPY = {
     steps: [
       'Drive. Other drivers running TeslaWave appear around you on the map.',
       'When one comes within about 300 m, a big Wave button appears at the bottom of the screen.',
-      'Tap it. They see a ripple on your car and hear a chime. If they wave back within a few seconds, you both get a "Waved back".',
+      'Tap it. Your wave flies over and lands on their car. On their screen it washes across the whole map, with your car and a chime, and a warm Wave back button for a few seconds.',
+      'Wave back within those seconds and you both get a "Waved back". A wave you receive looks the same on your screen: hard to miss, even with the sound off.',
     ],
     tapHint:
       'You can also tap any car on the map to see it and wave from there. Tap your own car to change it.',
