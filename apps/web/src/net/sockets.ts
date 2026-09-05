@@ -66,14 +66,21 @@ const FEED_CHECK_MS = 5_000;
 
 /**
  * Why a socket will not open. The Worker answers 503 when the kill switch is off and 429
- * once the day's free request budget is gone; a plain GET to /ws (no Upgrade header) gets
+ * once the hub's free request budget is gone; a plain GET to /ws (no Upgrade header) gets
  * 426 when everything is fine, which costs one request and tells us which message to show.
+ *
+ * When it is the Worker's own daily quota that is spent, our code never runs: Cloudflare
+ * answers with its error 1027 page ("reached their plan limits"), so that page is read for
+ * what it is rather than trusted to carry any particular status.
  */
 export async function probeAvailability(): Promise<NetStatus | null> {
   try {
     const res = await fetch('/ws?hub=zz', { method: 'GET' });
     if (res.status === 429) return 'budget';
     if (res.status === 503) return 'paused';
+    if (res.status === 426 || res.status === 400) return null;
+    const body = await res.text();
+    if (/error 1027|plan limits/i.test(body)) return 'budget';
     return null;
   } catch {
     return null;

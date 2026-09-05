@@ -26,7 +26,26 @@ function upgrade(request: Request, env: Env, ctx: ExecutionContext): Response | 
   const id = env.HUB.idFromName(hub);
   // Pin the launch region's object to Western Europe instead of wherever the first driver is.
   const stub = env.HUB.get(id, { locationHint: 'weur' });
-  return stub.fetch(request);
+  return reachHub(stub, request);
+}
+
+/** How Cloudflare words the error when a free-plan daily limit is spent (ADR-0002). */
+const QUOTA_RE = /limit|exceed|quota|1027/i;
+
+/**
+ * Past the free tier, a Durable Object request fails with an error rather than a bill. The
+ * client needs to hear 429 for that, so it can say "back at midnight" instead of retrying in
+ * silence; anything else the hub throws is a 502, which the client treats as a plain drop.
+ */
+async function reachHub(stub: DurableObjectStub, request: Request): Promise<Response> {
+  try {
+    return await stub.fetch(request);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (QUOTA_RE.test(message)) return new Response('over budget', { status: 429 });
+    console.error('hub unreachable', message);
+    return new Response('hub unavailable', { status: 502 });
+  }
 }
 
 export default {

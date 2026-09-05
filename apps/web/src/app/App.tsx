@@ -19,6 +19,7 @@ import {
 } from '@teslawave/protocol';
 import { LiveMap } from '../map/LiveMap';
 import { createNet, type Net, type NetStatus } from '../net/sockets';
+import { nextResetLabel } from '../net/budget';
 import { usePosition } from '../geo/usePosition';
 import {
   applyServerMsg,
@@ -481,7 +482,7 @@ export function App(): ReactNode {
       ) : null}
       {status === 'budget' ? (
         <div className="hud hud--foot">
-          <p className="hud__banner">{copy.map.budget('02:00')}</p>
+          <p className="hud__banner">{copy.map.budget(nextResetLabel())}</p>
         </div>
       ) : null}
       {status === 'paused' ? (
