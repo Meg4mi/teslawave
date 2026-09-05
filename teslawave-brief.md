@@ -17,7 +17,7 @@ Independent project. Footer on every page: *"Independent project. Not affiliated
 
 1. **Zero recurring cost at launch.** The only paid item is the domain. Every service must be on a free tier that survives a few hundred concurrent drivers without a credit card. No service that bills per message, per connection, or per request at our expected volume.
 2. **Runs in the Tesla browser while driving.** Chromium 148 (firmware 2026.26+), landscape 17" screen, touch only, hostile on-screen keyboard. Two hardware tiers: MCU 3 (AMD Ryzen, 2021+) is fast; **MCU 2 (Intel Atom, 2018–2021) is the performance budget** — the app must be smooth there.
-3. **Privacy by design.** Sharing is opt-in. Positions are fuzzed (~50–100 m) before leaving the client, never persisted server-side, and expire after 60 s without an update. One-tap invisible mode. No trip history in v1.
+3. **Privacy by design.** Sharing is opt-in, and the consent screen says exactly what leaves the car. Positions are sent as the device reports them (they were fuzzed by 50–100 m until ADR-0024, which made every other car look offset), never persisted server-side, shown only to drivers in the same map area, and expire after 60 s without an update. One-tap invisible mode. No trip history in v1.
 4. **No Tesla API in v1.** No Tesla login, no Fleet API, no telemetry. Identity is anonymous; the user picks model and colour manually. (Tesla OAuth "verified owner" badge is a v2 item — see §9.)
 5. **Instant onboarding.** No account, no email, no waitlist. Open the URL, pick your car, tap "Go", you're on the map in under 20 seconds. Phone-to-car pairing via QR/short code so the driver never types on the car screen.
 
@@ -78,8 +78,8 @@ Out of scope for v1 (do not plan them, do not leave hooks that cost time): trip 
 
 ## 5. Realtime design (the core — plan this carefully)
 
-- Client computes geohash(precision 4) of its fuzzed position and opens **one WebSocket to that cell's DO**. Near a cell edge it also subscribes to the adjacent cell(s) it is within 10 km of — max 3 sockets.
-- Client sends `{lat, lng, heading, speed}` every 5 s (or when heading changes > 20°), already fuzzed on the client. Server never receives a precise position.
+- Client computes geohash(precision 4) of its position and opens **one WebSocket to that cell's DO**. Near a cell edge it also subscribes to the adjacent cell(s) it is within 10 km of — max 3 sockets.
+- Client sends `{lat, lng, heading, speed}` every 5 s (or when heading changes > 20°), exactly as the device reports it. The server holds it in memory only and never writes it anywhere.
 - DO keeps an in-memory map `id → {lat,lng,heading,speed,model,colour,nick,ts}`, broadcasts diffs to all sockets in the cell at most every 2 s, and evicts entries older than 60 s.
 - Use WebSocket **hibernation** API so idle cells cost nothing. Wake-up restores from DO storage only the aggregate counters, never positions.
 - Waves: client → DO `{to}`; DO validates proximity from its own state (< 300 m, both online) then forwards to the target socket and increments counters. Counters are periodically flushed to D1/KV.
@@ -126,7 +126,7 @@ Document the message protocol as TypeScript types shared between client and work
 
 1. Confirmation (with numbers) that the Cloudflare free tier covers ~300 concurrent drivers at the protocol rates above, or a proposed change.
 2. Repo scaffold and tooling.
-3. Protocol package: types, geohash cell + neighbour logic, fuzzing, interpolation.
+3. Protocol package: types, geohash cell + neighbour logic, interpolation.
 4. Worker + DO: presence, broadcast, waves, hibernation, rate limits, counters.
 5. Web app: onboarding, map + custom style, car sprites, motion, wave UX, pairing, counters, invisible mode.
 6. Tesla-browser performance work and the acceptance-criteria test setup.
