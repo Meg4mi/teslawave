@@ -44,6 +44,8 @@
   --z-overlay: 2;
   --z-vignette: 3;
   --z-attribution: 4;
+  /* The one-shot edge flash of a received wave: over the map, under every control. */
+  --z-flash: 5;
   --z-hud: 10;
   --z-wave: 20;
   --z-screen: 30;

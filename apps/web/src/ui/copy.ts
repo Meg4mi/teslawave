@@ -75,12 +75,17 @@ export const COPY = {
 
   wave: {
     verb: 'Wave',
+    backVerb: 'Wave back',
     promptTarget: (model: TeslaModel, colour: string): string =>
       `at the ${describeCar(model, colour)}`,
-    prompt: (model: TeslaModel, colour: string): string => `Wave at the ${describeCar(model, colour)}`,
+    prompt: (model: TeslaModel, colour: string): string =>
+      `Wave at the ${describeCar(model, colour)}`,
     received: (model: TeslaModel, colour: string): string =>
       `A ${describeCar(model, colour)} waved at you`,
     back: 'Waved back.',
+    /* The received card: the beat is the title, the car is the drawing next to it. */
+    cardTitle: 'waved at you',
+    cardBackTitle: 'waved back',
     tooFar: 'Too far now.',
     offline: 'They just went off the map.',
     tooSoon: 'One at a time.',

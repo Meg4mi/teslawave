@@ -9,9 +9,11 @@ import {
 } from 'react';
 import {
   WAVE_BACK_WINDOW_MS,
+  WAVE_PROMPT_TTL_MS,
   isColourId,
   isModel,
   type ServerMsg,
+  type TeslaModel,
 } from '@teslawave/protocol';
 import { LiveMap } from '../map/LiveMap';
 import { createNet, type Net, type NetStatus } from '../net/sockets';
@@ -44,12 +46,12 @@ import {
   SoundOnIcon,
   TrackUpIcon,
 } from '../ui/icons';
-import { CarChip } from '../ui/CarChip';
 import { COPY } from '../ui/copy';
 import { Disclaimer } from '../ui/Disclaimer';
 import { Onboarding, type OnboardingResult } from '../screens/Onboarding';
 import { Hud } from '../screens/Hud';
-import { WaveButton } from '../screens/WaveButton';
+import { WaveButton, type WaveTarget } from '../screens/WaveButton';
+import { WaveCard, type WaveCardContent } from '../screens/WaveCard';
 import { CarCard } from '../screens/CarCard';
 import { PulseSheet } from '../screens/PulseSheet';
 import { SettingsSheet } from '../screens/SettingsSheet';
@@ -78,6 +80,19 @@ export function App(): ReactNode {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [toast, setToast] = useState<ToastContent | null>(null);
   const [milestone, setMilestone] = useState<number | null>(null);
+  const [waveCard, setWaveCard] = useState<WaveCardContent | null>(null);
+  /** The edge flash of a received wave: a keyed element that lives for under a second. */
+  const [flashId, setFlashId] = useState<number | null>(null);
+  /**
+   * Who waved at you last, unprompted, and is still around: the wave button comes back for
+   * them as "Wave back", whatever the summary thinks the closest car is.
+   */
+  const [backFrom, setBackFrom] = useState<{
+    id: string;
+    model: TeslaModel;
+    colour: string;
+    at: number;
+  } | null>(null);
   const [tiles, setTiles] = useState(true);
   const [origin, setOrigin] = useState<{ lat: number; lng: number } | null>(null);
   const netRef = useRef<Net | null>(null);
@@ -136,35 +151,24 @@ export function App(): ReactNode {
       if (msg.t === 'wave') {
         const sentAt = sentWaves.current.get(msg.from.id);
         const isWaveBack = sentAt !== undefined && Date.now() - sentAt < WAVE_BACK_WINDOW_MS;
-        rendererRef.current?.addRipple({
-          lat: 0,
-          lng: 0,
-          followId: msg.from.id,
-          ms: 900,
-          rings: 3,
-          colour: isWaveBack ? '#ffd08a' : '#ffd08a',
-        });
+        rendererRef.current?.addWave({ kind: 'received', fromId: msg.from.id, toId: null });
         play('received');
         bumpSelfWaves();
         celebrate();
-        showToast(
-          isWaveBack ? COPY.wave.back : COPY.wave.received(msg.from.model, msg.from.colour),
-          <CarChip model={msg.from.model} colour={msg.from.colour} size={28} />,
-          true,
+        const at = Date.now();
+        setWaveCard({ id: at, model: msg.from.model, colour: msg.from.colour, back: isWaveBack });
+        setFlashId(at);
+        // A nod you did not start is one you can return. One you did start is already done.
+        setBackFrom(
+          isWaveBack
+            ? null
+            : { id: msg.from.id, model: msg.from.model, colour: msg.from.colour, at },
         );
       }
       if (msg.t === 'waved') {
         if (msg.ok) {
           bumpSelfWaves();
           celebrate();
-          rendererRef.current?.addRipple({
-            lat: 0,
-            lng: 0,
-            followId: msg.to,
-            ms: 900,
-            rings: 3,
-            colour: '#6ee7ff',
-          });
         } else {
           sentWaves.current.delete(msg.to);
           const why =
@@ -185,10 +189,22 @@ export function App(): ReactNode {
   const wave = useCallback((id: string): void => {
     sentWaves.current.set(id, Date.now());
     netRef.current?.send({ t: 'wave', to: id });
-    rendererRef.current?.addFlight({ fromId: null, toId: id, ms: 400 });
+    rendererRef.current?.addWave({ kind: 'sent', fromId: null, toId: id });
     play('sent');
     setSelectedId(null);
   }, []);
+
+  // The flash unmounts itself; the "wave back" offer outlives the button's window by nothing.
+  useEffect(() => {
+    if (flashId === null) return;
+    const timer = window.setTimeout(() => setFlashId(null), 1_000);
+    return () => window.clearTimeout(timer);
+  }, [flashId]);
+  useEffect(() => {
+    if (!backFrom) return;
+    const timer = window.setTimeout(() => setBackFrom(null), WAVE_PROMPT_TTL_MS);
+    return () => window.clearTimeout(timer);
+  }, [backFrom]);
 
   /*
    * --- Connection ---------------------------------------------------------------------
@@ -373,6 +389,13 @@ export function App(): ReactNode {
     () => (prefs.sharing && !spectator ? summary.nearby : null),
     [summary.nearby, prefs.sharing, spectator],
   );
+  // The car that just waved at you takes the button over while it is still on the map. Not
+  // memoised: the button is built to take a fresh object every render, and whether they are
+  // still on the map is a question for the world, which the summary re-renders us for.
+  const waveTarget: WaveTarget | null =
+    backFrom && prefs.sharing && !spectator && getCar(backFrom.id)
+      ? { ...backFrom, back: true, prompt: backFrom.at }
+      : nearby;
   // Stable while the car is: the map re-renders twice a second for the HUD, and a fresh
   // object here re-ran the map's prop effect on every one of those.
   const selfModel = identity?.model;
@@ -485,7 +508,10 @@ export function App(): ReactNode {
         />
       </nav>
 
-      <WaveButton target={nearby} onWave={wave} />
+      <WaveButton target={waveTarget} onWave={wave} />
+
+      {flashId !== null ? <div key={flashId} className="wave-flash" aria-hidden /> : null}
+      <WaveCard card={waveCard} onDone={() => setWaveCard(null)} />
 
       {milestone !== null ? (
         <div className="milestone" role="status">

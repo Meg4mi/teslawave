@@ -2,9 +2,10 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { CAR_COLOURS, TESLA_MODELS, type TeslaModel } from '@teslawave/protocol';
 import { createRenderer, type Renderer } from '../overlay/renderer';
 import { createTrack, pushSample } from '@teslawave/protocol';
-import { Button, Counter, Toast, type ToastContent } from '../ui/primitives';
+import { Button, Counter } from '../ui/primitives';
 import { CarChip } from '../ui/CarChip';
-import { WaveButton } from './WaveButton';
+import { WaveButton, type WaveTarget } from './WaveButton';
+import { WaveCard, type WaveCardContent } from './WaveCard';
 import { COPY } from '../ui/copy';
 import { play, unlockAudio } from '../ui/sound';
 import type { RenderCar } from '../sim/world';
@@ -19,9 +20,12 @@ export function KitchenSink(): ReactNode {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rendererRef = useRef<Renderer | null>(null);
   const [waves, setWaves] = useState(9);
-  const [toast, setToast] = useState<ToastContent | null>(null);
+  const [card, setCard] = useState<WaveCardContent | null>(null);
+  const [flashId, setFlashId] = useState<number | null>(null);
   const [milestone, setMilestone] = useState<number | null>(null);
   const [nearby, setNearby] = useState(true);
+  // Bumped by "wave received", exactly as a real wave re-arms the button as "Wave back".
+  const [back, setBack] = useState<number | null>(null);
   const params = new URLSearchParams(location.search);
   const chipSize = Number(params.get('size') ?? 44);
   // ?compare renders one colour across every model, which is the only way to judge whether
@@ -95,33 +99,42 @@ export function KitchenSink(): ReactNode {
     return () => cancelAnimationFrame(raf);
   }, [nearby]);
 
+  useEffect(() => {
+    if (flashId === null) return;
+    const timer = setTimeout(() => setFlashId(null), 1_000);
+    return () => clearTimeout(timer);
+  }, [flashId]);
+
   const fire = (kind: 'sent' | 'received' | 'back' | 'milestone' | 'sonar'): void => {
     unlockAudio();
     const renderer = rendererRef.current;
     if (kind === 'sonar') return renderer?.playSonar();
     if (kind === 'sent') {
-      renderer?.addFlight({ fromId: null, toId: 'demo-Y', ms: 400 });
-      renderer?.addRipple({ lat: 0, lng: 0, followId: 'demo-Y', ms: 900, rings: 3, colour: '#6ee7ff' });
+      renderer?.addWave({ kind: 'sent', fromId: null, toId: 'demo-Y' });
       play('sent');
       setWaves((n) => n + 1);
       return;
     }
     if (kind === 'received' || kind === 'back') {
-      renderer?.addRipple({ lat: 0, lng: 0, followId: 'demo-3', ms: 900, rings: 3, colour: '#ffd08a' });
+      renderer?.addWave({ kind: 'received', fromId: 'demo-Y', toId: null });
       play('received');
       setWaves((n) => n + 1);
-      setToast({
-        id: Date.now(),
-        text: kind === 'back' ? COPY.wave.back : COPY.wave.received('3', 'ultrared'),
-        icon: <CarChip model="3" colour="ultrared" size={28} />,
-        warm: true,
-      });
+      const at = Date.now();
+      setCard({ id: at, model: 'Y', colour: 'deepblue', back: kind === 'back' });
+      setFlashId(at);
+      setBack(kind === 'back' ? null : at);
       return;
     }
     play('milestone');
     setMilestone(10);
     setTimeout(() => setMilestone(null), 5_000);
   };
+
+  const target: WaveTarget | null = nearby
+    ? back === null
+      ? { id: 'demo-Y', model: 'Y', colour: 'deepblue' }
+      : { id: 'demo-Y', model: 'Y', colour: 'deepblue', back: true, prompt: back }
+    : null;
 
   return (
     <div style={{ position: 'absolute', inset: 0, background: 'var(--bg-0)', overflow: 'auto' }}>
@@ -162,10 +175,10 @@ export function KitchenSink(): ReactNode {
         </div>
       </div>
 
-      <WaveButton
-        target={nearby ? { id: 'demo-Y', model: 'Y', colour: 'deepblue' } : null}
-        onWave={() => fire('sent')}
-      />
+      <WaveButton target={target} onWave={() => fire('sent')} />
+
+      {flashId !== null ? <div key={flashId} className="wave-flash" aria-hidden /> : null}
+      <WaveCard card={card} onDone={() => setCard(null)} />
 
       {milestone !== null ? (
         <div className="milestone">
@@ -173,8 +186,6 @@ export function KitchenSink(): ReactNode {
           <span>{COPY.milestones[milestone]}</span>
         </div>
       ) : null}
-
-      <Toast toast={toast} onDone={() => setToast(null)} />
     </div>
   );
 }
