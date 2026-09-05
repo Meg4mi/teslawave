@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { WAVE_PROMPT_RANGE_M, WAVE_PROMPT_TTL_MS, type TeslaModel } from '@teslawave/protocol';
 import { CarSvg } from '../ui/CarSvg';
 import { WaveIcon } from '../ui/icons';
-import { COPY } from '../ui/copy';
+import { useCopy } from '../i18n';
 
 type Phase = 'shown' | 'leaving' | 'done';
 
@@ -40,6 +40,7 @@ export function WaveButton({
   target: WaveTarget | null;
   onWave: (id: string) => void;
 }): ReactNode {
+  const copy = useCopy();
   const id = target?.id ?? null;
   const prompt = target?.prompt ?? 0;
   const [state, setState] = useState<{ id: string | null; prompt: number; phase: Phase }>({
@@ -73,10 +74,10 @@ export function WaveButton({
 
   if (!target || phase === 'done') return null;
   // The visible label is split across two lines; assistive tech gets the whole sentence.
-  const verb = target.back ? COPY.wave.backVerb : COPY.wave.verb;
+  const verb = target.back ? copy.wave.backVerb : copy.wave.verb;
   const label = target.back
-    ? `${verb} ${COPY.wave.promptTarget(target.model, target.colour)}`
-    : COPY.wave.prompt(target.model, target.colour);
+    ? `${verb} ${copy.wave.promptTarget(target.model, target.colour)}`
+    : copy.wave.prompt(target.model, target.colour);
   const className = [
     'wave',
     target.back ? 'wave--back' : '',
@@ -90,7 +91,7 @@ export function WaveButton({
       data-touch
       className={className}
       aria-label={label}
-      title={`${label} (within ${WAVE_PROMPT_RANGE_M} m)`}
+      title={copy.wave.within(label, WAVE_PROMPT_RANGE_M)}
       disabled={phase === 'leaving'}
       onClick={() => {
         onWave(target.id);
@@ -108,7 +109,7 @@ export function WaveButton({
           buried the one word that matters. */}
       <span className="wave__text">
         <span className="wave__verb">{verb}</span>
-        <span className="wave__target">{COPY.wave.promptTarget(target.model, target.colour)}</span>
+        <span className="wave__target">{copy.wave.promptTarget(target.model, target.colour)}</span>
         {/* The window, as a bar that runs out. Its length is the protocol's, not the CSS's. */}
         <span className="wave__track" aria-hidden>
           <span

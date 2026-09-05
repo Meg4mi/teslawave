@@ -9,7 +9,7 @@ import {
 } from '@teslawave/protocol';
 import { Button, Sheet } from '../ui/primitives';
 import { BackspaceIcon } from '../ui/icons';
-import { COPY } from '../ui/copy';
+import { useCopy } from '../i18n';
 import type { Identity } from '../identity/store';
 
 const mmss = (ms: number): string => {
@@ -25,6 +25,7 @@ export function ShowPairingSheet({
   identity: Identity;
   onClose: () => void;
 }): ReactNode {
+  const copy = useCopy();
   const [state, setState] = useState<{ code: string; expiresAt: number } | null>(null);
   const [failed, setFailed] = useState(false);
   const [now, setNow] = useState(() => Date.now());
@@ -69,16 +70,16 @@ export function ShowPairingSheet({
   }, [state]);
 
   return (
-    <Sheet label={COPY.pairing.showTitle} title={COPY.pairing.showTitle} onClose={onClose}>
-      <p className="sheet__note">{COPY.pairing.showBody}</p>
+    <Sheet label={copy.pairing.showTitle} title={copy.pairing.showTitle} onClose={onClose}>
+      <p className="sheet__note">{copy.pairing.showBody}</p>
 
       <div className="pair">
-        {failed ? <p className="pair__error">{COPY.pairing.failedToMake}</p> : null}
+        {failed ? <p className="pair__error">{copy.pairing.failedToMake}</p> : null}
         {state ? (
           <>
             <p className="pair__code num">{state.code}</p>
             {qrSvg ? <img className="pair__qr" src={qrSvg} alt="" /> : null}
-            <p className="settings__hint">{COPY.pairing.expiresIn(mmss(state.expiresAt - now))}</p>
+            <p className="settings__hint">{copy.pairing.expiresIn(mmss(state.expiresAt - now))}</p>
           </>
         ) : null}
       </div>
@@ -94,6 +95,7 @@ export function EnterCodeSheet({
   onPaired: (identity: { id: string; model: string; colour: string; nick?: string }) => void;
   onClose: () => void;
 }): ReactNode {
+  const copy = useCopy();
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(false);
@@ -130,8 +132,8 @@ export function EnterCodeSheet({
   const slots = Array.from({ length: PAIR_CODE_LEN }, (_, i) => code[i] ?? '');
 
   return (
-    <Sheet label={COPY.pairing.enterTitle} title={COPY.pairing.enterTitle} onClose={onClose} wide>
-      <p className="sheet__note">{COPY.pairing.enterBody}</p>
+    <Sheet label={copy.pairing.enterTitle} title={copy.pairing.enterTitle} onClose={onClose} wide>
+      <p className="sheet__note">{copy.pairing.enterBody}</p>
 
       <div className="pair__entry" aria-label={code}>
         {slots.map((ch, i) => (
@@ -142,7 +144,7 @@ export function EnterCodeSheet({
         <Button
           variant="icon"
           className="pair__backspace"
-          label={COPY.pairing.backspace}
+          label={copy.pairing.backspace}
           onClick={() => setCode(code.slice(0, -1))}
           disabled={busy || code.length === 0}
         >
@@ -150,8 +152,12 @@ export function EnterCodeSheet({
         </Button>
       </div>
 
-      {error ? <p className="pair__error">{COPY.pairing.failed}</p> : null}
-      {busy ? <p className="settings__hint" style={{ textAlign: 'center' }}>{COPY.pairing.claiming}</p> : null}
+      {error ? <p className="pair__error">{copy.pairing.failed}</p> : null}
+      {busy ? (
+        <p className="settings__hint" style={{ textAlign: 'center' }}>
+          {copy.pairing.claiming}
+        </p>
+      ) : null}
 
       <div className="keypad">
         {[...PAIR_ALPHABET].map((ch) => (

@@ -1,8 +1,7 @@
 import type { ReactNode } from 'react';
-import { MODEL_LABELS, colourOf, describeCar } from '@teslawave/protocol';
 import { Button, Sheet, SheetActions } from '../ui/primitives';
 import { CarSvg } from '../ui/CarSvg';
-import { COPY } from '../ui/copy';
+import { useCopy } from '../i18n';
 import type { WorldCar } from '../sim/world';
 
 export function CarCard({
@@ -16,8 +15,9 @@ export function CarCard({
   onWave: (id: string) => void;
   onClose: () => void;
 }): ReactNode {
+  const copy = useCopy();
   const minutes = Math.floor((serverNow - car.since) / 60_000);
-  const title = car.nick ?? describeCar(car.model, car.colour);
+  const title = car.nick ?? copy.cars.describe(car.model, car.colour);
 
   return (
     <Sheet label={title} onClose={onClose}>
@@ -29,18 +29,18 @@ export function CarCard({
           <h2 className="card-sheet__title">{title}</h2>
           <p className="card-sheet__meta">
             <span>
-              {MODEL_LABELS[car.model]} · {colourOf(car.colour).label}
+              {copy.cars.model(car.model)} · {copy.cars.colour(car.colour)}
             </span>
             <span>
-              <span className="num">{car.waves}</span> {car.waves === 1 ? 'wave' : 'waves'}
+              <span className="num">{car.waves}</span> {copy.card.wavesLabel(car.waves)}
             </span>
-            <span>{COPY.card.onlineFor(minutes)}</span>
+            <span>{copy.card.onlineFor(minutes)}</span>
           </p>
         </div>
       </div>
       <SheetActions>
         <Button variant="primary" size="lg" onClick={() => onWave(car.id)}>
-          {COPY.card.wave}
+          {copy.card.wave}
         </Button>
       </SheetActions>
     </Sheet>

@@ -1,7 +1,7 @@
 import { useEffect, useRef, type ReactNode } from 'react';
 import { createTrack } from '@teslawave/protocol';
 import { Button, Sheet, SheetActions } from '../ui/primitives';
-import { COPY } from '../ui/copy';
+import { useCopy } from '../i18n';
 import { createRenderer, type Renderer } from '../overlay/renderer';
 import type { RenderCar } from '../sim/world';
 import { play, unlockAudio } from '../ui/sound';
@@ -26,6 +26,7 @@ const REPLY_MS = 1_400;
  * thing changed (ADR-0022).
  */
 export function HowToWave({ onClose }: { onClose: () => void }): ReactNode {
+  const copy = useCopy();
   const roadRef = useRef<HTMLCanvasElement>(null);
   const stageRef = useRef<HTMLCanvasElement>(null);
   const rendererRef = useRef<Renderer | null>(null);
@@ -161,8 +162,8 @@ export function HowToWave({ onClose }: { onClose: () => void }): ReactNode {
   };
 
   return (
-    <Sheet label={COPY.howTo.title} title={COPY.howTo.title} onClose={onClose}>
-      <p className="sheet__note">{COPY.howTo.lead}</p>
+    <Sheet label={copy.howTo.title} title={copy.howTo.title} onClose={onClose}>
+      <p className="sheet__note">{copy.howTo.lead}</p>
 
       <div className="howto__stage" aria-hidden>
         <canvas className="howto__layer" ref={roadRef} />
@@ -170,20 +171,20 @@ export function HowToWave({ onClose }: { onClose: () => void }): ReactNode {
       </div>
 
       <ol className="howto__steps">
-        {COPY.howTo.steps.map((step) => (
+        {copy.howTo.steps.map((step) => (
           <li key={step}>
             <span>{step}</span>
           </li>
         ))}
       </ol>
-      <p className="settings__hint">{COPY.howTo.tapHint}</p>
+      <p className="settings__hint">{copy.howTo.tapHint}</p>
 
       <SheetActions>
         <Button variant="ghost" onClick={onClose}>
-          {COPY.howTo.close}
+          {copy.howTo.close}
         </Button>
         <Button variant="primary" onClick={tryIt}>
-          {COPY.howTo.tryIt}
+          {copy.howTo.tryIt}
         </Button>
       </SheetActions>
     </Sheet>

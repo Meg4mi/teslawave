@@ -1,9 +1,8 @@
 import type { ReactNode } from 'react';
-import { MODEL_LABELS, colourOf } from '@teslawave/protocol';
-import { Button, Sheet, Switch } from '../ui/primitives';
+import { Button, Segmented, Sheet, Switch } from '../ui/primitives';
 import { CarSvg } from '../ui/CarSvg';
 import { ChevronRightIcon } from '../ui/icons';
-import { COPY } from '../ui/copy';
+import { LOCALES, LOCALE_NAMES, useCopy, useLocale, useSetLocale } from '../i18n';
 import { Disclaimer } from '../ui/Disclaimer';
 import type { Identity, Prefs } from '../identity/store';
 
@@ -63,8 +62,11 @@ export function SettingsSheet({
   onEditCar: () => void;
   onClose: () => void;
 }): ReactNode {
+  const copy = useCopy();
+  const locale = useLocale();
+  const setLocale = useSetLocale();
   return (
-    <Sheet label={COPY.controls.settings} title={COPY.controls.settings} onClose={onClose}>
+    <Sheet label={copy.controls.settings} title={copy.controls.settings} onClose={onClose}>
       <div className="settings">
         {/* First, because it is the one setting that is about you rather than about the app. */}
         {/* The whole row opens the garage; the button is the labelled control for it. */}
@@ -72,62 +74,84 @@ export function SettingsSheet({
           <span className="settings__car">
             <CarSvg model={identity.model} colour={identity.colour} size={96} heading={90} />
             <span className="settings__label">
-              <span className="settings__name">{identity.nick ?? MODEL_LABELS[identity.model]}</span>
+              <span className="settings__name">
+                {identity.nick ?? copy.cars.model(identity.model)}
+              </span>
               <span className="settings__hint">
-                {identity.nick ? `${MODEL_LABELS[identity.model]} · ` : ''}
-                {colourOf(identity.colour).label}
-                <span className="settings__tap"> · {COPY.garage.tapHint}</span>
+                {identity.nick ? `${copy.cars.model(identity.model)} · ` : ''}
+                {copy.cars.colour(identity.colour)}
+                <span className="settings__tap"> · {copy.garage.tapHint}</span>
               </span>
             </span>
           </span>
-          <Button onClick={onEditCar}>{COPY.garage.open}</Button>
+          <Button onClick={onEditCar}>{copy.garage.open}</Button>
         </div>
 
         <div className="settings__row">
           <span className="settings__label">
-            {COPY.settings.visible}
+            {copy.settings.visible}
             <span className="settings__hint">
-              {prefs.sharing ? COPY.settings.visibleHint : COPY.map.hidden}
+              {prefs.sharing ? copy.settings.visibleHint : copy.map.hidden}
             </span>
           </span>
           <Switch
             checked={prefs.sharing}
-            label={COPY.settings.visible}
+            label={copy.settings.visible}
             onChange={(sharing) => onChange({ sharing })}
           />
         </div>
 
         <div className="settings__row">
           <span className="settings__label">
-            {COPY.settings.sound}
-            <span className="settings__hint">{COPY.settings.soundHint}</span>
+            {copy.settings.sound}
+            <span className="settings__hint">{copy.settings.soundHint}</span>
           </span>
           <Switch
             checked={!prefs.muted}
-            label={COPY.settings.sound}
+            label={copy.settings.sound}
             onChange={(on) => onChange({ muted: !on })}
           />
         </div>
 
         <div className="settings__row">
           <span className="settings__label">
-            {COPY.settings.northUp}
-            <span className="settings__hint">{COPY.settings.northUpHint}</span>
+            {copy.settings.northUp}
+            <span className="settings__hint">{copy.settings.northUpHint}</span>
           </span>
           <Switch
             checked={prefs.northUp}
-            label={COPY.settings.northUp}
+            label={copy.settings.northUp}
             onChange={(northUp) => onChange({ northUp })}
           />
         </div>
 
-        <LinkRow title={COPY.pairing.showTitle} hint={COPY.pairing.showHint} onClick={onShowPairing} />
+        {/* Detected from the car to begin with, so this row is a correction rather than a
+            question. Each language is named in itself: a driver who has landed in the wrong
+            one cannot read the label that would get them out. */}
+        <div className="settings__row">
+          <span className="settings__label">
+            {copy.language.title}
+            <span className="settings__hint">{copy.language.hint}</span>
+          </span>
+          <Segmented
+            label={copy.language.title}
+            value={locale}
+            options={LOCALES.map((code) => ({ value: code, label: LOCALE_NAMES[code] }))}
+            onChange={setLocale}
+          />
+        </div>
+
         <LinkRow
-          title={COPY.onboarding.havePairingCode}
-          hint={COPY.onboarding.havePairingCodeHint}
+          title={copy.pairing.showTitle}
+          hint={copy.pairing.showHint}
+          onClick={onShowPairing}
+        />
+        <LinkRow
+          title={copy.onboarding.havePairingCode}
+          hint={copy.onboarding.havePairingCodeHint}
           onClick={onEnterCode}
         />
-        <LinkRow title={COPY.howTo.title} hint={COPY.howTo.lead} onClick={onHowItWorks} />
+        <LinkRow title={copy.howTo.title} hint={copy.howTo.lead} onClick={onHowItWorks} />
       </div>
 
       <Disclaimer inline />

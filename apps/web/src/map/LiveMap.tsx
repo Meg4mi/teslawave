@@ -8,7 +8,7 @@ import { buildStyle } from './style';
 import { createRoadSnapper } from './snap';
 import { affineProjector } from './projector';
 import { MAPLIBRE_WORKER_URL } from './maplibre-worker-url';
-import { COPY } from '../ui/copy';
+import { useCopy } from '../i18n';
 import { LocateIcon, MinusIcon, PlusIcon } from '../ui/icons';
 import { recordFrameCost } from '../app/testHook';
 import { isE2E } from '../config/env';
@@ -103,6 +103,7 @@ export function LiveMap({
   bare = false,
 }: LiveMapProps): ReactNode {
   const container = useRef<HTMLDivElement>(null);
+  const copy = useCopy();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const recentre = useRef<HTMLButtonElement>(null);
   const zoomIn = useRef<HTMLButtonElement>(null);
@@ -234,7 +235,6 @@ export function LiveMap({
     host.addEventListener('pointercancel', onPointerUp, { passive: true });
     host.addEventListener('wheel', holdCamera, { passive: true });
 
-
     /*
      * Instant, not eased: the follow loop calls jumpTo, which would cancel an easeTo the frame
      * after it started. A whole level at once is also less work than animating through one.
@@ -349,7 +349,8 @@ export function LiveMap({
           const turned = lastCentre ? Math.abs(bearing - lastCentre.bearing) : 0;
           const elapsed = Math.max(1, now - cameraAt);
           // Smoothed, so one noisy fix does not read as a turn.
-          turnRate = turnRate * 0.7 + ((turned > 180 ? 360 - turned : turned) / elapsed) * 1_000 * 0.3;
+          turnRate =
+            turnRate * 0.7 + ((turned > 180 ? 360 - turned : turned) / elapsed) * 1_000 * 0.3;
           map.jumpTo({ center: [placement.lng, placement.lat], bearing });
           lastCentre = { lat: placement.lat, lng: placement.lng, bearing };
         }
@@ -442,7 +443,7 @@ export function LiveMap({
       {/* Only while you have the map. Six seconds after you let go it goes away by itself. */}
       <button type="button" data-touch className="map__recentre" ref={recentre} hidden>
         <LocateIcon size={22} />
-        {COPY.map.recentre}
+        {copy.map.recentre}
       </button>
 
       {/* A two-finger pinch is an awkward thing to make while driving. */}
@@ -452,8 +453,8 @@ export function LiveMap({
           data-touch
           className="control control--zoom"
           ref={zoomIn}
-          aria-label={COPY.map.zoomIn}
-          title={COPY.map.zoomIn}
+          aria-label={copy.map.zoomIn}
+          title={copy.map.zoomIn}
         >
           <span className="control__icon" aria-hidden>
             <PlusIcon />
@@ -464,8 +465,8 @@ export function LiveMap({
           data-touch
           className="control control--zoom"
           ref={zoomOut}
-          aria-label={COPY.map.zoomOut}
-          title={COPY.map.zoomOut}
+          aria-label={copy.map.zoomOut}
+          title={copy.map.zoomOut}
         >
           <span className="control__icon" aria-hidden>
             <MinusIcon />

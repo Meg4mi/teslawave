@@ -1,12 +1,77 @@
-import { BRAND, describeCar, type TeslaModel } from '@teslawave/protocol';
+import {
+  BRAND,
+  FUZZ_MAX_M,
+  FUZZ_MIN_M,
+  MODEL_LABELS,
+  PRESENCE_EXPIRY_MS,
+  colourOf,
+  isColourId,
+  type CarColourId,
+  type TeslaModel,
+} from '@teslawave/protocol';
 
 /**
- * Every user-facing string, in one file, so the voice can be reviewed in one sitting.
- * Short, warm, no exclamation marks, no emoji in chrome, never lectures (brief 7).
+ * Every user-facing string in English, in one file, so the voice can be reviewed in one
+ * sitting. Short, warm, no exclamation marks, no emoji in chrome, never lectures (brief 7).
+ *
+ * This file is also the contract: `Copy` is inferred from it, so every other language is a
+ * compile error until it says all of the same things. Anything that bends with grammar —
+ * articles, plurals, the order of a colour and a noun — is a function here rather than a
+ * template assembled by the caller, because the caller cannot know a language's rules.
  */
-export const COPY = {
+
+/** The paint, as the configurator names it. */
+const COLOURS: Record<CarColourId, string> = {
+  pearl: 'Pearl White',
+  black: 'Solid Black',
+  midnight: 'Midnight Silver',
+  deepblue: 'Deep Blue',
+  red: 'Red',
+  ultrared: 'Ultra Red',
+  stealth: 'Stealth Grey',
+  quicksilver: 'Quicksilver',
+  diamond: 'Diamond Black',
+  steel: 'Stainless',
+};
+
+/** The one word a driver would actually use for that paint, mid-sentence. */
+const SHORT: Record<CarColourId, string> = {
+  pearl: 'white',
+  black: 'black',
+  midnight: 'silver',
+  deepblue: 'blue',
+  red: 'red',
+  ultrared: 'red',
+  stealth: 'grey',
+  quicksilver: 'quicksilver',
+  diamond: 'black',
+  steel: 'stainless',
+};
+
+/** Counts read as the language writes them: 1 234, not 1234. */
+const NUMBERS = new Intl.NumberFormat('en');
+const n = (value: number): string => NUMBERS.format(value);
+
+/** "blue Model Y". Lowercase and short, so it drops into the middle of a sentence. */
+const describe = (model: TeslaModel, colour: string): string =>
+  `${isColourId(colour) ? SHORT[colour] : colourOf(colour).label.toLowerCase()} ${MODEL_LABELS[model]}`;
+
+export const EN = {
   brand: BRAND.name,
   disclaimer: BRAND.disclaimer,
+
+  language: {
+    title: 'Language',
+    hint: 'Picked from your car to start with.',
+  },
+
+  cars: {
+    /** A model name is a product name: the same in every language. */
+    model: (model: TeslaModel): string => MODEL_LABELS[model],
+    colour: (colour: string): string =>
+      isColourId(colour) ? COLOURS[colour] : colourOf(colour).label,
+    describe,
+  },
 
   onboarding: {
     intro: 'Wave at other Teslas',
@@ -25,13 +90,16 @@ export const COPY = {
   },
 
   map: {
-    online: (n: number): string => `${n} online`,
-    near: (n: number): string => `${n} within 10 km`,
+    online: (count: number): string => `${n(count)} online`,
+    near: (count: number): string => `${n(count)} within 10 km`,
+    /** The same two facts as above, next to a counter that draws the digits itself. */
+    onlineLabel: 'online',
+    nearLabel: 'within 10 km',
     lastWave: (label: string): string => `last wave ${label}`,
     noWaveYet: 'no waves yet today',
-    quiet: (n: number): string =>
-      n > 0
-        ? `Quiet road. ${n} ${n === 1 ? 'driver' : 'drivers'} online in the area — say hi when you cross one.`
+    quiet: (count: number): string =>
+      count > 0
+        ? `Quiet road. ${n(count)} ${count === 1 ? 'driver' : 'drivers'} online in the area — say hi when you cross one.`
         : 'Quiet road. Nobody else out here right now.',
     quietHow: 'How waving works',
     spectator: 'Location is off. You can see others, they cannot see you.',
@@ -78,11 +146,10 @@ export const COPY = {
     verb: 'Wave',
     backVerb: 'Wave back',
     promptTarget: (model: TeslaModel, colour: string): string =>
-      `at the ${describeCar(model, colour)}`,
-    prompt: (model: TeslaModel, colour: string): string =>
-      `Wave at the ${describeCar(model, colour)}`,
+      `at the ${describe(model, colour)}`,
+    prompt: (model: TeslaModel, colour: string): string => `Wave at the ${describe(model, colour)}`,
     received: (model: TeslaModel, colour: string): string =>
-      `A ${describeCar(model, colour)} waved at you`,
+      `A ${describe(model, colour)} waved at you`,
     back: 'Waved back.',
     /* The received card: the beat is the title, the car is the drawing next to it. */
     cardTitle: 'waved at you',
@@ -92,12 +159,16 @@ export const COPY = {
     tooSoon: 'One at a time.',
     hidden: 'Turn yourself back on to wave.',
     counter: 'waves',
+    /** Within a range the protocol decides, so the number is passed in. */
+    within: (label: string, metres: number): string => `${label} (within ${n(metres)} m)`,
   },
 
   card: {
     onlineFor: (minutes: number): string =>
-      minutes < 1 ? 'just joined' : `online for ${minutes} min`,
-    waves: (n: number): string => `${n} ${n === 1 ? 'wave' : 'waves'}`,
+      minutes < 1 ? 'just joined' : `online for ${n(minutes)} min`,
+    waves: (count: number): string => `${n(count)} ${count === 1 ? 'wave' : 'waves'}`,
+    /** The count is drawn separately, so this is the noun on its own. */
+    wavesLabel: (count: number): string => (count === 1 ? 'wave' : 'waves'),
     wave: 'Wave',
   },
 
@@ -165,14 +236,48 @@ export const COPY = {
     settings: 'Settings',
     close: 'Close',
   },
-} as const;
 
-/** "2 min ago", kept short enough to read at a glance while driving. */
-export function agoLabel(ts: number | null, now: number): string | null {
-  if (ts === null) return null;
-  const seconds = Math.max(0, Math.round((now - ts) / 1000));
-  if (seconds < 45) return 'just now';
-  const minutes = Math.round(seconds / 60);
-  if (minutes < 60) return `${minutes} min ago`;
-  return `${Math.round(minutes / 60)} h ago`;
-}
+  privacy: {
+    title: 'Privacy',
+    lead: (brand: string): string =>
+      `${brand} is built so that there is nothing to leak. No account, no email, no trip history.`,
+    leavesTitle: 'What leaves your car',
+    leaves: [
+      `A position blurred by ${n(FUZZ_MIN_M)}–${n(FUZZ_MAX_M)} m before it leaves the device. Your exact position is never sent.`,
+      'Your heading and speed, so other cars glide instead of jumping.',
+      'The model and colour you picked, and a nickname if you typed one.',
+      'A random id generated in your browser. It is not linked to you or to Tesla.',
+    ],
+    keptTitle: 'What is kept',
+    kept: [
+      `Positions live in memory for ${n(PRESENCE_EXPIRY_MS / 1000)} seconds and are never written to a database.`,
+      'Wave counts, as numbers. Yours, and a daily total per map area.',
+      'No trip history, no routes, no timestamps of where you were.',
+    ],
+    thirdPartiesTitle: 'Third parties',
+    thirdParties: [
+      'Map tiles are served by OpenFreeMap, which sees the tiles your browser asks for.',
+      'Cloudflare Web Analytics counts page views without cookies.',
+      'No advertising, no tracking pixels, no cookie banner because there are no cookies.',
+    ],
+    invisible:
+      'Turn on invisible mode any time and you disappear from every other screen within two seconds.',
+    back: 'Back to the map',
+  },
+
+  /** "2 min ago", kept short enough to read at a glance while driving. */
+  agoLabel: (ts: number | null, now: number): string | null => {
+    if (ts === null) return null;
+    const seconds = Math.max(0, Math.round((now - ts) / 1000));
+    if (seconds < 45) return 'just now';
+    const minutes = Math.round(seconds / 60);
+    if (minutes < 60) return `${n(minutes)} min ago`;
+    return `${n(Math.round(minutes / 60))} h ago`;
+  },
+};
+
+/**
+ * The shape every language must fill. Inferred rather than written out, so adding a string
+ * to English is all it takes to make the other catalogues fail to compile until they have it.
+ */
+export type Copy = typeof EN;

@@ -1,9 +1,9 @@
 import { useState, type ReactNode } from 'react';
-import { MODEL_LABELS, colourOf, type CarColourId, type TeslaModel } from '@teslawave/protocol';
+import type { CarColourId, TeslaModel } from '@teslawave/protocol';
 import { Button, Sheet, SheetActions } from '../ui/primitives';
 import { CarSvg } from '../ui/CarSvg';
 import { CarPicker, type CarChoice } from './CarPicker';
-import { COPY } from '../ui/copy';
+import { useCopy } from '../i18n';
 
 export type CarEdit = { model: TeslaModel; colour: CarColourId; nick?: string };
 
@@ -21,6 +21,7 @@ export function GarageSheet({
   onSave: (next: CarEdit) => void;
   onClose: () => void;
 }): ReactNode {
+  const copy = useCopy();
   const [draft, setDraft] = useState<CarChoice>({
     model: car.model,
     colour: car.colour,
@@ -33,23 +34,30 @@ export function GarageSheet({
     draft.nick.trim() !== (car.nick ?? '');
 
   return (
-    <Sheet label={COPY.garage.title} title={COPY.garage.title} onClose={onClose} wide>
+    <Sheet label={copy.garage.title} title={copy.garage.title} onClose={onClose} wide>
       <div className="garage">
         <div className="garage__stage" aria-hidden>
-          <CarSvg key={draft.model} className="garage__car" model={draft.model} colour={draft.colour} size={420} heading={90} />
+          <CarSvg
+            key={draft.model}
+            className="garage__car"
+            model={draft.model}
+            colour={draft.colour}
+            size={420}
+            heading={90}
+          />
           <p className="stage__caption">
-            <span className="stage__model">{MODEL_LABELS[draft.model]}</span>
-            <span className="stage__paint">{colourOf(draft.colour).label}</span>
+            <span className="stage__model">{copy.cars.model(draft.model)}</span>
+            <span className="stage__paint">{copy.cars.colour(draft.colour)}</span>
           </p>
         </div>
         <div className="garage__form">
           <CarPicker value={draft} onChange={(patch) => setDraft({ ...draft, ...patch })} />
-          <p className="settings__hint">{COPY.garage.hint}</p>
+          <p className="settings__hint">{copy.garage.hint}</p>
         </div>
       </div>
       <SheetActions>
         <Button variant="ghost" onClick={onClose}>
-          {COPY.garage.cancel}
+          {copy.garage.cancel}
         </Button>
         <Button
           variant="primary"
@@ -62,7 +70,7 @@ export function GarageSheet({
             })
           }
         >
-          {COPY.garage.save}
+          {copy.garage.save}
         </Button>
       </SheetActions>
     </Sheet>

@@ -1,9 +1,9 @@
 import { useState, type ReactNode } from 'react';
-import { MODEL_LABELS, colourOf, type CarColourId, type TeslaModel } from '@teslawave/protocol';
+import type { CarColourId, TeslaModel } from '@teslawave/protocol';
 import { Button } from '../ui/primitives';
 import { CarSvg } from '../ui/CarSvg';
 import { CarPicker, type CarChoice } from './CarPicker';
-import { COPY } from '../ui/copy';
+import { useCopy } from '../i18n';
 import { Disclaimer } from '../ui/Disclaimer';
 import './onboarding.css';
 
@@ -23,6 +23,7 @@ export function Onboarding({
   onHaveCode: () => void;
   onHowItWorks: () => void;
 }): ReactNode {
+  const copy = useCopy();
   const [car, setCar] = useState<CarChoice>({ model: '3', colour: 'pearl', nick: '' });
 
   return (
@@ -42,9 +43,9 @@ export function Onboarding({
             />
           </div>
           <p className="stage__caption">
-            <span className="stage__model">{MODEL_LABELS[car.model]}</span>
+            <span className="stage__model">{copy.cars.model(car.model)}</span>
             <span className="stage__paint">
-              {colourOf(car.colour).label}
+              {copy.cars.colour(car.colour)}
               {car.nick.trim() ? ` · ${car.nick.trim()}` : ''}
             </span>
           </p>
@@ -52,9 +53,9 @@ export function Onboarding({
 
         <section className="onboarding__form">
           <header className="onboarding__head">
-            <p className="onboarding__brand eyebrow">{COPY.brand}</p>
-            <h1 className="onboarding__title">{COPY.onboarding.intro}</h1>
-            <p className="onboarding__sub">{COPY.onboarding.sub}</p>
+            <p className="onboarding__brand eyebrow">{copy.brand}</p>
+            <h1 className="onboarding__title">{copy.onboarding.intro}</h1>
+            <p className="onboarding__sub">{copy.onboarding.sub}</p>
           </header>
 
           <CarPicker value={car} onChange={(patch) => setCar({ ...car, ...patch })} />
@@ -71,19 +72,19 @@ export function Onboarding({
               })
             }
           >
-            {COPY.onboarding.go}
+            {copy.onboarding.go}
           </Button>
 
           <div className="onboarding__links">
             <button type="button" data-touch className="link" onClick={onHowItWorks}>
-              {COPY.onboarding.howItWorks}
+              {copy.onboarding.howItWorks}
             </button>
             <button type="button" data-touch className="link" onClick={onHaveCode}>
-              {COPY.onboarding.havePairingCode}
+              {copy.onboarding.havePairingCode}
             </button>
           </div>
 
-          <p className="onboarding__privacy">{COPY.onboarding.privacy}</p>
+          <p className="onboarding__privacy">{copy.onboarding.privacy}</p>
           <Disclaimer inline />
         </section>
       </div>

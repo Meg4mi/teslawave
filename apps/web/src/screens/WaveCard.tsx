@@ -1,8 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { TeslaModel } from '@teslawave/protocol';
-import { describeCar } from '@teslawave/protocol';
 import { CarSvg } from '../ui/CarSvg';
-import { COPY } from '../ui/copy';
+import { useCopy } from '../i18n';
 
 export type WaveCardContent = { id: number; model: TeslaModel; colour: string; back: boolean };
 
@@ -26,6 +25,7 @@ export function WaveCard({
   card: WaveCardContent | null;
   onDone: () => void;
 }): ReactNode {
+  const copy = useCopy();
   const done = useRef(onDone);
   useEffect(() => {
     done.current = onDone;
@@ -53,9 +53,9 @@ export function WaveCard({
         <CarSvg model={card.model} colour={card.colour} size={96} heading={90} />
       </span>
       <span className="wave-card__text">
-        <span className="wave-card__who">{describeCar(card.model, card.colour)}</span>
+        <span className="wave-card__who">{copy.cars.describe(card.model, card.colour)}</span>
         <span className="wave-card__what">
-          {card.back ? COPY.wave.cardBackTitle : COPY.wave.cardTitle}
+          {card.back ? copy.wave.cardBackTitle : copy.wave.cardTitle}
         </span>
       </span>
     </div>
