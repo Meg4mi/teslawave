@@ -77,7 +77,7 @@ test('a driver alone on the road can still find out how to wave', async ({ page 
   const sheet = page.getByRole('dialog', { name: 'How waving works' });
   await expect(sheet).toBeVisible();
   await expect(sheet).toContainText('a big Wave button appears');
-  await expect(sheet.locator('canvas')).toBeVisible();
+  await expect(sheet.locator('canvas').first()).toBeVisible();
   await sheet.getByRole('button', { name: 'Try it' }).click();
   await sheet.getByRole('button', { name: 'Got it' }).click();
   await expect(sheet).toHaveCount(0);
