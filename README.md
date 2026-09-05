@@ -66,6 +66,11 @@ pnpm check:css   # no blur, no animated shadows, no hardcoded screen size
 pnpm check:size  # under 400 kB gzipped, excluding MapLibre
 ```
 
+Every push and pull request runs the fast checks (`.github/workflows/ci.yml`). The Playwright
+suite is not part of that: it is slow and needs a Chromium download, so it lives in its own
+manual workflow (`.github/workflows/e2e.yml`). Run it from the Actions tab, or with
+`gh workflow run e2e.yml`, when the rendering path changed.
+
 The end-to-end suite runs the real worker under `wrangler dev`, supervised
 (`apps/worker/scripts/dev-supervised.mjs`): wrangler's dev proxy can exit when a client drops
 a WebSocket abruptly, which the suite does on purpose, and without the supervisor every test
