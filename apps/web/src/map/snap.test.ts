@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import type { Map as MlMap } from 'maplibre-gl';
 import {
+  MAX_ALIGN_DEG,
   MAX_SNAP_M,
+  alignTurnDeg,
   createRoadSnapper,
   candidatesFrom,
   headingMismatchDeg,
@@ -209,5 +211,24 @@ describe('createRoadSnapper', () => {
     expect(snapper.offsetOf('other')).not.toBeNull();
     snapper.update([], 10_000);
     expect(snapper.offsetOf('other')).toBeNull();
+  });
+});
+
+describe('alignTurnDeg', () => {
+  it('turns a car onto its road in whichever direction is nearer', () => {
+    // A road running north-south, a car heading a little east of north: turn left a little.
+    expect(alignTurnDeg(0, 12)).toBeCloseTo(-12, 6);
+    // The same road, a car heading south-ish: the road serves both ways, so a small turn.
+    expect(alignTurnDeg(0, 190)).toBeCloseTo(-10, 6);
+    expect(alignTurnDeg(90, 80)).toBeCloseTo(10, 6);
+    // Bearings from atan2 can be negative; a road at -90 is the road at 270.
+    expect(alignTurnDeg(-90, 265)).toBeCloseTo(5, 6);
+  });
+
+  it('leaves a car alone when it is clearly not lying along the road', () => {
+    expect(alignTurnDeg(0, 45)).toBe(0);
+    expect(alignTurnDeg(0, 90)).toBe(0);
+    expect(alignTurnDeg(0, MAX_ALIGN_DEG + 1)).toBe(0);
+    expect(Math.abs(alignTurnDeg(0, MAX_ALIGN_DEG))).toBeCloseTo(MAX_ALIGN_DEG, 6);
   });
 });

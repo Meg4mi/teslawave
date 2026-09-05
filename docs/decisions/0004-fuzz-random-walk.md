@@ -25,5 +25,6 @@ the offset, rounded to 5 decimals.
 ## Consequences
 
 Motion stays smooth, the reported track is a plausible but wrong path, and the offset does
-not survive a reload. Wave validation uses a 300 m server-side range (twice the maximum fuzz
-plus margin) while the client prompts at 150 m.
+not survive a reload. Wave validation uses a server-side range 150 m wider than the one the
+client prompts at, so a wave that is offered is one that will be accepted (ADR-0007: 300 m
+to prompt, 450 m to accept, since amended from 150/300).

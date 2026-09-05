@@ -71,11 +71,16 @@ const listeners = new Set<() => void>();
  * (see map/snap.ts). Distances — and therefore the wave prompt — are always measured from the
  * unnudged position, because that is the one the hub validates against.
  */
-let displayOffsetOf: (id: string) => { lat: number; lng: number } | null = () => null;
+export type DisplayOffset = {
+  lat: number;
+  lng: number;
+  /** Degrees to add to the drawn heading, so a snapped car lies along its road. */
+  turn?: number;
+};
 
-export function setDisplayOffsetSource(
-  source: ((id: string) => { lat: number; lng: number } | null) | null,
-): void {
+let displayOffsetOf: (id: string) => DisplayOffset | null = () => null;
+
+export function setDisplayOffsetSource(source: ((id: string) => DisplayOffset | null) | null): void {
   displayOffsetOf = source ?? ((): null => null);
 }
 
@@ -202,12 +207,22 @@ export function applyServerMsg(msg: ServerMsg): void {
       // A welcome is a fresh start for these cells: after a reconnect the counts from before
       // the drop are stale, and keeping them double-counts everyone.
       for (const cell of msg.cells) cellStats.delete(cell);
+      // The snapshot is the whole truth for these cells. Anyone we still hold there who is
+      // not in it left while the socket was down, and would otherwise sit on the map as a
+      // ghost until the expiry sweep caught up with them a minute later.
+      const present = new Set(msg.snapshot.map((car) => car.id));
+      for (const [id, car] of cars)
+        if (msg.cells.includes(car.cell) && !present.has(id)) cars.delete(id);
       for (const car of msg.snapshot) upsert(car, now);
       break;
     }
     case 'diff': {
       for (const car of msg.upd) upsert(car, now);
-      for (const id of msg.gone) cars.delete(id);
+      // "Gone" is per cell. A car crossing a cell border is announced gone from the old cell
+      // and updated in the new one, and the hub sends the update first — so a gone that names
+      // a cell the car is no longer in is old news, not a departure. Deleting on it blanked
+      // every car for a few seconds each time it crossed a border.
+      for (const id of msg.gone) if (cars.get(id)?.cell === msg.cell) cars.delete(id);
       cellStats.set(msg.cell, {
         online: msg.online,
         wavesToday: msg.wavesToday,
@@ -269,7 +284,12 @@ function placements(server: number): RenderCar[] {
       : Number.POSITIVE_INFINITY;
     const offset = displayOffsetOf(car.id);
     const shown = offset
-      ? { ...placement, lat: placement.lat + offset.lat, lng: placement.lng + offset.lng }
+      ? {
+          ...placement,
+          lat: placement.lat + offset.lat,
+          lng: placement.lng + offset.lng,
+          heading: (((placement.heading + (offset.turn ?? 0)) % 360) + 360) % 360,
+        }
       : placement;
     out.push({ ...car, placement: shown, reported: placement, distanceM });
   }

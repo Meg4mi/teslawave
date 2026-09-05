@@ -15,7 +15,8 @@ demand so they can be judged side by side.
       camera eases in. This is the first time a driver sees themselves.
 - [ ] **Someone appears** — fade in over 300 ms with a single expanding ring. Never a pop-in.
 - [ ] **Approach** — both sprites breathe, a dashed cyan line joins the two cars, the wave
-      button rises with a countdown hairline running out along its bottom edge.
+      button rises with a countdown bar running out under the car's name, and an accent halo
+      breathing around it.
 - [ ] **Wave sent** — press compresses, three rings leave your car, the button collapses into
       a dot that flies to the other car, and the sent chime plays.
 - [ ] **Wave received** — warm rings on the sender, a toast carrying their actual sprite, the

@@ -80,7 +80,7 @@ describe('world', () => {
   });
 
   it('measures distance from the fuzzed position, which is what the server validates', () => {
-    // 500 m east of us: outside the 150 m prompt range.
+    // 500 m east of us: outside the 300 m prompt range.
     applyServerMsg(welcome([car({ lng: GENEVA.lng + 0.0065 })]));
     tickWorld(performance.now() + 1_000);
     expect(getSummary().nearby).toBeNull();
@@ -149,5 +149,42 @@ describe('world', () => {
     tickWorld(performance.now() + 4_000);
     expect(getSummary().online).toBe(0);
     expect(tickWorld(performance.now() + 4_000)).toHaveLength(0);
+  });
+});
+
+describe('cells and reconnects', () => {
+  it('keeps a car that crossed into another cell when the old cell says it is gone', () => {
+    applyServerMsg(welcome([car({ cell: 'u0hq' })]));
+    // The hub announces the crossing as an update in the new cell followed by a departure
+    // from the old one. The departure is old news, not a car leaving.
+    applyServerMsg(diff({ cell: 'u0hr', upd: [car({ cell: 'u0hr', ts: Date.now() + 2_000 })] }));
+    applyServerMsg(diff({ cell: 'u0hq', gone: ['other'] }));
+    expect(tickWorld(performance.now()).map((c) => c.id)).toEqual(['other']);
+    // A departure from the cell the car is actually in still counts.
+    applyServerMsg(diff({ cell: 'u0hr', gone: ['other'] }));
+    expect(tickWorld(performance.now())).toHaveLength(0);
+  });
+
+  it('forgets, on a welcome, anyone who left the cell while the socket was down', () => {
+    applyServerMsg(welcome([car({ id: 'stayed' }), car({ id: 'left' })]));
+    expect(tickWorld(performance.now())).toHaveLength(2);
+    // Reconnected: the hub restates the cell from scratch, and only one of them is still there.
+    applyServerMsg(welcome([car({ id: 'stayed' })]));
+    expect(tickWorld(performance.now()).map((c) => c.id)).toEqual(['stayed']);
+  });
+
+  it('leaves cars in other cells alone on a welcome', () => {
+    applyServerMsg(welcome([car({ id: 'here' })]));
+    applyServerMsg(diff({ cell: 'u0hr', upd: [car({ id: 'there', cell: 'u0hr' })] }));
+    applyServerMsg(welcome([car({ id: 'here' })]));
+    expect(tickWorld(performance.now()).map((c) => c.id).sort()).toEqual(['here', 'there']);
+  });
+
+  it('turns a snapped car to lie along its road, for the drawing only', () => {
+    applyServerMsg(welcome([car({ heading: 350 })]));
+    setDisplayOffsetSource(() => ({ lat: 0, lng: 0, turn: 15 }));
+    const rendered = tickWorld(performance.now())[0];
+    expect(rendered?.placement.heading).toBeCloseTo(5, 6);
+    expect(rendered?.reported.heading).toBe(350);
   });
 });

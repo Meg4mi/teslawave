@@ -196,9 +196,12 @@
 
 /* --- The wave button ----------------------------------------------------------------------- */
 /*
- * 96 px tall and most of the width: it has to be hittable with a glance, not aimed at,
- * because the driver is driving. White, like every big button in the car; the countdown
- * hairline is the one accent.
+ * 104 px tall and most of the width: it has to be hittable with a glance, not aimed at,
+ * because the driver is driving. White, like every big button in the car, with a hint of sky
+ * in the paint so it is not a flat slab; the car you would wave at sits in a dark well on the
+ * left, the wave rings breathe on the right, and the countdown runs out under the name.
+ *
+ * Every animation here is transform and opacity. No shadow, no blur (ADR-0014).
  */
 .wave {
   position: absolute;
@@ -208,57 +211,146 @@
   display: flex;
   align-items: center;
   gap: var(--sp-4);
-  width: min(56%, 560px);
-  height: 96px;
-  padding: 0 var(--sp-6) 0 var(--sp-4);
+  width: min(58%, 600px);
+  height: 104px;
+  padding: 0 var(--sp-4) 0 var(--sp-3);
   border-radius: var(--r-full);
-  border: 1px solid var(--paint);
-  background: var(--paint);
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  background: linear-gradient(180deg, #ffffff 0%, #f2f6fa 100%);
   color: var(--paint-fg);
   text-align: left;
   transform: translate(-50%, 0);
   animation: wave-in var(--d-slow) var(--e-spring) both;
-  overflow: hidden;
 }
 
+/*
+ * A ring of the accent just outside the button: the approach, made visible. It flares once
+ * as the button lands and then holds. It used to breathe for as long as the button was up,
+ * and on the perf spec that one looping 600 px layer cost a millisecond of every frame in
+ * software compositing — the rings on the icon are a tenth of the area and stay animated.
+ */
+.wave__halo {
+  position: absolute;
+  inset: -6px;
+  border-radius: inherit;
+  border: 2px solid var(--accent);
+  opacity: 0.35;
+  pointer-events: none;
+  animation: wave-halo 1.4s var(--e-out) both;
+}
+
+@keyframes wave-halo {
+  0% {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+  30% {
+    opacity: 0.8;
+    transform: scale(1.03);
+  }
+  100% {
+    opacity: 0.35;
+    transform: scale(1);
+  }
+}
+
+/* The other car, in its dark well, so its paint reads against white. */
 .wave__car {
   flex: none;
   display: grid;
   place-items: center;
-  width: 68px;
-  height: 68px;
+  width: 82px;
+  height: 82px;
   border-radius: var(--r-full);
-  background: #1a2230;
+  border: 1px solid rgba(110, 231, 255, 0.35);
+  background: radial-gradient(circle at 50% 36%, #29374d 0%, #141b27 68%, #0e131b 100%);
 }
 
 .wave__text {
+  flex: 1 1 auto;
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 4px;
   min-width: 0;
 }
 
 .wave__verb {
   font-weight: 700;
-  font-size: 26px;
-  letter-spacing: -0.015em;
+  font-size: 30px;
+  letter-spacing: -0.02em;
   line-height: 1;
 }
 
 .wave__target {
   font-weight: 500;
   font-size: 15px;
-  line-height: 1;
-  opacity: 0.66;
+  line-height: 1.1;
+  opacity: 0.62;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
+/* The window, as a rounded track under the name that a bar of accent runs out of. */
+.wave__track {
+  position: relative;
+  display: block;
+  height: 4px;
+  margin-top: 6px;
+  border-radius: 2px;
+  background: rgba(10, 10, 11, 0.08);
+  overflow: hidden;
+}
+
+.wave__countdown {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, var(--accent-deep), var(--accent));
+  transform-origin: left center;
+  animation: countdown 10s linear both;
+}
+
+@keyframes countdown {
+  to {
+    transform: scaleX(0);
+  }
+}
+
+/* The wave itself: rings leaving the icon. Small, so the loop costs next to nothing. */
 .wave__icon {
-  margin-left: auto;
+  position: relative;
   flex: none;
-  opacity: 0.8;
+  display: grid;
+  place-items: center;
+  width: 60px;
+  height: 60px;
+  border-radius: var(--r-full);
+  background: var(--accent-soft);
+  color: var(--accent-deep);
+}
+
+/* One ring, three times: it announces the button and then rests, so a car that stays
+   alongside is not a screen that never stops moving. */
+.wave__icon::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  border: 1.5px solid var(--accent-deep);
+  opacity: 0;
+  animation: wave-ring 2s var(--e-out) 3;
+}
+
+@keyframes wave-ring {
+  0% {
+    opacity: 0.45;
+    transform: scale(0.72);
+  }
+  80%,
+  100% {
+    opacity: 0;
+    transform: scale(1.4);
+  }
 }
 
 .wave:active {
@@ -268,6 +360,7 @@
 
 .wave--leaving {
   animation: wave-out var(--d-base) var(--e-out) both;
+  pointer-events: none;
 }
 
 @keyframes wave-in {
@@ -281,24 +374,6 @@
   to {
     opacity: 0;
     transform: translate(-50%, 12px) scale(0.96);
-  }
-}
-
-/* The 10 s window, as a hairline that runs out along the bottom edge. */
-.wave__countdown {
-  position: absolute;
-  left: 0;
-  bottom: 0;
-  height: 4px;
-  width: 100%;
-  background: var(--accent-deep);
-  transform-origin: left center;
-  animation: countdown 10s linear both;
-}
-
-@keyframes countdown {
-  to {
-    transform: scaleX(0);
   }
 }
 
@@ -477,7 +552,7 @@
     left: var(--edge);
     right: calc(var(--edge) + 60px + var(--sp-2));
     width: auto;
-    height: 76px;
+    height: 84px;
     gap: var(--sp-3);
     padding: 0 var(--sp-4) 0 var(--sp-2);
     transform: none;
@@ -486,16 +561,25 @@
   }
 
   .wave__car {
-    width: 56px;
-    height: 56px;
+    width: 62px;
+    height: 62px;
+  }
+
+  .wave__car svg {
+    width: 50px;
+    height: auto;
   }
 
   .wave__verb {
-    font-size: 22px;
+    font-size: 24px;
   }
 
   .wave__target {
     font-size: 13px;
+  }
+
+  .wave__track {
+    margin-top: 4px;
   }
 
   .wave__icon {
@@ -513,8 +597,11 @@
     }
   }
 
-  .wave--leaving {
-    animation: none;
+  @keyframes wave-out {
+    to {
+      opacity: 0;
+      transform: translateY(10px) scale(0.97);
+    }
   }
 
   .card-sheet__head {

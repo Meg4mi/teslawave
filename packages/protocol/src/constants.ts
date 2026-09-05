@@ -47,11 +47,19 @@ export const MAX_SPEED_KMH = 250;
 export const MAX_SOCKETS_PER_CELL = 500;
 export const MAX_SOCKETS_PER_HUB = 2_000;
 
-/** Client shows the wave button below this distance. */
-export const WAVE_PROMPT_RANGE_M = 150;
+/**
+ * Client shows the wave button below this distance, measured between fuzzed positions. It
+ * was 150 m, and on a real road that was too tight: two cars genuinely side by side can read
+ * as 200 m apart once both positions carry their 50-100 m fuzz, so the button hardly ever
+ * came (ADR-0007, amended).
+ */
+export const WAVE_PROMPT_RANGE_M = 300;
 export const WAVE_PROMPT_TTL_MS = 10_000;
-/** Server accepts a wave below this distance: 2 x max fuzz + margin. */
-export const WAVE_VALIDATE_RANGE_M = 300;
+/**
+ * Server accepts a wave below this distance: the prompt range plus the same 150 m margin as
+ * before, which covers the two seconds the client renders behind and a tick of latency.
+ */
+export const WAVE_VALIDATE_RANGE_M = 450;
 /** Two waves within this window read as a "wave back". */
 export const WAVE_BACK_WINDOW_MS = 4_000;
 

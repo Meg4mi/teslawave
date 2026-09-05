@@ -145,3 +145,38 @@ describe('EntityTrack', () => {
     expect(track.samples.length).toBeLessThanOrEqual(3);
   });
 });
+
+describe('pushSample after a gap', () => {
+  const mk = (ts: number, lat: number): MotionSample => ({ lat, lng: 6.14, heading: 0, speed: 72, ts });
+
+  it('places the car rather than sliding it from where it was drawn before the tab slept', () => {
+    const track = createTrack();
+    pushSample(track, mk(6_000, 46.2), 10_000);
+    pushSample(track, mk(8_000, 46.2004), 10_000);
+    sample(track, 10_000);
+    // Two minutes with no frames: the phone was in a pocket. Then the next sample arrives.
+    const later = 130_000;
+    pushSample(track, mk(later - 4_000, 46.22), later);
+    pushSample(track, mk(later - 2_000, 46.2204), later);
+    expect(track.correction).toBeNull();
+    const drawn = sample(track, later)!;
+    const truth = evaluate(track.samples, later - RENDER_DELAY_MS)!;
+    expect(haversineM(drawn.lat, drawn.lng, truth.lat, truth.lng)).toBeLessThan(0.5);
+  });
+
+  it('still blends a correction when frames have been running', () => {
+    const track = createTrack();
+    pushSample(track, mk(6_000, 46.2), 10_000);
+    pushSample(track, mk(8_000, 46.2004), 10_000);
+    // Drawn a second past the last sample: dead-reckoned 20 m up the road.
+    const drawn = sample(track, 11_000)!;
+    // Then the car turns out to have stopped where it was: a 20 m contradiction.
+    pushSample(track, mk(10_000, 46.2004), 11_000);
+    expect(track.correction).not.toBeNull();
+    const justAfter = sample(track, 11_000)!;
+    expect(haversineM(drawn.lat, drawn.lng, justAfter.lat, justAfter.lng)).toBeLessThan(1);
+    const settled = sample(track, 12_100)!;
+    const truth = evaluate(track.samples, 12_100 - RENDER_DELAY_MS)!;
+    expect(haversineM(settled.lat, settled.lng, truth.lat, truth.lng)).toBeLessThan(0.5);
+  });
+});

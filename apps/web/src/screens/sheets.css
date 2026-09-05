@@ -76,6 +76,45 @@
   cursor: pointer;
 }
 
+/* A row that opens something: the whole strip is the target, and it says so when pressed. */
+.settings__row--link {
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--d-fast) linear;
+}
+
+.settings__row--link:active {
+  background-color: var(--bg-2);
+}
+
+.settings__row--link:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+  border-radius: var(--r-sm);
+}
+
+.settings__chevron {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--r-full);
+  border: 1px solid var(--line-strong);
+  background: var(--bg-2);
+  color: var(--fg);
+  transition:
+    background-color var(--d-fast) linear,
+    border-color var(--d-fast) linear;
+}
+
+.settings__row--link:active .settings__chevron {
+  background: var(--accent-soft);
+  border-color: rgba(110, 231, 255, 0.55);
+  color: var(--accent);
+}
+
 .settings__car {
   display: flex;
   align-items: center;

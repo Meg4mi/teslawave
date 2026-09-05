@@ -373,7 +373,14 @@ export function App(): ReactNode {
     () => (prefs.sharing && !spectator ? summary.nearby : null),
     [summary.nearby, prefs.sharing, spectator],
   );
-  const selfCar = identity ? { model: identity.model, colour: identity.colour } : null;
+  // Stable while the car is: the map re-renders twice a second for the HUD, and a fresh
+  // object here re-ran the map's prop effect on every one of those.
+  const selfModel = identity?.model;
+  const selfColour = identity?.colour;
+  const selfCar = useMemo(
+    () => (selfModel && selfColour ? { model: selfModel, colour: selfColour } : null),
+    [selfModel, selfColour],
+  );
 
   // Onboarding is a card over the live map, not a separate black screen: same place, same
   // materials, and tapping Go drops your car onto the map already in front of you.

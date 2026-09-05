@@ -1,4 +1,4 @@
-import { colourOf } from '@teslawave/protocol';
+import { TRAIL_MS, colourOf } from '@teslawave/protocol';
 import type { RenderCar } from '../sim/world';
 import { getSprite, SPRITE_LENGTH } from './sprites';
 
@@ -49,6 +49,17 @@ export const spriteScaleFor = (zoom: number, drawn: number): number => {
 };
 
 const TRAIL_WIDTH = 2.5;
+const TRAIL_ALPHA = 0.35;
+/**
+ * A trail fades along its length, and the obvious way to draw that is one stroke per segment
+ * with its own alpha: sixty strokes per car, twelve hundred a frame with twenty cars, and a
+ * `stroke()` is the one call here that costs real time on an Intel Atom. The fade is
+ * quantised instead: the alpha only ever falls from the car backwards, so consecutive segments
+ * at the same level form one path, and a whole trail is at most this many strokes.
+ */
+const TRAIL_LEVELS = 6;
+/** A car this far off the screen has no trail worth walking. */
+const TRAIL_CULL_PX = 900;
 const CONE_LENGTH = 60;
 const CONE_SPREAD = 12;
 
@@ -95,24 +106,40 @@ export function createRenderer(canvas: HTMLCanvasElement) {
       if (options.trails) {
         ctx.lineWidth = TRAIL_WIDTH;
         for (const car of cars) {
-          if (car.trail.length < 2) continue;
-          const hex = colourOf(car.colour).hex;
-          for (let i = 1; i < car.trail.length; i++) {
-            const a = car.trail[i - 1];
-            const b = car.trail[i];
-            if (!a || !b) continue;
-            const age = (now - b.at) / 30_000;
-            const alpha = Math.max(0, 0.35 * (1 - age));
-            if (alpha <= 0.01) continue;
-            const p1 = project(a.lng, a.lat);
-            const p2 = project(b.lng, b.lat);
-            ctx.globalAlpha = alpha;
-            ctx.strokeStyle = hex;
-            ctx.beginPath();
-            ctx.moveTo(p1.x, p1.y);
-            ctx.lineTo(p2.x, p2.y);
-            ctx.stroke();
+          const trail = car.trail;
+          const first = trail[0];
+          if (trail.length < 2 || !first) continue;
+          const head = project(car.placement.lng, car.placement.lat);
+          if (
+            head.x < -TRAIL_CULL_PX ||
+            head.y < -TRAIL_CULL_PX ||
+            head.x > width + TRAIL_CULL_PX ||
+            head.y > height + TRAIL_CULL_PX
+          )
+            continue;
+          ctx.strokeStyle = colourOf(car.colour).hex;
+          let level = 0;
+          let open = false;
+          let prev = project(first.lng, first.lat);
+          for (let i = 1; i < trail.length; i++) {
+            const point = trail[i];
+            if (!point) continue;
+            const p = project(point.lng, point.lat);
+            const next = Math.ceil(TRAIL_LEVELS * Math.max(0, 1 - (now - point.at) / TRAIL_MS));
+            if (next > 0) {
+              if (next !== level) {
+                if (open) ctx.stroke();
+                level = next;
+                ctx.globalAlpha = (TRAIL_ALPHA * level) / TRAIL_LEVELS;
+                ctx.beginPath();
+                ctx.moveTo(prev.x, prev.y);
+                open = true;
+              }
+              ctx.lineTo(p.x, p.y);
+            }
+            prev = p;
           }
+          if (open) ctx.stroke();
         }
         ctx.globalAlpha = 1;
       }

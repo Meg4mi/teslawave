@@ -6,6 +6,7 @@ import { getSelfPlacement, setDisplayOffsetSource, tickWorld, type RenderCar } f
 import { createRenderer, type Renderer } from '../overlay/renderer';
 import { buildStyle } from './style';
 import { createRoadSnapper } from './snap';
+import { affineProjector } from './projector';
 import { MAPLIBRE_WORKER_URL } from './maplibre-worker-url';
 import { COPY } from '../ui/copy';
 import { LocateIcon, MinusIcon, PlusIcon } from '../ui/icons';
@@ -77,6 +78,17 @@ const SNAP_BUDGET_SLOW = 1;
  * wheel comes back — a second of a slightly-off correction nobody will see.
  */
 const TURNING_DEG_PER_S = 6;
+/**
+ * Once frames are measured slow, the vector map is rendered at no more than this pixel ratio.
+ *
+ * 2026.26 doubled the car browser's pixel density, and a map drawn at 2x is four times the
+ * fill work of the same map at 1x — on an Intel Atom that is the difference between a map
+ * that turns with you and one that stutters. The overlay keeps the full density, so the cars
+ * stay crisp; it is only the roads and labels that soften, and only after the frame rate has
+ * said so. Latched for the session: restoring it on the strength of frames that were fast
+ * *because* it was lowered would flip the map's resolution back and forth every few seconds.
+ */
+const LOW_RES_MAX_RATIO = 1;
 
 export function LiveMap({
   northUp,
@@ -256,6 +268,8 @@ export function LiveMap({
     });
 
     let dpr = window.devicePixelRatio;
+    let lowRes = false;
+    const mapPixelRatio = (): number => (lowRes ? Math.min(dpr, LOW_RES_MAX_RATIO) : dpr);
     const resize = (): void => {
       dpr = window.devicePixelRatio;
       const rect = host.getBoundingClientRect();
@@ -263,7 +277,7 @@ export function LiveMap({
       canvas.height = Math.round(rect.height * dpr);
       canvas.style.width = `${rect.width}px`;
       canvas.style.height = `${rect.height}px`;
-      map.setPixelRatio(dpr);
+      map.setPixelRatio(mapPixelRatio());
       map.resize();
     };
     resize();
@@ -299,6 +313,10 @@ export function LiveMap({
       }
       if (!halfRate && slowFrames > 60) halfRate = true;
       if (halfRate && fastFrames > 300) halfRate = false;
+      if (halfRate && !lowRes && dpr > LOW_RES_MAX_RATIO) {
+        lowRes = true;
+        map.setPixelRatio(mapPixelRatio());
+      }
 
       if (now - overlayAt < (halfRate ? OVERLAY_SLOW_MS : 0)) return;
       overlayAt = now;
@@ -345,7 +363,8 @@ export function LiveMap({
       snapper.update(cars, now, busy ? 0 : halfRate ? SNAP_BUDGET_SLOW : SNAP_BUDGET);
       renderer.render(
         now,
-        (lng, lat) => map.project([lng, lat]),
+        // Built once per frame from the map's own transform: see map/projector.ts.
+        affineProjector(map),
         {
           cars,
           self:

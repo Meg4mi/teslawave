@@ -63,7 +63,7 @@ export const COPY = {
     lead: 'It is the Tesla wave, on your screen. Nothing to learn.',
     steps: [
       'Drive. Other drivers running TeslaWave appear around you on the map.',
-      'When one comes within about 150 m, a big Wave button appears at the bottom of the screen.',
+      'When one comes within about 300 m, a big Wave button appears at the bottom of the screen.',
       'Tap it. They see a ripple on your car and hear a chime. If they wave back within a few seconds, you both get a "Waved back".',
     ],
     tapHint:

@@ -10,6 +10,7 @@ import {
   CAR_COLOURS,
   NEIGHBOUR_RADIUS_M,
   TESLA_MODELS,
+  WAVE_PROMPT_RANGE_M,
   applyFuzz,
   cellsWithin,
   createFuzz,
@@ -159,7 +160,7 @@ setInterval(() => {
 
     if (Math.random() < waveChance && now - driver.lastWaveAt > 10_000) {
       for (const [id, car] of driver.seen) {
-        if (haversineM(reported.lat, reported.lng, car.lat, car.lng) < 150) {
+        if (haversineM(reported.lat, reported.lng, car.lat, car.lng) < WAVE_PROMPT_RANGE_M) {
           driver.lastWaveAt = now;
           send(driver, { t: 'wave', to: id });
           break;

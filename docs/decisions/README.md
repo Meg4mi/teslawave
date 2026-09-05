@@ -13,7 +13,7 @@ Format: Context / Decision / Rejected alternatives / Consequences (`0000-templat
 | [0004](0004-fuzz-random-walk.md) | Position fuzzing as a bounded random walk |
 | [0005](0005-canvas-overlay.md) | Cars drawn on one 2D canvas above MapLibre |
 | [0006](0006-map-style.md) | Custom near-monochrome style on OpenFreeMap tiles |
-| [0007](0007-wave-semantics.md) | Wave semantics: both parties, 150/300 m, milestones instead of leaderboards |
+| [0007](0007-wave-semantics.md) | Wave semantics: both parties, 300/450 m (was 150/300), milestones instead of leaderboards |
 | [0008](0008-pairing-in-d1.md) | Pairing codes in D1 rather than a pairing Durable Object |
 | [0009](0009-adaptive-send-rate.md) | Adaptive position send rate |
 | [0010](0010-no-service-worker.md) | No service worker in v1 |
@@ -26,3 +26,4 @@ Format: Context / Decision / Rejected alternatives / Consequences (`0000-templat
 | [0018](0018-traced-model-art.md) | Each model is traced, not parameterised |
 | [0019](0019-own-car-is-interpolated-too.md) | Your own car is interpolated too, and the camera pauses on touch-down |
 | [0020](0020-one-car-drawing-two-renderers.md) | One car drawing, rendered as SVG in the UI and baked to bitmap on the map |
+| [0021](0021-map-resolution-follows-the-frame-rate.md) | The map's resolution follows the measured frame rate, and the overlay projects for itself |
