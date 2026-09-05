@@ -232,3 +232,35 @@ Worth checking on the car: whether the wave button now appears for cars that are
 alongside; whether other cars lie along the road rather than across it; whether a border
 crossing on the motorway still makes anyone blink; and, on a density-2 screen, whether the map
 softening after a slow spell is noticeable, and whether it is worth it.
+
+
+## 2026-09-05 — "a car goes offline for no reason, even with the app open on two devices"
+
+Reported from real use, not reproduced on a car; found by reading the code against the report.
+Two things could do this, and neither had anything to do with the second device.
+
+**A device that stops getting fixes stops reporting, and nothing notices.** The position was only
+ever sent from the geolocation callback. A parked car whose `watchPosition` goes quiet, or a
+phone whose screen dims, sent nothing — while its socket stayed open, its pings kept being
+answered, and its own HUD said live. The hub forgets a driver 60 s after their last position,
+so one missed 30 s report was enough for everyone else to watch the car vanish. ADR-0009 had
+rejected send-on-change for exactly this reason; the implementation was send-on-fix, which is
+the same failure with a different trigger. The net layer now repeats the last fuzzed position
+at the stationary cadence when nothing else was sent in that time, and only then, so a device
+that is getting fixes sends nothing extra (`net/sockets.ts`, three tests).
+
+**A reconnect after the hub had gone to sleep wiped the map.** Presence lives in the hub's
+memory only and a hibernation wake starts from nothing, with everyone reporting back over the
+next 30 s (ADR-0002). The reconnect is often what wakes it. The client treated the welcome
+snapshot as the whole truth and deleted whoever was not in it, so every car around blinked
+out and trickled back one by one, and "N online" read 0 for a moment. Anyone missing from a
+welcome now gets until their next report to show up before they go (`sim/world.ts`). A driver
+who really left while the socket was down still disappears twice as fast as the plain expiry
+sweep would have managed.
+
+Still true, and worth knowing when testing with a phone paired to the car: turning "invisible"
+on on either device drops the shared presence for both, and the car comes back on the other
+device's next report. That one is a choice, not a bug, and it is not what the report described.
+
+Worth checking on the car: leave it parked with the app open for five minutes and watch it from
+a second device. It should never disappear.

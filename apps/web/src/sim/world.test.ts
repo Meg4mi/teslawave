@@ -1,4 +1,5 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { POS_INTERVAL_STATIONARY_MS, PRESENCE_EXPIRY_MS } from '@teslawave/protocol';
 import type { CarState, ServerMsg } from '@teslawave/protocol';
 import {
   applyServerMsg,
@@ -165,12 +166,42 @@ describe('cells and reconnects', () => {
     expect(tickWorld(performance.now())).toHaveLength(0);
   });
 
-  it('forgets, on a welcome, anyone who left the cell while the socket was down', () => {
-    applyServerMsg(welcome([car({ id: 'stayed' }), car({ id: 'left' })]));
-    expect(tickWorld(performance.now())).toHaveLength(2);
-    // Reconnected: the hub restates the cell from scratch, and only one of them is still there.
-    applyServerMsg(welcome([car({ id: 'stayed' })]));
-    expect(tickWorld(performance.now()).map((c) => c.id)).toEqual(['stayed']);
+  describe('a welcome that does not mention someone we hold', () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('forgets them once they have missed the report a stopped car would have sent', () => {
+      applyServerMsg(welcome([car({ id: 'stayed' }), car({ id: 'left' })]));
+      expect(tickWorld(performance.now())).toHaveLength(2);
+      // Reconnected: the hub restates the cell, and only one of them is in the snapshot.
+      applyServerMsg(welcome([car({ id: 'stayed' })]));
+      // Not gone yet: the hub may have just woken up and be waiting for them too.
+      expect(tickWorld(performance.now()).map((c) => c.id).sort()).toEqual(['left', 'stayed']);
+      vi.advanceTimersByTime(POS_INTERVAL_STATIONARY_MS + 1_000);
+      applyServerMsg(diff({ upd: [car({ id: 'stayed' })] }));
+      expect(tickWorld(performance.now()).map((c) => c.id)).toEqual(['stayed']);
+    });
+
+    it('keeps them when the woken hub hears from them again in time', () => {
+      applyServerMsg(welcome([car({ id: 'parked' })]));
+      // The hub hibernated and our reconnect woke it: it has forgotten everyone for now.
+      applyServerMsg(welcome([]));
+      vi.advanceTimersByTime(POS_INTERVAL_STATIONARY_MS - 5_000);
+      applyServerMsg(diff({ upd: [car({ id: 'parked', speed: 0 })] }));
+      vi.advanceTimersByTime(PRESENCE_EXPIRY_MS - 5_000);
+      expect(tickWorld(performance.now()).map((c) => c.id)).toEqual(['parked']);
+    });
+
+    it('does not push back someone who was already older than that', () => {
+      applyServerMsg(welcome([car({ id: 'old', ts: Date.now() - (PRESENCE_EXPIRY_MS - 5_000) })]));
+      applyServerMsg(welcome([]));
+      vi.advanceTimersByTime(6_000);
+      expect(tickWorld(performance.now())).toHaveLength(0);
+    });
   });
 
   it('leaves cars in other cells alone on a welcome', () => {

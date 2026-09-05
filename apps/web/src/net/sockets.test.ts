@@ -1,5 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { ClientMsg, ServerMsg } from '@teslawave/protocol';
+import {
+  POS_INTERVAL_STATIONARY_MS,
+  PRESENCE_EXPIRY_MS,
+  type ClientMsg,
+  type ServerMsg,
+} from '@teslawave/protocol';
 import { createNet, type Net } from './sockets';
 
 /**
@@ -134,5 +139,51 @@ describe('net', () => {
     only().connect();
     net.stop();
     expect(cells.at(-1)).toEqual([]);
+  });
+
+  const posTimes = (ws: FakeSocket): number[] =>
+    ws.msgs().flatMap((m) => (m.t === 'pos' ? [m.ts] : []));
+
+  it('keeps the hub fed when the device stops delivering fixes', () => {
+    net.update({ ...GENEVA, speed: 0 });
+    const ws = only();
+    ws.connect();
+    // A parked car whose watchPosition goes quiet, for two minutes. The socket is fine: the
+    // hub keeps answering our pings, which is the only thing it hears.
+    for (let s = 0; s < 24; s++) {
+      vi.advanceTimersByTime(5_000);
+      ws.onmessage?.({ data: 'pong' });
+    }
+    expect(only()).toBe(ws);
+    const times = posTimes(ws);
+    expect(times.length).toBeGreaterThanOrEqual(4);
+    // The hub evicts at PRESENCE_EXPIRY_MS: no gap may come anywhere near it.
+    for (let i = 1; i < times.length; i++) {
+      const gap = (times[i] ?? 0) - (times[i - 1] ?? 0);
+      expect(gap).toBeGreaterThanOrEqual(POS_INTERVAL_STATIONARY_MS);
+      expect(gap).toBeLessThan(PRESENCE_EXPIRY_MS / 1.5);
+    }
+  });
+
+  it('sends nothing extra while fixes are still arriving', () => {
+    net.update({ ...GENEVA, speed: 0 });
+    const ws = only();
+    ws.connect();
+    // One fix a second for a minute, like a real device sitting at a light.
+    for (let s = 0; s < 65; s++) {
+      vi.advanceTimersByTime(1_000);
+      net.update({ ...GENEVA, speed: 0 });
+    }
+    // The send policy alone would have said: at 0 s, 30 s and 60 s. Nothing more.
+    expect(posTimes(ws)).toHaveLength(3);
+  });
+
+  it('stays quiet while invisible, even when no fixes arrive', () => {
+    net.update(GENEVA);
+    const ws = only();
+    ws.connect();
+    net.setHidden(true);
+    vi.advanceTimersByTime(120_000);
+    expect(posTimes(ws)).toHaveLength(1);
   });
 });

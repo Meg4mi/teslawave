@@ -1,5 +1,6 @@
 import { createSelfFollower } from './self';
 import {
+  POS_INTERVAL_STATIONARY_MS,
   PRESENCE_EXPIRY_MS,
   TRAIL_MS,
   WAVE_PROMPT_RANGE_M,
@@ -207,12 +208,18 @@ export function applyServerMsg(msg: ServerMsg): void {
       // A welcome is a fresh start for these cells: after a reconnect the counts from before
       // the drop are stale, and keeping them double-counts everyone.
       for (const cell of msg.cells) cellStats.delete(cell);
-      // The snapshot is the whole truth for these cells. Anyone we still hold there who is
-      // not in it left while the socket was down, and would otherwise sit on the map as a
-      // ghost until the expiry sweep caught up with them a minute later.
+      // The snapshot restates these cells, but it is not always the whole truth: the hub keeps
+      // presence in memory only, and a hibernation wake — which our own reconnect can be what
+      // caused — leaves it empty until every driver reports again, up to 30 s for a stopped
+      // car (ADR-0002). Deleting whoever is missing made every car around vanish on each
+      // reconnect and trickle back one by one. So anyone we hold there who is not in it gets
+      // until their next report to show up, then goes: that still clears a driver who left
+      // while the socket was down twice as fast as the plain expiry sweep would.
       const present = new Set(msg.snapshot.map((car) => car.id));
-      for (const [id, car] of cars)
-        if (msg.cells.includes(car.cell) && !present.has(id)) cars.delete(id);
+      const deadline = serverNow() - (PRESENCE_EXPIRY_MS - POS_INTERVAL_STATIONARY_MS);
+      for (const car of cars.values())
+        if (msg.cells.includes(car.cell) && !present.has(car.id) && car.lastServerTs > deadline)
+          car.lastServerTs = deadline;
       for (const car of msg.snapshot) upsert(car, now);
       break;
     }
