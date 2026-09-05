@@ -67,9 +67,10 @@ pnpm check:size  # under 400 kB gzipped, excluding MapLibre
 ```
 
 Every push and pull request runs the fast checks (`.github/workflows/ci.yml`). The Playwright
-suite is not part of that: it is slow and needs a Chromium download, so it lives in its own
-manual workflow (`.github/workflows/e2e.yml`). Run it from the Actions tab, or with
-`gh workflow run e2e.yml`, when the rendering path changed.
+suite is not part of that: it is slow and needs a Chromium download, so it has its own
+workflow (`.github/workflows/e2e.yml`) that runs every night, on any pull request touching
+the rendering path (`apps/web/src/{map,overlay,screens,ui,app}`, the CSS, the specs), and on
+demand from the Actions tab or with `gh workflow run e2e.yml`.
 
 The end-to-end suite runs the real worker under `wrangler dev`, supervised
 (`apps/worker/scripts/dev-supervised.mjs`): wrangler's dev proxy can exit when a client drops
