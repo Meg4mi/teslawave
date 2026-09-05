@@ -316,6 +316,10 @@ function onWave(state: HubState, s: Socket, to: string, now: number): Effect[] {
   if (!from || s.hidden || s.spectator) return fail('hidden');
   const target = state.presence.get(to);
   if (!target || to === s.id) return fail('offline');
+  // A driver near a hub boundary reports to both hubs, so both hold both cars. The wave is
+  // accepted by the hub that owns the target's cell and by no other: otherwise a client that
+  // sent it everywhere would have it counted, chimed and carded twice.
+  if (hubOf(target.cell) !== state.hub) return fail('offline');
   if (haversineM(from.lat, from.lng, target.lat, target.lng) > WAVE_VALIDATE_RANGE_M)
     return fail('range');
 

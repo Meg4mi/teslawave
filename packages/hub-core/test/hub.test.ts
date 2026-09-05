@@ -299,6 +299,24 @@ describe('waves', () => {
     });
   });
 
+  it('refuses a wave whose target is in a cell another hub owns, even with both cars held', () => {
+    // Two cars just over the boundary, reporting to this hub as well as to their own.
+    const away = { lat: GENEVA.lat, lng: GENEVA.lng + 12 };
+    const awayCell = encode(away.lat, away.lng, CELL_PRECISION);
+    expect(hubOf(awayCell)).not.toBe(HUB);
+    hello('a', 'car-a');
+    hello('b', 'car-b');
+    pos('a', away.lat, away.lng);
+    const near = destination(away.lat, away.lng, 90, 100);
+    pos('b', near.lat, near.lng);
+    expect(state.presence.get(ID('car-b'))?.cell).toBe(awayCell);
+
+    const out = onMessage(state, 'a', { t: 'wave', to: ID('car-b') }, now);
+    expect(sends(out, 'a')[0]).toMatchObject({ t: 'waved', ok: false, reason: 'offline' });
+    expect(sends(out, 'b')).toHaveLength(0);
+    expect(state.counters.wavesByUser.size).toBe(0);
+  });
+
   it('records waves per cell and day for the regional pulse', () => {
     twoCars();
     onMessage(state, 'a', { t: 'wave', to: ID('car-b') }, now);

@@ -5,6 +5,7 @@ import {
   type ClientMsg,
   type ServerMsg,
 } from '@teslawave/protocol';
+import { decodeBounds } from '@teslawave/protocol';
 import { createNet, type Net } from './sockets';
 
 /**
@@ -176,6 +177,29 @@ describe('net', () => {
     }
     // The send policy alone would have said: at 0 s, 30 s and 60 s. Nothing more.
     expect(posTimes(ws)).toHaveLength(3);
+  });
+
+  it('sends a wave to the one hub that owns the target, and everything else to all', () => {
+    // A car 500 m inside the northern edge of hub u0 subscribes to cells in two hubs.
+    const edge = decodeBounds('u0').maxLat;
+    net.update({ ...GENEVA, lat: edge - 0.0045 });
+    expect(FakeSocket.open).toHaveLength(2);
+    for (const ws of FakeSocket.open) ws.connect();
+    const hubOfSocket = (ws: FakeSocket): string =>
+      new URL(ws.url, 'https://x').searchParams.get('hub') ?? '';
+    const [first, second] = FakeSocket.open as [FakeSocket, FakeSocket];
+    expect(hubOfSocket(first)).not.toBe(hubOfSocket(second));
+
+    expect(net.send({ t: 'wave', to: 'x'.repeat(32) }, hubOfSocket(second))).toBe(true);
+    expect(first.msgs().filter((m) => m.t === 'wave')).toHaveLength(0);
+    expect(second.msgs().filter((m) => m.t === 'wave')).toHaveLength(1);
+
+    expect(net.send({ t: 'hide' })).toBe(true);
+    expect(first.msgs().filter((m) => m.t === 'hide')).toHaveLength(1);
+    expect(second.msgs().filter((m) => m.t === 'hide')).toHaveLength(1);
+
+    // A hub we hold no socket for cannot take a wave, and the caller is told so.
+    expect(net.send({ t: 'wave', to: 'x'.repeat(32) }, 'zz')).toBe(false);
   });
 
   it('stays quiet while invisible, even when no fixes arrive', () => {

@@ -42,7 +42,12 @@ export type Net = {
   stop: () => void;
   /** Feed it an already fuzzed position. Returns true if a position was actually sent. */
   update: (fuzzed: { lat: number; lng: number; heading: number; speed: number }) => boolean;
-  send: (msg: ClientMsg) => void;
+  /**
+   * Send to every hub, or to the one named. A wave goes only to the hub that owns the
+   * target's cell: the others would refuse it anyway, and once they accepted it twice.
+   * Returns false when no open socket could take it.
+   */
+  send: (msg: ClientMsg, hub?: string) => boolean;
   setHidden: (hidden: boolean) => void;
   setProfile: (profile: NetProfile) => void;
   status: () => NetStatus;
@@ -403,8 +408,15 @@ export function createNet(handlers: {
       return true;
     },
 
-    send(msg) {
-      for (const hub of hubs.values()) sendTo(hub, msg);
+    send(msg, hub) {
+      const targets = hub === undefined ? [...hubs.values()] : [hubs.get(hub)].filter((h) => h !== undefined);
+      let delivered = false;
+      for (const target of targets) {
+        if (target.ws?.readyState !== WebSocket.OPEN) continue;
+        sendTo(target, msg);
+        delivered = true;
+      }
+      return delivered;
     },
 
     status: () => status,

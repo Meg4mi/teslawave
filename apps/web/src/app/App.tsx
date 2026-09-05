@@ -10,6 +10,7 @@ import {
 import {
   WAVE_BACK_WINDOW_MS,
   WAVE_PROMPT_TTL_MS,
+  hubOf,
   isColourId,
   isModel,
   isSecret,
@@ -189,13 +190,23 @@ export function App(): ReactNode {
     [showToast, celebrate, copy],
   );
 
-  const wave = useCallback((id: string): void => {
-    sentWaves.current.set(id, Date.now());
-    netRef.current?.send({ t: 'wave', to: id });
-    rendererRef.current?.addWave({ kind: 'sent', fromId: null, toId: id });
-    play('sent');
-    setSelectedId(null);
-  }, []);
+  const wave = useCallback(
+    (id: string): void => {
+      setSelectedId(null);
+      // To the hub that owns the target's cell and no other (ADR-0007, amended): the others
+      // would refuse it, and once they each accepted it, which counted and chimed it twice.
+      const cell = getCar(id)?.cell;
+      const sent = netRef.current?.send({ t: 'wave', to: id }, cell ? hubOf(cell) : undefined);
+      if (!sent) {
+        showToast(copy.wave.offline);
+        return;
+      }
+      sentWaves.current.set(id, Date.now());
+      rendererRef.current?.addWave({ kind: 'sent', fromId: null, toId: id });
+      play('sent');
+    },
+    [showToast, copy],
+  );
 
   // The flash unmounts itself; the "wave back" offer outlives the button's window by nothing.
   useEffect(() => {
