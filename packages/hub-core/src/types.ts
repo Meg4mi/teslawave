@@ -29,6 +29,12 @@ export type Socket = SocketProfile & SocketRuntime;
 export type Counters = {
   /** `w:<userId>` -> lifetime waves */
   wavesByUser: Map<string, number>;
+  /**
+   * `wt:<userId>` -> when that driver last waved. No place, just a time, so the daily
+   * harvest can forget a driver who has not waved in USER_WAVES_TTL_MS and storage stays
+   * bounded by drivers seen lately rather than drivers ever seen.
+   */
+  lastWaveByUser: Map<string, number>;
   /** `c:<cell>:<yyyy-mm-dd>` -> waves in that cell today */
   wavesByCellDay: Map<string, number>;
   lastWaveTsByCell: Map<string, number>;

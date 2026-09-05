@@ -8,6 +8,7 @@ import {
 import {
   createHub,
   flushIfDue,
+  harvest,
   hubStats,
   onBadMessage,
   onClose,
@@ -20,6 +21,9 @@ import {
 } from '@teslawave/hub-core';
 
 const HUB_META_KEY = 'meta:hub';
+/** Keys per storage list on restore, and per delete on harvest (the API's own maximum). */
+const RESTORE_PAGE = 1_000;
+const DELETE_BATCH = 128;
 
 /**
  * The only class in the repo, and a thin adapter: all the logic lives in @teslawave/hub-core
@@ -50,14 +54,27 @@ export class HubDO extends DurableObject<Env> {
 
   async #restore(): Promise<void> {
     const now = Date.now();
-    const stored = await this.ctx.storage.list<string | number>({ limit: 10_000 });
     const wavesByUser = new Map<string, number>();
+    const lastWaveByUser = new Map<string, number>();
     const wavesByCellDay = new Map<string, number>();
-    let hub = typeof stored.get(HUB_META_KEY) === 'string' ? (stored.get(HUB_META_KEY) as string) : '';
-    for (const [key, value] of stored) {
-      if (typeof value !== 'number') continue;
-      if (key.startsWith('w:')) wavesByUser.set(key, value);
-      else if (key.startsWith('c:')) wavesByCellDay.set(key, value);
+    let hub = '';
+    // Every key, in pages: a single capped list would one day have quietly dropped the
+    // counters past the cap and let the next wave overwrite them from zero.
+    let startAfter: string | undefined;
+    for (;;) {
+      const page = await this.ctx.storage.list<string | number>({
+        limit: RESTORE_PAGE,
+        ...(startAfter === undefined ? {} : { startAfter }),
+      });
+      for (const [key, value] of page) {
+        if (key === HUB_META_KEY && typeof value === 'string') hub = value;
+        if (typeof value !== 'number') continue;
+        if (key.startsWith('w:')) wavesByUser.set(key, value);
+        else if (key.startsWith('wt:')) lastWaveByUser.set(key, value);
+        else if (key.startsWith('c:')) wavesByCellDay.set(key, value);
+      }
+      if (page.size < RESTORE_PAGE) break;
+      startAfter = [...page.keys()].at(-1);
     }
 
     const sockets = this.ctx.getWebSockets();
@@ -70,7 +87,7 @@ export class HubDO extends DurableObject<Env> {
     }
     if (!hub) hub = hubOf(profiles.find((p) => p.cells[0])?.cells[0] ?? '');
 
-    const state = createHub(hub, now, { wavesByUser, wavesByCellDay });
+    const state = createHub(hub, now, { wavesByUser, lastWaveByUser, wavesByCellDay });
     for (const profile of profiles) restoreSocket(state, profile);
     this.#state = state;
   }
@@ -190,6 +207,20 @@ export class HubDO extends DurableObject<Env> {
       this.#byKey.delete(key);
       onClose(this.#hub(), key);
     }
+  }
+
+  /**
+   * Called by the Worker cron once a day, as an RPC request: never from a message handler,
+   * never from an alarm. Hands over the finished cell-day counters for D1, drops them and any
+   * driver not seen in half a year from storage, and returns nothing that could locate anyone.
+   */
+  async harvest(now = Date.now()): Promise<Array<{ cell: string; day: string; waves: number }>> {
+    await this.#ready;
+    const result = harvest(this.#hub(), now);
+    for (let i = 0; i < result.deleteKeys.length; i += DELETE_BATCH)
+      await this.ctx.storage.delete(result.deleteKeys.slice(i, i + DELETE_BATCH));
+    if (result.persist.length > 0) await this.ctx.storage.put(Object.fromEntries(result.persist));
+    return result.cellDays;
   }
 
   /** Test and support helper. Returns counts only: there are no positions to hand out. */

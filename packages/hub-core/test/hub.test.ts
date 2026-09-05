@@ -18,8 +18,12 @@ import {
 } from '@teslawave/protocol';
 import {
   COUNTER_WRITE_MS,
+  MAX_PERSIST_KEYS,
+  USER_WAVES_TTL_MS,
+  cellDayKey,
   createHub,
   flushIfDue,
+  harvest,
   hubStats,
   onBadMessage,
   onClose,
@@ -28,6 +32,7 @@ import {
   restoreSocket,
   userWavesKey,
 } from '../src/index.js';
+import { userWaveTsKey } from '../src/index.js';
 import type { Effect, HubState } from '../src/index.js';
 
 const GENEVA = { lat: 46.2044, lng: 6.1432 };
@@ -370,7 +375,7 @@ describe('cost invariants', () => {
     const entries = persists[0]!.k === 'persist' ? persists[0]!.entries : [];
     expect(entries.length).toBeGreaterThan(0);
     for (const [key, value] of entries) {
-      expect(key).toMatch(/^(w:|c:)/);
+      expect(key).toMatch(/^(w:|wt:|c:)/);
       expect(typeof value).toBe('number');
     }
     const serialised = JSON.stringify(entries);
@@ -448,8 +453,9 @@ describe('counter writes stay inside the row-write budget', () => {
     now += COUNTER_WRITE_MS + SERVER_TICK_MS;
     const persists = flushIfDue(state, now).filter((e) => e.k === 'persist');
     const entries = persists[0]?.k === 'persist' ? persists[0].entries : [];
-    // Two user counters and one cell-day counter. Not one row per connected driver.
-    expect(entries).toHaveLength(3);
+    // Two user counters with their timestamps, and one cell-day counter. Not one row per
+    // connected driver.
+    expect(entries).toHaveLength(5);
     expect(state.counters.dirtyKeys.size).toBe(0);
   });
 
@@ -460,5 +466,67 @@ describe('counter writes stay inside the row-write budget', () => {
     }
     now += COUNTER_WRITE_MS + SERVER_TICK_MS;
     expect(flushIfDue(state, now).filter((e) => e.k === 'persist')).toHaveLength(0);
+  });
+});
+
+describe('daily harvest', () => {
+  const DAY = 86_400_000;
+
+  it('hands over finished days, keeps today, and forgets nothing else', () => {
+    hello('a', 'car-a');
+    hello('b', 'car-b');
+    pos('a', GENEVA.lat, GENEVA.lng);
+    const near = destination(GENEVA.lat, GENEVA.lng, 90, 100);
+    pos('b', near.lat, near.lng);
+    onMessage(state, 'a', { t: 'wave', to: ID('car-b') }, now);
+
+    expect(harvest(state, now).cellDays).toEqual([]);
+    expect(state.counters.wavesByCellDay.get(cellDayKey(CELL, now))).toBe(1);
+
+    const tomorrow = now + DAY;
+    const result = harvest(state, tomorrow);
+    expect(result.cellDays).toEqual([{ cell: CELL, day: new Date(now).toISOString().slice(0, 10), waves: 1 }]);
+    expect(result.deleteKeys).toEqual([cellDayKey(CELL, now)]);
+    expect(state.counters.wavesByCellDay.size).toBe(0);
+    // The drivers' own counters are a day old, nowhere near the TTL.
+    expect(state.counters.wavesByUser.size).toBe(2);
+    expect(JSON.stringify(result)).not.toContain(String(GENEVA.lat));
+  });
+
+  it('forgets a driver who has not waved in USER_WAVES_TTL_MS, and only then', () => {
+    const woken = createHub(HUB, now, {
+      wavesByUser: new Map([
+        [userWavesKey('old'), 7],
+        [userWavesKey('recent'), 3],
+      ]),
+      lastWaveByUser: new Map([
+        [userWaveTsKey('old'), now - USER_WAVES_TTL_MS - DAY],
+        [userWaveTsKey('recent'), now - DAY],
+      ]),
+    });
+    const result = harvest(woken, now);
+    expect(new Set(result.deleteKeys)).toEqual(new Set([userWavesKey('old'), userWaveTsKey('old')]));
+    expect(woken.counters.wavesByUser.has(userWavesKey('old'))).toBe(false);
+    expect(woken.counters.wavesByUser.get(userWavesKey('recent'))).toBe(3);
+  });
+
+  it('gives a counter from before the timestamps one now, a bounded batch at a time', () => {
+    const wavesByUser = new Map<string, number>();
+    for (let i = 0; i < MAX_PERSIST_KEYS + 10; i++) wavesByUser.set(userWavesKey(`legacy${i}`), 1);
+    const woken = createHub(HUB, now, { wavesByUser });
+
+    const first = harvest(woken, now);
+    expect(first.deleteKeys).toEqual([]);
+    expect(first.persist).toHaveLength(MAX_PERSIST_KEYS);
+    for (const [key, value] of first.persist) {
+      expect(key).toMatch(/^wt:/);
+      expect(value).toBe(now);
+    }
+    const second = harvest(woken, now);
+    expect(second.persist).toHaveLength(10);
+    expect(harvest(woken, now).persist).toEqual([]);
+    // Counted from today: not forgotten until the TTL has passed from now.
+    expect(harvest(woken, now + USER_WAVES_TTL_MS - DAY).deleteKeys).toEqual([]);
+    expect(harvest(woken, now + USER_WAVES_TTL_MS + DAY).deleteKeys).toHaveLength(2 * (MAX_PERSIST_KEYS + 10));
   });
 });

@@ -21,8 +21,8 @@ anywhere (ADR-0024).
 | Data | Where | Retention |
 |---|---|---|
 | Positions | Durable Object memory only | 60 seconds since the last update, then evicted |
-| Wave counters | Durable Object storage, as numbers | Until reset; no timestamps, no places |
-| Waves per map cell per day | D1, as numbers | 7 days |
+| Wave counters | Durable Object storage, as numbers | Until 180 days after that driver's last wave. The time of the last wave is kept for that purpose; no places |
+| Waves per map cell per day | Durable Object storage for the current day, then D1 | Rolled into D1 by a daily job; 7 days |
 | Pairing codes | D1 | 10 minutes, single use; the row (which carries the secret) is deleted the moment it is claimed |
 
 Positions are never written to storage of any kind. That is enforced by a test, not by

@@ -9,6 +9,7 @@ import {
   encode,
   hubOf,
 } from '@teslawave/protocol';
+import { pruneAndAggregate } from '../src/stats.js';
 import { applyMigrations } from './apply-migrations.js';
 import { connect, helloMsg, idOf, posMsg, secretOf, wait } from './helpers.js';
 
@@ -136,8 +137,50 @@ describe('durable object hygiene', () => {
     // ctx.getWebSockets() only returns sockets accepted through ctx.acceptWebSocket().
     expect(stats.accepted).toBeGreaterThan(0);
     expect(stats.presence).toBeGreaterThan(0);
-    for (const key of stats.storageKeys) expect(key).toMatch(/^(meta:hub|w:|c:)/);
+    for (const key of stats.storageKeys) expect(key).toMatch(/^(meta:hub|w:|wt:|c:)/);
     a.close();
+  });
+});
+
+describe('daily harvest', () => {
+  it('rolls finished cell-day counters into D1 and remembers which hubs exist', async () => {
+    const a = await connect(HUB);
+    const b = await connect(HUB);
+    a.send(helloMsg('harvest-a', [CELL]));
+    b.send(helloMsg('harvest-b', [CELL]));
+    await b.next((m) => m.t === 'welcome');
+    a.send(posMsg(GENEVA.lat, GENEVA.lng));
+    const near = destination(GENEVA.lat, GENEVA.lng, 90, 100);
+    b.send(posMsg(near.lat, near.lng));
+    a.send({ t: 'wave', to: idOf('harvest-b') });
+    await a.next((m) => m.t === 'waved' && m.ok);
+
+    // The edge wrote the hub down when the socket opened.
+    const hubs = await env.DB.prepare('SELECT hub FROM hubs').all<{ hub: string }>();
+    expect(hubs.results.map((r) => r.hub)).toContain(HUB);
+
+    // Today's counter stays with the hub: the pulse still reads it.
+    const stub = env.HUB.get(env.HUB.idFromName(HUB));
+    expect(await stub.harvest(Date.now())).toEqual([]);
+
+    // Tomorrow's cron harvests every hub it knows and writes the finished day into D1.
+    // (Called directly: the test plugin cannot serialise its bindings through SELF.scheduled.)
+    const tomorrow = Date.now() + 86_400_000;
+    await pruneAndAggregate(env, tomorrow);
+    const rows = await env.DB.prepare('SELECT cell, waves FROM daily_stats WHERE cell = ?')
+      .bind(CELL)
+      .all<{ cell: string; waves: number }>();
+    expect(rows.results[0]?.waves).toBeGreaterThanOrEqual(1);
+    const stats = (await (await SELF.fetch('https://teslawave.test/api/stats')).json()) as {
+      total: number;
+    };
+    expect(stats.total).toBeGreaterThanOrEqual(1);
+
+    // The hub let go of the finished day.
+    const after = (await stub.debugStats()) as { storageKeys: string[] };
+    expect(after.storageKeys.filter((k) => k.startsWith('c:'))).toHaveLength(0);
+    a.close();
+    b.close();
   });
 });
 
