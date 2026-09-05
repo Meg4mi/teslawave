@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { Counter } from '../ui/primitives';
-import { agoLabel, COPY } from '../ui/copy';
+import { useCopy } from '../i18n';
 import type { Summary } from '../sim/world';
 import type { NetStatus } from '../net/sockets';
 
@@ -15,8 +15,9 @@ export function Hud({
   onOpenPulse: () => void;
   onHowItWorks: () => void;
 }): ReactNode {
+  const copy = useCopy();
   const live = status === 'live';
-  const ago = agoLabel(summary.lastWaveTs, summary.serverNow);
+  const ago = copy.agoLabel(summary.lastWaveTs, summary.serverNow);
 
   return (
     <div className="hud">
@@ -26,20 +27,20 @@ export function Hud({
         type="button"
         data-touch
         className={`hud__stats ${live ? '' : 'hud__stats--stale'}`.trim()}
-        aria-label={COPY.pulse.title}
+        aria-label={copy.pulse.title}
         onClick={onOpenPulse}
       >
         <span className={`hud__dot ${live ? '' : 'hud__dot--offline'}`.trim()} />
         <span className="hud__row">
           <Counter value={summary.online} />
-          <span>online</span>
+          <span>{copy.map.onlineLabel}</span>
           <span className="hud__sep">·</span>
           <Counter value={summary.near} />
-          <span>within 10 km</span>
+          <span>{copy.map.nearLabel}</span>
           {ago ? (
             <>
               <span className="hud__sep">·</span>
-              <span>{COPY.map.lastWave(ago)}</span>
+              <span>{copy.map.lastWave(ago)}</span>
             </>
           ) : null}
         </span>
@@ -47,13 +48,13 @@ export function Hud({
 
       {/* One state at a time: a driver glancing at this should read one line, not three. */}
       {status === 'reconnecting' || status === 'connecting' ? (
-        <p className="hud__note">{COPY.map.reconnecting}</p>
+        <p className="hud__note">{copy.map.reconnecting}</p>
       ) : summary.near === 0 ? (
         <>
-          <p className="hud__note">{COPY.map.quiet(summary.online)}</p>
+          <p className="hud__note">{copy.map.quiet(summary.online)}</p>
           {/* The one gesture this app exists for is undiscoverable on an empty road. */}
           <button type="button" data-touch className="hud__link" onClick={onHowItWorks}>
-            {COPY.map.quietHow}
+            {copy.map.quietHow}
           </button>
         </>
       ) : null}

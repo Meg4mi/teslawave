@@ -342,3 +342,38 @@
     padding: var(--sp-2) var(--sp-5) calc(var(--sp-5) + env(safe-area-inset-bottom));
   }
 }
+
+/* A segmented control: every choice visible, the chosen one filled. Sized to the same touch
+   target as everything else, because it lives in a settings row read at a glance. */
+.segmented {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: var(--r-full);
+  border: 1px solid var(--line-strong);
+  background: var(--bg-3);
+}
+
+.segmented__option {
+  min-height: calc(var(--touch) - 8px);
+  padding: 0 var(--sp-4);
+  border: 0;
+  border-radius: var(--r-full);
+  background: transparent;
+  color: var(--fg-dim);
+  font: var(--t-strong);
+  white-space: nowrap;
+  transition:
+    background-color var(--d-fast) linear,
+    color var(--d-fast) linear;
+}
+
+.segmented__option[aria-pressed='true'] {
+  background: var(--accent);
+  color: #04222b;
+}
+
+.segmented__option:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}

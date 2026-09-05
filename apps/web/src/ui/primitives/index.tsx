@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { CloseIcon } from '../icons';
-import { COPY } from '../copy';
+import { useCopy } from '../../i18n';
 import './primitives.css';
 
 /**
@@ -22,6 +22,7 @@ export function Sheet({
   /** Room for a picker or a keypad. */
   wide?: boolean;
 }): ReactNode {
+  const copy = useCopy();
   return (
     <>
       {onClose ? <div className="scrim" onPointerDown={onClose} /> : null}
@@ -35,7 +36,7 @@ export function Sheet({
           <header className="sheet__head">
             {title !== undefined ? <h2 className="sheet__title">{title}</h2> : <span />}
             {onClose ? (
-              <Button variant="icon" label={COPY.controls.close} onClick={onClose}>
+              <Button variant="icon" label={copy.controls.close} onClick={onClose}>
                 <CloseIcon size={22} />
               </Button>
             ) : null}
@@ -116,6 +117,40 @@ export function Switch({
 }
 
 /**
+ * A short row of mutually exclusive choices, all of them visible. Used where a Switch would
+ * be wrong because there are more than two answers, and a dropdown would be wrong because a
+ * dropdown on the car screen is a two-tap menu that opens over the thing you were reading.
+ */
+export function Segmented<T extends string>({
+  options,
+  value,
+  onChange,
+  label,
+}: {
+  options: readonly { readonly value: T; readonly label: string }[];
+  value: T;
+  onChange: (next: T) => void;
+  label: string;
+}): ReactNode {
+  return (
+    <div className="segmented" role="group" aria-label={label}>
+      {options.map((option) => (
+        <button
+          key={option.value}
+          type="button"
+          data-touch
+          className="segmented__option"
+          aria-pressed={option.value === value}
+          onClick={() => onChange(option.value)}
+        >
+          {option.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/**
  * A number whose digits roll up when it changes, and flash warm when told to celebrate.
  * The whole reward beat after a wave is this component plus a sound.
  */
@@ -187,7 +222,13 @@ export function ControlButton({
 
 export type ToastContent = { id: number; text: string; icon?: ReactNode; warm?: boolean };
 
-export function Toast({ toast, onDone }: { toast: ToastContent | null; onDone: () => void }): ReactNode {
+export function Toast({
+  toast,
+  onDone,
+}: {
+  toast: ToastContent | null;
+  onDone: () => void;
+}): ReactNode {
   // The dismiss timers must depend on *which* toast this is and nothing else. They used to
   // depend on the `onDone` callback, which the parent re-creates on every render — and the map
   // re-renders twice a second, so the timers were cleared and restarted forever and the toast

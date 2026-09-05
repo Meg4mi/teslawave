@@ -46,7 +46,7 @@ import {
   SoundOnIcon,
   TrackUpIcon,
 } from '../ui/icons';
-import { COPY } from '../ui/copy';
+import { useCopy } from '../i18n';
 import { Disclaimer } from '../ui/Disclaimer';
 import { Onboarding, type OnboardingResult } from '../screens/Onboarding';
 import { Hud } from '../screens/Hud';
@@ -69,6 +69,7 @@ type SheetName = 'settings' | 'pulse' | 'pair-show' | 'pair-enter' | 'how-to' | 
 const BOOT_KEY = 'tw.booted';
 
 export function App(): ReactNode {
+  const copy = useCopy();
   const { identity, prefs, setIdentity, setPrefs, claimMilestone } = useIdentity();
   // Read by the connection effect, which must not re-run when the car changes.
   const profileRef = useRef(identity);
@@ -114,7 +115,9 @@ export function App(): ReactNode {
   useEffect(() => {
     let cancelled = false;
     void fetch('/api/whereami')
-      .then((res) => (res.ok ? (res.json() as Promise<{ lat: number | null; lng: number | null }>) : null))
+      .then((res) =>
+        res.ok ? (res.json() as Promise<{ lat: number | null; lng: number | null }>) : null,
+      )
       .then((body) => {
         if (!cancelled && body?.lat && body.lng) setOrigin({ lat: body.lat, lng: body.lng });
       })
@@ -173,17 +176,17 @@ export function App(): ReactNode {
           sentWaves.current.delete(msg.to);
           const why =
             msg.reason === 'range'
-              ? COPY.wave.tooFar
+              ? copy.wave.tooFar
               : msg.reason === 'offline'
-                ? COPY.wave.offline
+                ? copy.wave.offline
                 : msg.reason === 'rate'
-                  ? COPY.wave.tooSoon
-                  : COPY.wave.hidden;
+                  ? copy.wave.tooSoon
+                  : copy.wave.hidden;
           showToast(why);
         }
       }
     },
-    [showToast, celebrate],
+    [showToast, celebrate, copy],
   );
 
   const wave = useCallback((id: string): void => {
@@ -286,7 +289,9 @@ export function App(): ReactNode {
     if (!spectator || !identity) return;
     let cancelled = false;
     void fetch('/api/whereami')
-      .then((res) => (res.ok ? (res.json() as Promise<{ lat: number | null; lng: number | null }>) : null))
+      .then((res) =>
+        res.ok ? (res.json() as Promise<{ lat: number | null; lng: number | null }>) : null,
+      )
       .then((body) => {
         if (cancelled || !body?.lat || !body.lng) return;
         setSelfPlacement({ lat: body.lat, lng: body.lng, heading: 0, speed: 0 });
@@ -313,9 +318,9 @@ export function App(): ReactNode {
         ...(next.nick === undefined ? {} : { nick: next.nick }),
       });
       setSheet(null);
-      showToast(COPY.garage.saved);
+      showToast(copy.garage.saved);
     },
-    [setIdentity, showToast],
+    [setIdentity, showToast, copy],
   );
 
   const adopt = useCallback(
@@ -330,9 +335,9 @@ export function App(): ReactNode {
       });
       setPrefs({ sharing: true });
       setSheet(null);
-      showToast(COPY.pairing.done);
+      showToast(copy.pairing.done);
     },
-    [setIdentity, setPrefs, showToast],
+    [setIdentity, setPrefs, showToast, copy],
   );
 
   // --- Pairing deep link ------------------------------------------------------------
@@ -359,7 +364,6 @@ export function App(): ReactNode {
     // Runs once on load.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
 
   // --- Boot ------------------------------------------------------------------------
   const start = (result: OnboardingResult): void => {
@@ -457,52 +461,52 @@ export function App(): ReactNode {
       {/* Notices sit at the foot, centred, one above the other if there are two. */}
       {spectator ? (
         <div className="hud hud--foot">
-          <p className="hud__banner">{COPY.map.spectator}</p>
+          <p className="hud__banner">{copy.map.spectator}</p>
         </div>
       ) : null}
       {status === 'budget' ? (
         <div className="hud hud--foot">
-          <p className="hud__banner">{COPY.map.budget('02:00')}</p>
+          <p className="hud__banner">{copy.map.budget('02:00')}</p>
         </div>
       ) : null}
       {status === 'paused' ? (
         <div className="hud hud--foot">
-          <p className="hud__banner">{COPY.map.paused}</p>
+          <p className="hud__banner">{copy.map.paused}</p>
         </div>
       ) : null}
       {!tiles ? (
         <div className="hud hud--foot">
-          <p className="hud__banner">{COPY.map.tilesOffline}</p>
+          <p className="hud__banner">{copy.map.tilesOffline}</p>
         </div>
       ) : null}
 
       {/* Labelled, not cryptic: on a touch screen there is no hover, so a tooltip would
           never appear. Each control says what it does and what state it is in. */}
-      <nav className="controls" aria-label={COPY.controls.settings}>
+      <nav className="controls" aria-label={copy.controls.settings}>
         <ControlButton
-          label={prefs.sharing ? COPY.controls.visible : COPY.controls.invisible}
-          title={prefs.sharing ? COPY.controls.goInvisible : COPY.controls.goVisible}
+          label={prefs.sharing ? copy.controls.visible : copy.controls.invisible}
+          title={prefs.sharing ? copy.controls.goInvisible : copy.controls.goVisible}
           active={!prefs.sharing}
           icon={prefs.sharing ? <EyeIcon /> : <EyeOffIcon />}
           onClick={() => setPrefs({ sharing: !prefs.sharing })}
         />
         <ControlButton
-          label={prefs.muted ? COPY.controls.muted : COPY.controls.sound}
-          title={prefs.muted ? COPY.controls.unmute : COPY.controls.mute}
+          label={prefs.muted ? copy.controls.muted : copy.controls.sound}
+          title={prefs.muted ? copy.controls.unmute : copy.controls.mute}
           active={prefs.muted}
           icon={prefs.muted ? <SoundOffIcon /> : <SoundOnIcon />}
           onClick={() => setPrefs({ muted: !prefs.muted })}
         />
         <ControlButton
-          label={prefs.northUp ? COPY.controls.northUp : COPY.controls.trackUp}
-          title={prefs.northUp ? COPY.controls.orientationNorth : COPY.controls.orientation}
+          label={prefs.northUp ? copy.controls.northUp : copy.controls.trackUp}
+          title={prefs.northUp ? copy.controls.orientationNorth : copy.controls.orientation}
           active={prefs.northUp}
           icon={prefs.northUp ? <NorthUpIcon /> : <TrackUpIcon />}
           onClick={() => setPrefs({ northUp: !prefs.northUp })}
         />
         <ControlButton
-          label={COPY.controls.settings}
-          title={COPY.controls.settings}
+          label={copy.controls.settings}
+          title={copy.controls.settings}
           icon={<SettingsIcon />}
           onClick={() => setSheet('settings')}
         />
@@ -516,7 +520,7 @@ export function App(): ReactNode {
       {milestone !== null ? (
         <div className="milestone" role="status">
           <span className="milestone__count num">{milestone}</span>
-          <span>{COPY.milestones[milestone]}</span>
+          <span>{copy.milestones[milestone]}</span>
         </div>
       ) : null}
 

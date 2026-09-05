@@ -1,14 +1,13 @@
 import type { CSSProperties, ReactNode } from 'react';
 import {
   CAR_COLOURS,
-  MODEL_LABELS,
   NICK_MAX_LEN,
   TESLA_MODELS,
   type CarColourId,
   type TeslaModel,
 } from '@teslawave/protocol';
 import { CheckIcon } from '../ui/icons';
-import { COPY } from '../ui/copy';
+import { useCopy } from '../i18n';
 
 export type CarChoice = { model: TeslaModel; colour: CarColourId; nick: string };
 
@@ -25,12 +24,13 @@ export function CarPicker({
   value: CarChoice;
   onChange: (patch: Partial<CarChoice>) => void;
 }): ReactNode {
+  const copy = useCopy();
   const { model, colour, nick } = value;
 
   return (
     <>
       <fieldset className="field">
-        <legend className="field__label eyebrow">{COPY.onboarding.pickModel}</legend>
+        <legend className="field__label eyebrow">{copy.onboarding.pickModel}</legend>
         <div className="seg" role="group">
           {TESLA_MODELS.map((m) => (
             <button
@@ -39,7 +39,7 @@ export function CarPicker({
               data-touch
               className={`seg__item ${m === model ? 'seg__item--on' : ''}`.trim()}
               aria-pressed={m === model}
-              aria-label={MODEL_LABELS[m]}
+              aria-label={copy.cars.model(m)}
               onClick={() => onChange({ model: m })}
             >
               {/* "Model" is dropped on a phone, where five of them will not fit. */}
@@ -60,7 +60,7 @@ export function CarPicker({
       </fieldset>
 
       <fieldset className="field">
-        <legend className="field__label eyebrow">{COPY.onboarding.pickColour}</legend>
+        <legend className="field__label eyebrow">{copy.onboarding.pickColour}</legend>
         <div className="swatches">
           {CAR_COLOURS.map((c) => (
             <button
@@ -69,13 +69,15 @@ export function CarPicker({
               data-touch
               className={`swatch ${c.id === colour ? 'swatch--on' : ''}`.trim()}
               aria-pressed={c.id === colour}
-              aria-label={c.label}
-              title={c.label}
+              aria-label={copy.cars.colour(c.id)}
+              title={copy.cars.colour(c.id)}
               onClick={() => onChange({ colour: c.id })}
             >
               <span className="swatch__paint" style={{ '--paint-hex': c.hex } as CSSProperties}>
                 {c.id === colour ? (
-                  <span className={`swatch__check ${isLight(c.hex) ? 'swatch__check--dark' : ''}`.trim()}>
+                  <span
+                    className={`swatch__check ${isLight(c.hex) ? 'swatch__check--dark' : ''}`.trim()}
+                  >
                     <CheckIcon size={18} />
                   </span>
                 ) : null}
@@ -86,7 +88,7 @@ export function CarPicker({
       </fieldset>
 
       <label className="field">
-        <span className="field__label eyebrow">{COPY.onboarding.nick}</span>
+        <span className="field__label eyebrow">{copy.onboarding.nick}</span>
         <input
           type="text"
           className="field__input"
@@ -94,7 +96,7 @@ export function CarPicker({
           maxLength={NICK_MAX_LEN}
           autoComplete="off"
           spellCheck={false}
-          placeholder={COPY.onboarding.nickPlaceholder}
+          placeholder={copy.onboarding.nickPlaceholder}
           onChange={(event) => onChange({ nick: event.target.value })}
         />
       </label>

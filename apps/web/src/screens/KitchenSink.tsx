@@ -6,7 +6,7 @@ import { Button, Counter } from '../ui/primitives';
 import { CarChip } from '../ui/CarChip';
 import { WaveButton, type WaveTarget } from './WaveButton';
 import { WaveCard, type WaveCardContent } from './WaveCard';
-import { COPY } from '../ui/copy';
+import { useCopy } from '../i18n';
 import { play, unlockAudio } from '../ui/sound';
 import type { RenderCar } from '../sim/world';
 import '../app/app.css';
@@ -17,6 +17,7 @@ import '../screens/sheets.css';
  * animation timings can be judged side by side instead of one at a time on a motorway.
  */
 export function KitchenSink(): ReactNode {
+  const copy = useCopy();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rendererRef = useRef<Renderer | null>(null);
   const [waves, setWaves] = useState(9);
@@ -183,7 +184,7 @@ export function KitchenSink(): ReactNode {
       {milestone !== null ? (
         <div className="milestone">
           <span className="milestone__count num">{milestone}</span>
-          <span>{COPY.milestones[milestone]}</span>
+          <span>{copy.milestones[milestone]}</span>
         </div>
       ) : null}
     </div>

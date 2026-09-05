@@ -23,7 +23,6 @@ const CAR = { width: 1920, height: 1200 };
  */
 const deployed = process.env['E2E_BASE_URL'];
 
-
 export default defineConfig({
   testDir: './e2e',
   timeout: 60_000,
@@ -36,6 +35,9 @@ export default defineConfig({
     baseURL: deployed ?? 'http://127.0.0.1:8787',
     trace: 'retain-on-failure',
     permissions: ['geolocation'],
+    // The app picks its language from the browser. Every assertion below is in English, so
+    // the language is pinned here rather than inherited from whatever the machine runs.
+    locale: 'en-US',
   },
   projects: [
     {
