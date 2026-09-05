@@ -59,12 +59,20 @@ export type Prefs = {
   northUp: boolean;
   /** Highest milestone already celebrated, so it only ever happens once. */
   milestone: number;
+  /** Send anonymous frame timings now and then, so the app gets tuned on real cars. Off by default. */
+  perfBeacon: boolean;
 };
 
 const IDENTITY_KEY = 'tw.identity.v1';
 const PREFS_KEY = 'tw.prefs.v1';
 
-const DEFAULT_PREFS: Prefs = { sharing: false, muted: false, northUp: false, milestone: 0 };
+const DEFAULT_PREFS: Prefs = {
+  sharing: false,
+  muted: false,
+  northUp: false,
+  milestone: 0,
+  perfBeacon: false,
+};
 
 function read<T>(key: string): T | null {
   try {

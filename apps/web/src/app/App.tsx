@@ -20,6 +20,7 @@ import {
 import { LiveMap } from '../map/LiveMap';
 import { createNet, type Net, type NetStatus } from '../net/sockets';
 import { nextResetLabel } from '../net/budget';
+import { startBeacon } from '../perf/beacon';
 import { usePosition } from '../geo/usePosition';
 import {
   applyServerMsg,
@@ -288,6 +289,12 @@ export function App(): ReactNode {
   useEffect(() => {
     setMuted(prefs.muted);
   }, [prefs.muted]);
+
+  // Anonymous frame timings, only while the driver has said yes (ADR-0027).
+  useEffect(() => {
+    if (!identity || !prefs.perfBeacon) return;
+    return startBeacon();
+  }, [identity, prefs.perfBeacon]);
 
   // The fix goes out exactly as the device gave it (ADR-0024). Your own sprite is smoothed
   // between fixes; distances are measured from the fix itself, which is what the hub holds.

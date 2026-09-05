@@ -1,5 +1,6 @@
 import { HUB_ID_RE } from '@teslawave/protocol';
 import { claimPairing, createPairing } from './pairing.js';
+import { recordPerf } from './perf.js';
 import { pruneAndAggregate, readStats, rememberHub } from './stats.js';
 
 export { HubDO } from './hub-do.js';
@@ -67,6 +68,7 @@ export default {
     if (pathname === '/api/pair' && request.method === 'POST') return createPairing(request, env);
     if (pathname === '/api/pair/claim' && request.method === 'POST') return claimPairing(request, env);
     if (pathname === '/api/stats') return readStats(env);
+    if (pathname === '/api/perf' && request.method === 'POST') return recordPerf(request, env);
     if (pathname.startsWith('/api/')) return json({ error: 'not found' }, 404);
 
     // www -> apex, so the domain reads the same everywhere it is shared.

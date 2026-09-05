@@ -227,6 +227,9 @@ export const FR: Copy = {
     northUp: 'Nord en haut',
     northUpHint: 'Désactivé, la carte tourne avec vous.',
     phone: 'Utiliser sur ma voiture',
+    perf: 'Partager les données de performance',
+    perfHint:
+      'De temps en temps, envoyer la fluidité de la carte sur cet écran. Anonyme : ni position, ni nom, ni identifiant.',
   },
 
   controls: {
@@ -264,6 +267,7 @@ export const FR: Copy = {
       `Les positions vivent en mémoire pendant ${n(PRESENCE_EXPIRY_MS / 1000)} secondes et ne sont jamais écrites dans une base de données.`,
       'Les nombres de saluts. Les vôtres, et un total quotidien par zone de carte.',
       'Pas d’historique de trajets, pas d’itinéraires, pas d’horodatage de vos passages.',
+      'Si vous activez « Partager les données de performance » : densité et taille de l’écran, durée des images, et nombre de voitures sur la carte. Rien qui dise qui ou où vous êtes. Conservé 30 jours.',
     ],
     thirdPartiesTitle: 'Tiers',
     thirdParties: [

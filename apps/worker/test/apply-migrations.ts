@@ -2,8 +2,9 @@ import { env } from 'cloudflare:test';
 // The real migration files, imported as text: the worker sandbox has no host filesystem.
 import pairing from '../migrations/0001_pairing.sql?raw';
 import hubs from '../migrations/0002_hubs.sql?raw';
+import perf from '../migrations/0003_perf.sql?raw';
 
-const MIGRATIONS = [pairing, hubs];
+const MIGRATIONS = [pairing, hubs, perf];
 
 /** Apply the D1 migrations into the test database, in order. */
 export async function applyMigrations(): Promise<void> {

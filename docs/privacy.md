@@ -24,6 +24,7 @@ anywhere (ADR-0024).
 | Wave counters | Durable Object storage, as numbers | Until 180 days after that driver's last wave. The time of the last wave is kept for that purpose; no places |
 | Waves per map cell per day | Durable Object storage for the current day, then D1 | Rolled into D1 by a daily job; 7 days |
 | Pairing codes | D1 | 10 minutes, single use; the row (which carries the secret) is deleted the moment it is claimed |
+| Performance samples, only from drivers who turned "Share performance data" on | D1 | 30 days. Screen density and size, browser version, frame timings, whether the fallbacks engaged, how many cars were on the map. No position, no id, no nickname (ADR-0027) |
 
 Positions are never written to storage of any kind. That is enforced by a test, not by
 intent: the hub's storage effects are asserted to contain only counter keys.

@@ -1,3 +1,4 @@
+import { prunePerf } from './perf.js';
 /**
  * The only place that touches D1 on a schedule. Runs as a Worker cron, not as a Durable
  * Object alarm: an alarm would wake the hub and bill duration for no reason (ADR-0002).
@@ -47,6 +48,7 @@ export async function pruneAndAggregate(env: Env, now: number): Promise<void> {
   await env.DB.prepare('DELETE FROM daily_stats WHERE day < ?')
     .bind(day(now - 7 * 86_400_000))
     .run();
+  await prunePerf(env, now);
 }
 
 export async function readStats(env: Env): Promise<Response> {

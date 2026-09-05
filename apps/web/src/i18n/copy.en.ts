@@ -216,6 +216,9 @@ export const EN = {
     northUp: 'North up',
     northUpHint: 'Off, the map turns with you.',
     phone: 'Use this on my car',
+    perf: 'Share performance data',
+    perfHint:
+      'Now and then, send how smoothly the map runs on this screen. Anonymous: no position, no name, no id.',
   },
 
   controls: {
@@ -253,6 +256,7 @@ export const EN = {
       `Positions live in memory for ${n(PRESENCE_EXPIRY_MS / 1000)} seconds and are never written to a database.`,
       'Wave counts, as numbers. Yours, and a daily total per map area.',
       'No trip history, no routes, no timestamps of where you were.',
+      'If you turn on "Share performance data": screen density and size, frame timings, and how many cars were on the map. Nothing that says who or where you are. Kept 30 days.',
     ],
     thirdPartiesTitle: 'Third parties',
     thirdParties: [

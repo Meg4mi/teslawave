@@ -229,6 +229,41 @@ describe('/api', () => {
     expect(unknown.status).toBe(404);
   });
 
+  it('records an anonymous performance sample and refuses anything that is not one', async () => {
+    const sample = {
+      v: 1,
+      dpr: 2,
+      tesla: true,
+      chromium: 148,
+      width: 1920,
+      height: 1200,
+      mean: 4.2,
+      p95: 9.8,
+      samples: 600,
+      halfRate: false,
+      lowRes: true,
+      cars: 14,
+    };
+    const ok = await SELF.fetch('https://teslawave.test/api/perf', {
+      method: 'POST',
+      body: JSON.stringify(sample),
+    });
+    expect(ok.status).toBe(204);
+    const rows = await env.DB.prepare('SELECT * FROM perf_samples').all();
+    expect(rows.results).toHaveLength(1);
+    expect(rows.results[0]).toMatchObject({ dpr: 2, tesla: 1, low_res: 1, cars: 14 });
+    // The schema is the privacy guarantee: there is no column a position could land in.
+    expect(Object.keys(rows.results[0] ?? {})).not.toContain('lat');
+
+    const bad = await SELF.fetch('https://teslawave.test/api/perf', {
+      method: 'POST',
+      body: JSON.stringify({ ...sample, lat: 46.2, mean: 'fast' }),
+    });
+    expect(bad.status).toBe(400);
+    const wrongMethod = await SELF.fetch('https://teslawave.test/api/perf');
+    expect(wrongMethod.status).toBe(404);
+  });
+
   it('serves aggregate stats and 404s anything else under /api', async () => {
     const stats = await SELF.fetch('https://teslawave.test/api/stats');
     expect(stats.status).toBe(200);

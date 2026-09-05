@@ -125,6 +125,18 @@ export function SettingsSheet({
           />
         </div>
 
+        <div className="settings__row">
+          <span className="settings__label">
+            {copy.settings.perf}
+            <span className="settings__hint">{copy.settings.perfHint}</span>
+          </span>
+          <Switch
+            checked={prefs.perfBeacon}
+            label={copy.settings.perf}
+            onChange={(perfBeacon) => onChange({ perfBeacon })}
+          />
+        </div>
+
         {/* Detected from the car to begin with, so this row is a correction rather than a
             question. Each language is named in itself: a driver who has landed in the wrong
             one cannot read the label that would get them out. */}

@@ -8,6 +8,7 @@ import {
   normaliseCode,
   NICK_MAX_LEN,
 } from '@teslawave/protocol';
+import { overLimit } from './limits.js';
 
 /**
  * What crosses from the phone to the car: the secret, not the id. The car derives the same
@@ -22,21 +23,8 @@ const json = (body: unknown, status = 200): Response =>
     headers: { 'content-type': 'application/json', 'cache-control': 'no-store' },
   });
 
-/** Per-isolate soft limit. Enough at our scale, and it costs nothing. */
-const claims = new Map<string, { count: number; resetAt: number }>();
 const CLAIM_LIMIT = 10;
 const CLAIM_WINDOW_MS = 60_000;
-
-const overClaimLimit = (ip: string, now: number): boolean => {
-  const entry = claims.get(ip);
-  if (!entry || now > entry.resetAt) {
-    claims.set(ip, { count: 1, resetAt: now + CLAIM_WINDOW_MS });
-    if (claims.size > 10_000) claims.clear();
-    return false;
-  }
-  entry.count += 1;
-  return entry.count > CLAIM_LIMIT;
-};
 
 const readPayload = (body: unknown): PairPayload | null => {
   if (typeof body !== 'object' || body === null) return null;
@@ -74,7 +62,8 @@ export async function createPairing(request: Request, env: Env): Promise<Respons
 export async function claimPairing(request: Request, env: Env): Promise<Response> {
   const now = Date.now();
   const ip = request.headers.get('cf-connecting-ip') ?? 'unknown';
-  if (overClaimLimit(ip, now)) return json({ error: 'too many attempts' }, 429);
+  if (overLimit('pair', ip, CLAIM_LIMIT, CLAIM_WINDOW_MS, now))
+    return json({ error: 'too many attempts' }, 429);
 
   const body = (await request.json().catch(() => null)) as { code?: unknown } | null;
   const raw = typeof body?.code === 'string' ? normaliseCode(body.code) : '';

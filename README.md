@@ -150,7 +150,9 @@ development stay unmeasured.
 Two things worth doing on the first deploy, in this order:
 
 1. Open it on a real Tesla and fill in a row of [docs/tesla-notes.md](docs/tesla-notes.md).
-   CI has no GPU, so that is the only real performance data that exists.
+   CI has no GPU, so that and the performance beacon are the only real performance data
+   that exist. Turn on "Share performance data" in Settings on the car, and `pnpm perf`
+   prints what real screens report (ADR-0027).
 2. After 24 hours of traffic, run `pnpm usage`. Durable Object duration should be in the low
    hundreds of GB-s. If it is near 10,800, the hub is not hibernating: stop and find the
    timer, the `ws.accept()`, the alarm or the in-flight `fetch` before anything else.
