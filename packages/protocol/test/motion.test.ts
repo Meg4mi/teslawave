@@ -11,8 +11,24 @@ import {
   sample,
   RENDER_DELAY_MS,
   MAX_DEAD_RECKON_MS,
+  MAX_TURN_RATE_DEG_S,
+  turnRate,
   type MotionSample,
 } from '../src/motion.js';
+
+/**
+ * A car going round a bend: a circle of radius `r` metres, clockwise, at `speedKmh`. The
+ * sample at `seconds` is where the car is then, with the heading it actually has there.
+ */
+const bend = (r: number, speedKmh: number) => {
+  const centre = { lat: 46.2, lng: 6.14 };
+  const degPerSecond = ((speedKmh / 3.6 / r) * 180) / Math.PI;
+  return (seconds: number): MotionSample => {
+    const spoke = degPerSecond * seconds;
+    const at = destination(centre.lat, centre.lng, spoke, r);
+    return { lat: at.lat, lng: at.lng, heading: (spoke + 90) % 360, speed: speedKmh, ts: seconds * 1_000 };
+  };
+};
 
 describe('geometry', () => {
   it('measures known distances', () => {
@@ -54,6 +70,60 @@ describe('predict', () => {
     const far = predict(s, 60_000);
     const capped = predict(s, MAX_DEAD_RECKON_MS);
     expect(haversineM(far.lat, far.lng, capped.lat, capped.lng)).toBeLessThan(0.5);
+  });
+});
+
+describe('following the bend (ADR-0028)', () => {
+  // A 150 m bend at 90 km/h, sampled every 5 s: 48 degrees of arc between samples.
+  const on = bend(150, 90);
+
+  it('draws the car on the arc between two samples, not on the chord across it', () => {
+    const a = on(0);
+    const b = on(5);
+    const truth = on(2.5);
+    const drawn = evaluate([a, b], 2_500)!;
+    expect(haversineM(drawn.lat, drawn.lng, truth.lat, truth.lng)).toBeLessThan(3);
+    expect(Math.abs(lerpHeading(drawn.heading, truth.heading, 0) - truth.heading)).toBeLessThan(3);
+    // What the straight line would have done: a car's length into the verge.
+    const chord = { lat: (a.lat + b.lat) / 2, lng: (a.lng + b.lng) / 2 };
+    expect(haversineM(chord.lat, chord.lng, truth.lat, truth.lng)).toBeGreaterThan(10);
+  });
+
+  it('keeps turning past the last sample, at the rate the last two samples showed', () => {
+    const samples = [on(0), on(5)];
+    const truth = on(8);
+    const drawn = evaluate(samples, 8_000)!;
+    expect(haversineM(drawn.lat, drawn.lng, truth.lat, truth.lng)).toBeLessThan(4);
+    // Straight on along the last heading would have left the road.
+    const straight = predict(on(5), 8_000);
+    expect(haversineM(straight.lat, straight.lng, truth.lat, truth.lng)).toBeGreaterThan(15);
+  });
+
+  it('is still a straight line when the headings say so', () => {
+    const a: MotionSample = { lat: 46.0, lng: 6.0, heading: 0, speed: 72, ts: 0 };
+    const b = { ...a, lat: a.lat + 100 / 111_320, ts: 5_000 };
+    const mid = evaluate([a, b], 2_500)!;
+    expect(mid.lat).toBeCloseTo((a.lat + b.lat) / 2, 8);
+    expect(mid.lng).toBeCloseTo(a.lng, 8);
+    expect(mid.heading).toBeCloseTo(0, 3);
+  });
+
+  it('never bends the curve into a loop when the speed contradicts the distance', () => {
+    // Reported at 120 km/h but only 10 m apart: a tangent that long would loop.
+    const a: MotionSample = { lat: 46.0, lng: 6.0, heading: 0, speed: 120, ts: 0 };
+    const b: MotionSample = { ...a, lat: a.lat + 10 / 111_320, heading: 180, ts: 5_000 };
+    for (let t = 0; t <= 5_000; t += 250) {
+      const p = evaluate([a, b], t)!;
+      expect(haversineM(a.lat, a.lng, p.lat, p.lng)).toBeLessThan(25);
+    }
+  });
+
+  it('clamps the turn rate to a road, and the predicted turn to a bend', () => {
+    const a: MotionSample = { lat: 46.0, lng: 6.0, heading: 0, speed: 50, ts: 0 };
+    expect(turnRate(a, { ...a, heading: 170, ts: 1_000 })).toBe(MAX_TURN_RATE_DEG_S);
+    expect(turnRate(a, { ...a, heading: 350, ts: 1_000 })).toBe(-10);
+    const far = predict(a, MAX_DEAD_RECKON_MS, MAX_TURN_RATE_DEG_S);
+    expect(far.heading).toBeCloseTo(90, 6);
   });
 });
 

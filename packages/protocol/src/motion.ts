@@ -73,12 +73,100 @@ export type MotionSample = {
 
 export type Placement = { lat: number; lng: number; heading: number; speed: number };
 
-/** Dead reckoning: where this sample will be at `atMs`, capped so we never invent a journey. */
-export function predict(s: MotionSample, atMs: number): Placement {
-  const dt = Math.min(Math.max(atMs - s.ts, 0), MAX_DEAD_RECKON_MS);
-  const distance = kmhToMs(s.speed) * (dt / 1000);
-  const { lat, lng } = destination(s.lat, s.lng, s.heading, distance);
-  return { lat, lng, heading: s.heading, speed: s.speed };
+/** A turn rate faster than this between two samples is noise, not a road. */
+export const MAX_TURN_RATE_DEG_S = 30;
+/** Dead reckoning keeps turning for at most this much: a bend, never a loop. */
+const MAX_PREDICTED_TURN_DEG = 90;
+
+/** Signed shortest difference b - a, in (-180, 180]. */
+const headingDiff = (a: number, b: number): number => ((((b - a) % 360) + 540) % 360) - 180;
+
+/**
+ * Dead reckoning: where this sample will be at `atMs`, capped so we never invent a journey.
+ * With a turn rate (degrees per second, from the last two samples) the car keeps turning at
+ * that rate, so a car mid-bend continues round the bend instead of leaving it on a tangent
+ * (ADR-0028). The arc is exact: a constant speed and turn rate is a circle, and the chord
+ * across `dt` of it has length 2r·sin(θ/2) on a bearing half way round.
+ */
+export function predict(s: MotionSample, atMs: number, turnRateDegS = 0): Placement {
+  const dt = Math.min(Math.max(atMs - s.ts, 0), MAX_DEAD_RECKON_MS) / 1000;
+  const distance = kmhToMs(s.speed) * dt;
+  const turned = Math.max(-MAX_PREDICTED_TURN_DEG, Math.min(MAX_PREDICTED_TURN_DEG, turnRateDegS * dt));
+  if (Math.abs(turned) < 1e-6 || distance === 0) {
+    const { lat, lng } = destination(s.lat, s.lng, s.heading, distance);
+    return { lat, lng, heading: (s.heading + turned + 360) % 360, speed: s.speed };
+  }
+  const theta = toRad(turned);
+  const radius = distance / Math.abs(theta);
+  const chord = 2 * radius * Math.sin(Math.abs(theta) / 2);
+  const { lat, lng } = destination(s.lat, s.lng, s.heading + turned / 2, chord);
+  return { lat, lng, heading: (s.heading + turned + 360) % 360, speed: s.speed };
+}
+
+/** The turn rate the last two samples imply, in degrees per second, clamped to a road's. */
+export function turnRate(a: MotionSample, b: MotionSample): number {
+  const dt = (b.ts - a.ts) / 1000;
+  if (dt <= 0) return 0;
+  const rate = headingDiff(a.heading, b.heading) / dt;
+  return Math.max(-MAX_TURN_RATE_DEG_S, Math.min(MAX_TURN_RATE_DEG_S, rate));
+}
+
+/** A tangent longer than this many chords bends the curve into a loop; a road never does. */
+const MAX_TANGENT_CHORDS = 2;
+
+/**
+ * Between two samples the car is on the curve their headings and speeds describe, not on
+ * the straight line between them: a cubic Hermite with each sample's velocity as its tangent
+ * (ADR-0028). On a bend the straight line cut the corner by a car's width or more, which on
+ * a map whose roads are drawn to the metre is a car in the verge.
+ *
+ * Done in a local frame of metres east and north of `a`; at the distances between two
+ * samples the Earth is flat enough.
+ */
+function curveBetween(a: MotionSample, b: MotionSample, t: number): Placement {
+  const mPerDegLat = (Math.PI / 180) * R;
+  const mPerDegLng = mPerDegLat * Math.cos(toRad(a.lat));
+  const px = (b.lng - a.lng) * mPerDegLng;
+  const py = (b.lat - a.lat) * mPerDegLat;
+  const chord = Math.hypot(px, py);
+  const span = (b.ts - a.ts) / 1000;
+  const cap = chord * MAX_TANGENT_CHORDS;
+  const tangent = (s: MotionSample): [number, number] => {
+    const length = Math.min(kmhToMs(s.speed) * span, cap);
+    const h = toRad(s.heading);
+    return [Math.sin(h) * length, Math.cos(h) * length];
+  };
+  const [m0x, m0y] = tangent(a);
+  const [m1x, m1y] = tangent(b);
+
+  const t2 = t * t;
+  const t3 = t2 * t;
+  const h00 = 2 * t3 - 3 * t2 + 1;
+  const h10 = t3 - 2 * t2 + t;
+  const h01 = -2 * t3 + 3 * t2;
+  const h11 = t3 - t2;
+  const x = h10 * m0x + h01 * px + h11 * m1x;
+  const y = h10 * m0y + h01 * py + h11 * m1y;
+  void h00; // p0 is the origin of the frame
+
+  // The sprite points along the curve, which is where the car is going, not a blend of the
+  // two headings; the two agree exactly at either end.
+  const d00 = 6 * t2 - 6 * t;
+  const d10 = 3 * t2 - 4 * t + 1;
+  const d01 = -6 * t2 + 6 * t;
+  const d11 = 3 * t2 - 2 * t;
+  void d00;
+  const dx = d10 * m0x + d01 * px + d11 * m1x;
+  const dy = d10 * m0y + d01 * py + d11 * m1y;
+  const heading =
+    Math.hypot(dx, dy) > 0.5 ? (toDeg(Math.atan2(dx, dy)) + 360) % 360 : lerpHeading(a.heading, b.heading, t);
+
+  return {
+    lat: a.lat + y / mPerDegLat,
+    lng: a.lng + x / mPerDegLng,
+    heading,
+    speed: a.speed + (b.speed - a.speed) * t,
+  };
 }
 
 /** Position at `atMs` from the samples we hold: interpolate inside, dead reckon after. */
@@ -89,7 +177,13 @@ export function evaluate(samples: readonly MotionSample[], atMs: number): Placem
   if (!first || !last) return null;
   if (atMs <= first.ts)
     return { lat: first.lat, lng: first.lng, heading: first.heading, speed: first.speed };
-  if (n === 1 || atMs >= last.ts) return predict(last, atMs);
+  if (n === 1) return predict(last, atMs);
+  if (atMs >= last.ts) {
+    // Samples arrive every 5 s while we render 2 s behind, so most frames are past the last
+    // one: keep turning as the last two samples were, rather than leaving the bend.
+    const previous = samples[n - 2];
+    return predict(last, atMs, previous ? turnRate(previous, last) : 0);
+  }
 
   for (let i = 0; i < n - 1; i++) {
     const a = samples[i];
@@ -98,12 +192,7 @@ export function evaluate(samples: readonly MotionSample[], atMs: number): Placem
     if (atMs >= a.ts && atMs <= b.ts) {
       const span = b.ts - a.ts;
       const t = span === 0 ? 1 : (atMs - a.ts) / span;
-      return {
-        lat: a.lat + (b.lat - a.lat) * t,
-        lng: a.lng + (b.lng - a.lng) * t,
-        heading: lerpHeading(a.heading, b.heading, t),
-        speed: a.speed + (b.speed - a.speed) * t,
-      };
+      return curveBetween(a, b, t);
     }
   }
   return predict(last, atMs);
