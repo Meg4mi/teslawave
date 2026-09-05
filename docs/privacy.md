@@ -6,15 +6,15 @@ The design goal is that there is nothing to leak. No account, no email, no trip 
 
 | Data | Notes |
 |---|---|
-| Position | Blurred by 50-100 m **on the device**, before anything is sent. The exact position never leaves the browser. |
+| Position | The GPS fix as the device reports it, while you are visible. Drivers consent to this when they tap "Go"; it was blurred by 50-100 m until ADR-0024. |
 | Heading and speed | So other cars glide instead of jumping between updates. |
 | Model and colour | Chosen by hand. No Tesla account, no Fleet API, no VIN. |
 | Nickname | Optional, at most 16 characters. |
 | A random id | Generated in the browser (`crypto.randomUUID`), stored in `localStorage`. Not linked to a person. |
 
-The blur is a bounded random walk: one offset per page load, between 50 and 100 m, drifting
-by at most 5 m per update. A fresh random offset each time would make cars twitch; a fixed
-offset would preserve the exact shape of the trip and merely move it (ADR-0004).
+Positions are exact. What protects a driver is not blur but scope: a position is shown only
+to drivers in the same map area, only while it is under 60 s old, and it is never written
+anywhere (ADR-0024).
 
 ## What is kept, and for how long
 

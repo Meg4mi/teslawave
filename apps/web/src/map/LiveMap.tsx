@@ -2,10 +2,9 @@ import { useEffect, useRef, type ReactNode } from 'react';
 import { AttributionControl, Map as MlMap, prewarm, setWorkerUrl } from 'maplibre-gl';
 import type { MapMouseEvent, MapTouchEvent } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
-import { getSelfPlacement, setDisplayOffsetSource, tickWorld, type RenderCar } from '../sim/world';
+import { getSelfPlacement, tickWorld, type RenderCar } from '../sim/world';
 import { createRenderer, type Renderer } from '../overlay/renderer';
 import { buildStyle } from './style';
-import { createRoadSnapper } from './snap';
 import { affineProjector } from './projector';
 import { MAPLIBRE_WORKER_URL } from './maplibre-worker-url';
 import { useCopy } from '../i18n';
@@ -68,16 +67,6 @@ const CAMERA_EPSILON_DEG_BEARING = 0.2;
 const CAMERA_HOLD_MS = 6_000;
 /** Below this a touch is a tap, not a drag. */
 const DRAG_SLOP_PX = 10;
-/** Snapping is the one thing here that queries the vector tiles; ration it on slow frames. */
-const SNAP_BUDGET = 2;
-const SNAP_BUDGET_SLOW = 1;
-/**
- * Above this rate of turn we are repainting the whole vector map every frame with a new
- * bearing, which is the most expensive thing the map ever does. Querying rendered features
- * against a map in that state is the worst possible moment to do it, so we stop until the
- * wheel comes back — a second of a slightly-off correction nobody will see.
- */
-const TURNING_DEG_PER_S = 6;
 /**
  * Once frames are measured slow, the vector map is rendered at no more than this pixel ratio.
  *
@@ -158,11 +147,6 @@ export function LiveMap({
     const renderer = createRenderer(canvas);
     onReady(renderer);
 
-    // Sprites are drawn on the road they are plausibly on rather than in the field the privacy
-    // fuzz put them in. Display only: the position we send is untouched (map/snap.ts).
-    const snapper = createRoadSnapper(map);
-    setDisplayOffsetSource(snapper.offsetOf);
-
     const recentreButton = recentre.current;
     let cameraHeldUntil = 0;
     const holdCamera = (): void => {
@@ -180,9 +164,8 @@ export function LiveMap({
      * between resets it, so the event we would be waiting for never arrives.
      *
      * `touching` also gates our per-frame work: while a finger is down the map is
-     * re-tessellating every frame, which on an Intel Atom is the whole budget, so road
-     * snapping and trails stand aside. Neither is missed — a trail gap of half a second fades
-     * out anyway, and a snap correction is recomputed as soon as you let go.
+     * re-tessellating every frame, which on an Intel Atom is the whole budget, so trails
+     * stand aside. Not missed: a trail gap of half a second fades out anyway.
      */
     const down = new Map<number, { x: number; y: number }>();
     let touching = 0;
@@ -295,7 +278,6 @@ export function LiveMap({
     let cameraAt = 0;
     let lastCentre: { lng: number; lat: number; bearing: number } | null = null;
     let overlayAt = 0;
-    let turnRate = 0;
     let raf = 0;
     const instrumented = isE2E();
 
@@ -346,11 +328,6 @@ export function LiveMap({
           Math.abs(lastCentre.lng - placement.lng) > CAMERA_EPSILON_DEG ||
           Math.abs(lastCentre.bearing - bearing) > CAMERA_EPSILON_DEG_BEARING;
         if (moved) {
-          const turned = lastCentre ? Math.abs(bearing - lastCentre.bearing) : 0;
-          const elapsed = Math.max(1, now - cameraAt);
-          // Smoothed, so one noisy fix does not read as a turn.
-          turnRate =
-            turnRate * 0.7 + ((turned > 180 ? 360 - turned : turned) / elapsed) * 1_000 * 0.3;
           map.jumpTo({ center: [placement.lng, placement.lat], bearing });
           lastCentre = { lat: placement.lat, lng: placement.lng, bearing };
         }
@@ -360,8 +337,6 @@ export function LiveMap({
       const measure = instrumented ? performance.now() : 0;
       const cars = tickWorld(now);
       carsRef.current = cars;
-      const busy = touching > 0 || turnRate > TURNING_DEG_PER_S;
-      snapper.update(cars, now, busy ? 0 : halfRate ? SNAP_BUDGET_SLOW : SNAP_BUDGET);
       renderer.render(
         now,
         // Built once per frame from the map's own transform: see map/projector.ts.
@@ -426,7 +401,6 @@ export function LiveMap({
       recentreButton?.removeEventListener('click', follow);
       zoomInButton?.removeEventListener('click', zoomInAt);
       zoomOutButton?.removeEventListener('click', zoomOutAt);
-      setDisplayOffsetSource(null);
       map.off('click', pick);
       map.remove();
       mapRef.current = null;

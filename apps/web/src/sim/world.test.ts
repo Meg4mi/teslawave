@@ -6,7 +6,6 @@ import {
   dropCells,
   getSummary,
   resetWorld,
-  setDisplayOffsetSource,
   setSelfPlacement,
   setSelfReported,
   setSubscribedCells,
@@ -50,7 +49,6 @@ const diff = (over: Partial<Extract<ServerMsg, { t: 'diff' }>> = {}): ServerMsg 
 });
 
 beforeEach(() => {
-  setDisplayOffsetSource(null);
   resetWorld('me');
   setSelfPlacement({ lat: GENEVA.lat, lng: GENEVA.lng, heading: 90, speed: 50 });
   setSelfReported({ lat: GENEVA.lat, lng: GENEVA.lng });
@@ -80,7 +78,7 @@ describe('world', () => {
     expect(tickWorld(performance.now())).toHaveLength(0);
   });
 
-  it('measures distance from the fuzzed position, which is what the server validates', () => {
+  it('measures distance from the position as sent, which is what the server validates', () => {
     // 500 m east of us: outside the 300 m prompt range.
     applyServerMsg(welcome([car({ lng: GENEVA.lng + 0.0065 })]));
     tickWorld(performance.now() + 1_000);
@@ -124,22 +122,6 @@ describe('world', () => {
     applyServerMsg(welcome([]));
     tickWorld(performance.now() + 4_000);
     expect(getSummary().online).toBe(0);
-  });
-
-  it('draws a car where the display nudge puts it, and measures it where the server does', () => {
-    setSelfReported({ lat: GENEVA.lat, lng: GENEVA.lng });
-    // 500 m east: too far to wave at.
-    applyServerMsg(welcome([car({ lng: GENEVA.lng + 0.0065 })]));
-    const before = tickWorld(performance.now() + 1_000)[0];
-    expect(before?.distanceM).toBeGreaterThan(400);
-
-    // Now nudge it onto a road 80 m north. The sprite moves; the distance must not, or the
-    // wave button would appear for a wave the hub is going to refuse.
-    setDisplayOffsetSource(() => ({ lat: 0.0007, lng: 0 }));
-    const after = tickWorld(performance.now() + 1_100)[0];
-    expect(after?.placement.lat).toBeCloseTo((before?.placement.lat ?? 0) + 0.0007, 6);
-    expect(after?.reported.lat).toBeCloseTo(before?.placement.lat ?? 0, 6);
-    expect(after?.distanceM).toBeCloseTo(before?.distanceM ?? 0, 0);
   });
 
   it('forgets the cells of a hub socket that went away', () => {
@@ -211,11 +193,4 @@ describe('cells and reconnects', () => {
     expect(tickWorld(performance.now()).map((c) => c.id).sort()).toEqual(['here', 'there']);
   });
 
-  it('turns a snapped car to lie along its road, for the drawing only', () => {
-    applyServerMsg(welcome([car({ heading: 350 })]));
-    setDisplayOffsetSource(() => ({ lat: 0, lng: 0, turn: 15 }));
-    const rendered = tickWorld(performance.now())[0];
-    expect(rendered?.placement.heading).toBeCloseTo(5, 6);
-    expect(rendered?.reported.heading).toBe(350);
-  });
 });

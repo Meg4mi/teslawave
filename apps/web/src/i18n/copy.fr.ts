@@ -1,7 +1,5 @@
 import {
   BRAND,
-  FUZZ_MAX_M,
-  FUZZ_MIN_M,
   MODEL_LABELS,
   PRESENCE_EXPIRY_MS,
   colourOf,
@@ -101,7 +99,7 @@ export const FR: Copy = {
     havePairingCode: 'J’ai déjà tout réglé sur mon téléphone',
     havePairingCodeHint: 'Reprenez votre nom et vos saluts avec un code court.',
     howItWorks: 'Comment saluer',
-    privacy: 'Votre position est floutée avant de quitter votre voiture, et jamais conservée.',
+    privacy: 'Votre position n’est partagée que lorsque vous êtes visible, et jamais conservée.',
   },
 
   map: {
@@ -254,7 +252,7 @@ export const FR: Copy = {
       `${brand} est conçu pour qu’il n’y ait rien à divulguer. Pas de compte, pas d’e-mail, pas d’historique de trajets.`,
     leavesTitle: 'Ce qui quitte votre voiture',
     leaves: [
-      `Une position floutée de ${n(FUZZ_MIN_M)}–${n(FUZZ_MAX_M)} m avant de quitter l’appareil. Votre position exacte n’est jamais envoyée.`,
+      'Votre position GPS, telle quelle, tant que vous êtes visible. Elle sert uniquement à vous afficher aux conducteurs autour de vous.',
       'Votre cap et votre vitesse, pour que les autres voitures glissent au lieu de sauter.',
       'Le modèle et la couleur que vous avez choisis, et un pseudo si vous en avez saisi un.',
       'Un identifiant aléatoire généré dans votre navigateur. Il n’est lié ni à vous ni à Tesla.',

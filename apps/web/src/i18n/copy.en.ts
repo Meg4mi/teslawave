@@ -1,7 +1,5 @@
 import {
   BRAND,
-  FUZZ_MAX_M,
-  FUZZ_MIN_M,
   MODEL_LABELS,
   PRESENCE_EXPIRY_MS,
   colourOf,
@@ -86,7 +84,7 @@ export const EN = {
     havePairingCode: 'I already set this up on my phone',
     havePairingCodeHint: 'Bring your name and wave count across with a short code.',
     howItWorks: 'How waving works',
-    privacy: 'Your position is blurred before it leaves your car, and never stored.',
+    privacy: 'Your position is shared only while you are visible, and never stored.',
   },
 
   map: {
@@ -243,7 +241,7 @@ export const EN = {
       `${brand} is built so that there is nothing to leak. No account, no email, no trip history.`,
     leavesTitle: 'What leaves your car',
     leaves: [
-      `A position blurred by ${n(FUZZ_MIN_M)}–${n(FUZZ_MAX_M)} m before it leaves the device. Your exact position is never sent.`,
+      'Your GPS position, as it is, while you are visible. It is used only to show you to the drivers around you.',
       'Your heading and speed, so other cars glide instead of jumping.',
       'The model and colour you picked, and a nickname if you typed one.',
       'A random id generated in your browser. It is not linked to you or to Tesla.',

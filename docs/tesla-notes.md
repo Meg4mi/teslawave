@@ -264,3 +264,22 @@ device's next report. That one is a choice, not a bug, and it is not what the re
 
 Worth checking on the car: leave it parked with the app open for five minutes and watch it from
 a second device. It should never disappear.
+
+
+## 2026-09-05 — "the other cars look offset, like a bug"
+
+Not a bug: two features, both removed (ADR-0024).
+
+Every position was blurred by 50–100 m on the device before it left (ADR-0004), and the map then
+nudged each other car onto the road it was plausibly on to hide the sideways part of that blur
+(ADR-0016). On a real screen that read as cars beside the road, on the wrong road, or a bend
+behind. With sharing opt-in and the consent screen saying what leaves the car, the blur
+protected nobody, so the client now sends the fix as the device reports it and draws other
+cars exactly where the server put them. The privacy screen says so in both languages.
+
+What is still offset, and by design: the client renders two seconds behind server time so
+there is always a sample to interpolate towards. At 100 km/h that is about 55 m behind the
+true position, and at a standstill it is nothing.
+
+Worth checking on the car: whether a car alongside now sits alongside, and whether one in a
+car park sits in the car park rather than on the road past it.

@@ -36,12 +36,8 @@ export type WorldCar = {
   lastServerTs: number;
 };
 
-/**
- * `placement` is where the sprite goes; `reported` is what the server actually sent. They
- * differ by the display nudge that puts cars back on the road (map/snap.ts). Anything that
- * has to agree with the server — distances, wave range — uses `reported`.
- */
-export type RenderCar = WorldCar & { placement: Placement; reported: Placement; distanceM: number };
+/** `placement` is this frame's interpolated position, exactly where the server put the car. */
+export type RenderCar = WorldCar & { placement: Placement; distanceM: number };
 
 export type Summary = {
   online: number;
@@ -66,25 +62,6 @@ const cellStats = new Map<string, { online: number; wavesToday: number; lastWave
 let subscribed = new Set<string>();
 const listeners = new Set<() => void>();
 
-/**
- * Where a car is *drawn* can differ from where the server says it is: the map layer nudges
- * sprites onto the road they are plausibly on, to undo the sideways part of the privacy fuzz
- * (see map/snap.ts). Distances — and therefore the wave prompt — are always measured from the
- * unnudged position, because that is the one the hub validates against.
- */
-export type DisplayOffset = {
-  lat: number;
-  lng: number;
-  /** Degrees to add to the drawn heading, so a snapped car lies along its road. */
-  turn?: number;
-};
-
-let displayOffsetOf: (id: string) => DisplayOffset | null = () => null;
-
-export function setDisplayOffsetSource(source: ((id: string) => DisplayOffset | null) | null): void {
-  displayOffsetOf = source ?? ((): null => null);
-}
-
 let clockOffset = 0;
 let selfId = '';
 /**
@@ -93,7 +70,7 @@ let selfId = '';
  */
 const follower = createSelfFollower();
 let selfPlacement: Placement | null = null;
-/** The fuzzed position, which is what the server sees and validates waves against. */
+/** The last fix as it was sent, which is what the server holds and validates waves against. */
 let selfReported: { lat: number; lng: number } | null = null;
 let selfWaves = 0;
 let lastSummaryAt = 0;
@@ -148,9 +125,9 @@ export function setSelfPlacement(placement: Placement | null, at = Date.now()): 
 }
 
 /**
- * Distances are measured from here, not from the raw fix: the wave button must appear
- * exactly when the server would accept the wave, and the server only ever sees fuzzed
- * positions. The raw fix is for drawing your own car and nothing else (ADR-0012).
+ * Distances are measured from here, not from the smoothed placement: the wave button must
+ * appear exactly when the server would accept the wave, and the server holds the fix as it
+ * was sent, not the eased position the camera follows (ADR-0019).
  */
 export function setSelfReported(position: { lat: number; lng: number } | null): void {
   selfReported = position;
@@ -285,20 +262,10 @@ function placements(server: number): RenderCar[] {
   for (const car of cars.values()) {
     const placement = sample(car.track, server);
     if (!placement) continue;
-    // Measured before the display nudge, always.
     const distanceM = from
       ? haversineM(from.lat, from.lng, placement.lat, placement.lng)
       : Number.POSITIVE_INFINITY;
-    const offset = displayOffsetOf(car.id);
-    const shown = offset
-      ? {
-          ...placement,
-          lat: placement.lat + offset.lat,
-          lng: placement.lng + offset.lng,
-          heading: (((placement.heading + (offset.turn ?? 0)) % 360) + 360) % 360,
-        }
-      : placement;
-    out.push({ ...car, placement: shown, reported: placement, distanceM });
+    out.push({ ...car, placement, distanceM });
   }
   return out;
 }

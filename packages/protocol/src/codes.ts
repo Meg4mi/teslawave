@@ -1,5 +1,7 @@
 import { PAIR_ALPHABET, PAIR_CODE_LEN } from './constants.js';
-import type { Random } from './fuzz.js';
+
+/** A source of numbers in [0, 1): Math.random, or a fixed one in tests. */
+export type Random = () => number;
 
 export function generateCode(random: Random = Math.random): string {
   let out = '';

@@ -7,8 +7,7 @@ test('two cars in range can wave, and both counters move', async ({ browser }) =
   const pageA = await a.newPage();
   const pageB = await b.newPage();
 
-  // ~22 m apart in truth: even with both positions fuzzed by up to 100 m each, they stay
-  // inside the 300 m prompt range.
+  // ~22 m apart: well inside the 300 m prompt range.
   await onboard(pageA, simUrl(GENEVA.lat, GENEVA.lng, 90, 10));
   await onboard(pageB, simUrl(GENEVA.lat + 0.0002, GENEVA.lng, 90, 10));
 

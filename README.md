@@ -11,13 +11,13 @@ TESLA is a trademark of Tesla, Inc.
 ## How it fits together
 
 ```
-packages/protocol   wire types, geohash cells, fuzzing, interpolation, send rates
+packages/protocol   wire types, geohash cells, interpolation, send rates
 packages/hub-core   presence, per-cell diffs, waves, rate limits, counters (pure functions)
 apps/worker         Cloudflare Worker + HubDO (WebSocket hibernation) + D1 + static assets
 apps/web            Vite + React 19 SPA: MapLibre map, canvas car overlay, the wave
 ```
 
-A driver's client fuzzes its position by 50-100 m, works out which geohash cells it is in,
+A driver's client sends its position as the device reports it, works out which geohash cells it is in,
 and opens one WebSocket to the Durable Object that owns that region. The hub keeps presence
 in memory, broadcasts a diff per cell at most every two seconds, and forgets anyone who
 stops reporting for a minute. The client interpolates and dead-reckons between updates so

@@ -1,6 +1,6 @@
 # 0004. Position fuzzing as a bounded random walk
 
-Status: accepted
+Status: superseded by 0024
 Date: 2026-09-04
 
 ## Context

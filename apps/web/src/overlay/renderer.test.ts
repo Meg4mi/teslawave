@@ -85,7 +85,6 @@ const car = (id: string, lat: number, lng: number): RenderCar => {
     appearedAt: -10_000,
     lastServerTs: 0,
     placement,
-    reported: placement,
     distanceM: 100,
   };
 };
