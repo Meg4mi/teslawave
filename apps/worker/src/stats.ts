@@ -5,9 +5,8 @@
 const day = (ms: number): string => new Date(ms).toISOString().slice(0, 10);
 
 export async function pruneAndAggregate(env: Env, now: number): Promise<void> {
-  await env.DB.prepare('DELETE FROM pairing_codes WHERE expires_at < ?')
-    .bind(now - 86_400_000)
-    .run();
+  // An expired code carries a secret nobody can claim any more: gone at the next run.
+  await env.DB.prepare('DELETE FROM pairing_codes WHERE expires_at < ?').bind(now).run();
   // Keep the shareable "waves today" numbers for a week, nothing longer (no history in v1).
   await env.DB.prepare('DELETE FROM daily_stats WHERE day < ?')
     .bind(day(now - 7 * 86_400_000))

@@ -11,6 +11,7 @@ import {
   destination,
   encode,
   hubOf,
+  idFromSecret,
   type CarState,
   type ClientMsg,
   type ServerMsg,
@@ -52,12 +53,16 @@ const closes = (effects: Effect[]): Array<{ to: string; code: number }> =>
     .filter((e): e is CloseEffect => e.k === 'close')
     .map((e) => ({ to: e.to, code: e.code }));
 
-const hello = (key: string, id: string, cells: string[] = [CELL], extra: Partial<ClientMsg> = {}) => {
+/** A test driver is named; the secret it holds and the id the hub gives it both follow. */
+const secretOf = (name: string): string => `secret-${name}-0123456789`;
+const ID = (name: string): string => idFromSecret(secretOf(name));
+
+const hello = (key: string, name: string, cells: string[] = [CELL], extra: Partial<ClientMsg> = {}) => {
   openSocket(state, key);
   return onMessage(
     state,
     key,
-    { t: 'hello', id, model: '3', colour: 'red', cells, ...extra } as ClientMsg,
+    { t: 'hello', secret: secretOf(name), model: '3', colour: 'red', cells, ...extra } as ClientMsg,
     now,
   );
 };
@@ -81,7 +86,7 @@ describe('presence and diffs', () => {
     now += SERVER_TICK_MS;
     const out = flushIfDue(state, now);
     const diff = diffsFor(out, 'b')[0];
-    expect(diff?.upd.map((c) => c.id)).toEqual(['car-a']);
+    expect(diff?.upd.map((c) => c.id)).toEqual([ID('car-a')]);
     expect(diff?.online).toBe(1);
   });
 
@@ -90,7 +95,7 @@ describe('presence and diffs', () => {
     pos('a', GENEVA.lat, GENEVA.lng);
     const out = hello('b', 'car-b');
     const welcome = sends(out, 'b').find((m) => m.t === 'welcome');
-    expect(welcome?.t === 'welcome' && welcome.snapshot.map((c) => c.id)).toEqual(['car-a']);
+    expect(welcome?.t === 'welcome' && welcome.snapshot.map((c) => c.id)).toEqual([ID('car-a')]);
   });
 
   it('never sends a driver its own position back', () => {
@@ -129,8 +134,8 @@ describe('presence and diffs', () => {
     pos('a', edge + 0.001, GENEVA.lng);
     const diffs = diffsFor(flushIfDue(state, now), 'b');
     const left = diffs.find((d) => d.cell === CELL);
-    expect(left?.gone).toEqual(['car-a']);
-    expect(state.presence.get('car-a')?.cell).not.toBe(CELL);
+    expect(left?.gone).toEqual([ID('car-a')]);
+    expect(state.presence.get(ID('car-a'))?.cell).not.toBe(CELL);
   });
 
   it('only shows drivers in cells you subscribed to', () => {
@@ -140,8 +145,8 @@ describe('presence and diffs', () => {
     pos('b', NEIGHBOUR_POINT.lat, NEIGHBOUR_POINT.lng);
     now += SERVER_TICK_MS;
     const out = flushIfDue(state, now);
-    expect(diffsFor(out, 'b').flatMap((d) => d.upd.map((c) => c.id))).toContain('car-a');
-    expect(diffsFor(out, 'a').flatMap((d) => d.upd.map((c) => c.id))).not.toContain('car-b');
+    expect(diffsFor(out, 'b').flatMap((d) => d.upd.map((c) => c.id))).toContain(ID('car-a'));
+    expect(diffsFor(out, 'a').flatMap((d) => d.upd.map((c) => c.id))).not.toContain(ID('car-b'));
   });
 
   it('sends a snapshot for a newly subscribed cell', () => {
@@ -150,7 +155,7 @@ describe('presence and diffs', () => {
     hello('b', 'car-b', [CELL]);
     const out = onMessage(state, 'b', { t: 'sub', cells: [CELL, NEIGHBOUR_CELL] }, now);
     const diff = diffsFor(out, 'b').find((d) => d.cell === NEIGHBOUR_CELL);
-    expect(diff?.upd.map((c) => c.id)).toEqual(['car-a']);
+    expect(diff?.upd.map((c) => c.id)).toEqual([ID('car-a')]);
   });
 
   it('evicts a driver that stops sending after PRESENCE_EXPIRY_MS', () => {
@@ -161,7 +166,7 @@ describe('presence and diffs', () => {
     flushIfDue(state, now);
     now += PRESENCE_EXPIRY_MS + 1_000;
     const diff = diffsFor(flushIfDue(state, now), 'b')[0];
-    expect(diff?.gone).toEqual(['car-a']);
+    expect(diff?.gone).toEqual([ID('car-a')]);
     expect(state.presence.size).toBe(0);
   });
 
@@ -170,9 +175,9 @@ describe('presence and diffs', () => {
     hello('car', 'car-a');
     pos('phone', GENEVA.lat, GENEVA.lng);
     onClose(state, 'phone');
-    expect(state.presence.has('car-a')).toBe(true);
+    expect(state.presence.has(ID('car-a'))).toBe(true);
     onClose(state, 'car');
-    expect(state.presence.has('car-a')).toBe(false);
+    expect(state.presence.has(ID('car-a'))).toBe(false);
   });
 });
 
@@ -200,7 +205,7 @@ describe('rate limiting and abuse', () => {
     pos('a', GENEVA.lat, GENEVA.lng);
     now += 1_500;
     expect(pos('a', GENEVA.lat + 0.001, GENEVA.lng)).toHaveLength(0);
-    expect(state.presence.get('car-a')?.lat).toBe(GENEVA.lat);
+    expect(state.presence.get(ID('car-a'))?.lat).toBe(GENEVA.lat);
     expect(state.sockets.get('a')?.violations).toBe(0);
   });
 
@@ -225,14 +230,14 @@ describe('rate limiting and abuse', () => {
   it('rejects impossible speeds and teleports', () => {
     hello('a', 'car-a');
     pos('a', GENEVA.lat, GENEVA.lng, 300);
-    expect(state.presence.has('car-a')).toBe(false);
+    expect(state.presence.has(ID('car-a'))).toBe(false);
     now += SERVER_TICK_MS;
     pos('a', GENEVA.lat, GENEVA.lng, 50);
-    expect(state.presence.has('car-a')).toBe(true);
+    expect(state.presence.has(ID('car-a'))).toBe(true);
     now += SERVER_TICK_MS;
     const far = destination(GENEVA.lat, GENEVA.lng, 90, 5_000); // 5 km in 2 s
     pos('a', far.lat, far.lng, 50);
-    expect(state.presence.get('car-a')?.lat).toBe(GENEVA.lat);
+    expect(state.presence.get(ID('car-a'))?.lat).toBe(GENEVA.lat);
   });
 });
 
@@ -247,18 +252,18 @@ describe('waves', () => {
 
   it('delivers a wave to a car in range and counts it for both', () => {
     twoCars();
-    const out = onMessage(state, 'a', { t: 'wave', to: 'car-b' }, now);
+    const out = onMessage(state, 'a', { t: 'wave', to: ID('car-b') }, now);
     expect(sends(out, 'a')[0]).toMatchObject({ t: 'waved', ok: true });
-    expect(sends(out, 'b')[0]).toMatchObject({ t: 'wave', from: { id: 'car-a' } });
-    expect(state.counters.wavesByUser.get(userWavesKey('car-a'))).toBe(1);
-    expect(state.counters.wavesByUser.get(userWavesKey('car-b'))).toBe(1);
-    expect(state.presence.get('car-a')?.waves).toBe(1);
+    expect(sends(out, 'b')[0]).toMatchObject({ t: 'wave', from: { id: ID('car-a') } });
+    expect(state.counters.wavesByUser.get(userWavesKey(ID('car-a')))).toBe(1);
+    expect(state.counters.wavesByUser.get(userWavesKey(ID('car-b')))).toBe(1);
+    expect(state.presence.get(ID('car-a'))?.waves).toBe(1);
   });
 
   it('reaches every device of the target', () => {
     twoCars();
     hello('b-phone', 'car-b');
-    const out = onMessage(state, 'a', { t: 'wave', to: 'car-b' }, now);
+    const out = onMessage(state, 'a', { t: 'wave', to: ID('car-b') }, now);
     const targets = sendEffects(out)
       .filter((e) => e.msg.t === 'wave')
       .map((e) => e.to);
@@ -271,24 +276,24 @@ describe('waves', () => {
     pos('a', GENEVA.lat, GENEVA.lng);
     const far = destination(GENEVA.lat, GENEVA.lng, 90, 1_000);
     pos('b', far.lat, far.lng);
-    const out = onMessage(state, 'a', { t: 'wave', to: 'car-b' }, now);
+    const out = onMessage(state, 'a', { t: 'wave', to: ID('car-b') }, now);
     expect(sends(out, 'a')[0]).toMatchObject({ t: 'waved', ok: false, reason: 'range' });
     expect(state.counters.wavesByUser.size).toBe(0);
   });
 
   it('refuses a wave to somebody who is not online, hidden, or waving too fast', () => {
     twoCars();
-    expect(sends(onMessage(state, 'a', { t: 'wave', to: 'ghost' }, now), 'a')[0]).toMatchObject({
+    expect(sends(onMessage(state, 'a', { t: 'wave', to: ID('ghost') }, now), 'a')[0]).toMatchObject({
       ok: false,
       reason: 'offline',
     });
-    onMessage(state, 'a', { t: 'wave', to: 'car-b' }, now);
-    expect(sends(onMessage(state, 'a', { t: 'wave', to: 'car-b' }, now), 'a')[0]).toMatchObject({
+    onMessage(state, 'a', { t: 'wave', to: ID('car-b') }, now);
+    expect(sends(onMessage(state, 'a', { t: 'wave', to: ID('car-b') }, now), 'a')[0]).toMatchObject({
       ok: false,
       reason: 'rate',
     });
     onMessage(state, 'b', { t: 'hide' }, now);
-    expect(sends(onMessage(state, 'b', { t: 'wave', to: 'car-a' }, now), 'b')[0]).toMatchObject({
+    expect(sends(onMessage(state, 'b', { t: 'wave', to: ID('car-a') }, now), 'b')[0]).toMatchObject({
       ok: false,
       reason: 'hidden',
     });
@@ -296,7 +301,7 @@ describe('waves', () => {
 
   it('records waves per cell and day for the regional pulse', () => {
     twoCars();
-    onMessage(state, 'a', { t: 'wave', to: 'car-b' }, now);
+    onMessage(state, 'a', { t: 'wave', to: ID('car-b') }, now);
     now += SERVER_TICK_MS;
     const diff = diffsFor(flushIfDue(state, now), 'b')[0];
     expect(diff?.wavesToday).toBe(1);
@@ -313,13 +318,13 @@ describe('invisible mode', () => {
     flushIfDue(state, now);
     onMessage(state, 'a', { t: 'hide' }, now);
     now += SERVER_TICK_MS;
-    expect(diffsFor(flushIfDue(state, now), 'b')[0]?.gone).toEqual(['car-a']);
+    expect(diffsFor(flushIfDue(state, now), 'b')[0]?.gone).toEqual([ID('car-a')]);
     pos('a', GENEVA.lat, GENEVA.lng);
-    expect(state.presence.has('car-a')).toBe(false);
+    expect(state.presence.has(ID('car-a'))).toBe(false);
     onMessage(state, 'a', { t: 'show' }, now);
     now += SERVER_TICK_MS;
     pos('a', GENEVA.lat, GENEVA.lng);
-    expect(state.presence.has('car-a')).toBe(true);
+    expect(state.presence.has(ID('car-a'))).toBe(true);
   });
 
   it('keeps spectators off the map entirely', () => {
@@ -336,7 +341,7 @@ describe('cost invariants', () => {
     pos('a', GENEVA.lat, GENEVA.lng);
     const near = destination(GENEVA.lat, GENEVA.lng, 90, 100);
     pos('b', near.lat, near.lng);
-    onMessage(state, 'a', { t: 'wave', to: 'car-b' }, now);
+    onMessage(state, 'a', { t: 'wave', to: ID('car-b') }, now);
 
     now += SERVER_TICK_MS;
     expect(flushIfDue(state, now).filter((e) => e.k === 'persist')).toHaveLength(0);
@@ -391,7 +396,7 @@ describe('hibernation', () => {
     const profile = state.sockets.get('a')!;
 
     // The object hibernates: everything in memory is discarded.
-    const woken = createHub(HUB, now, { wavesByUser: new Map([[userWavesKey('car-a'), 4]]) });
+    const woken = createHub(HUB, now, { wavesByUser: new Map([[userWavesKey(ID('car-a')), 4]]) });
     restoreSocket(woken, {
       key: profile.key,
       id: profile.id,
@@ -408,7 +413,7 @@ describe('hibernation', () => {
     // The client refills presence within one send interval, carrying its wave count.
     now += SERVER_TICK_MS;
     onMessage(woken, 'a', { t: 'pos', lat: GENEVA.lat, lng: GENEVA.lng, heading: 90, speed: 50, ts: now }, now);
-    const car: CarState | undefined = woken.presence.get('car-a');
+    const car: CarState | undefined = woken.presence.get(ID('car-a'));
     expect(car?.waves).toBe(4);
     expect(car?.cell).toBe(CELL);
   });
@@ -421,7 +426,7 @@ describe('counter writes stay inside the row-write budget', () => {
       hello(`k${i}`, `id${i}`);
       pos(`k${i}`, GENEVA.lat + i * 1e-5, GENEVA.lng);
     }
-    onMessage(state, 'k0', { t: 'wave', to: 'id1' }, now);
+    onMessage(state, 'k0', { t: 'wave', to: ID('id1') }, now);
     now += COUNTER_WRITE_MS + SERVER_TICK_MS;
     const persists = flushIfDue(state, now).filter((e) => e.k === 'persist');
     const entries = persists[0]?.k === 'persist' ? persists[0].entries : [];

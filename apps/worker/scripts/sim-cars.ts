@@ -47,7 +47,8 @@ const NICKS = [
 const pick = <T,>(list: readonly T[]): T => list[Math.floor(Math.random() * list.length)] as T;
 
 type Driver = {
-  id: string;
+  /** What the hub hashes into the public id. Never shown, never reused. */
+  secret: string;
   model: TeslaModel;
   colour: CarColourId;
   nick: string;
@@ -66,7 +67,7 @@ const drivers: Driver[] = Array.from({ length: count }, (_, i) => {
   const bearing = Math.random() * 360;
   const start = destination(centreLat!, centreLng!, bearing, Math.random() * radius);
   return {
-    id: `sim-${i}-${Math.random().toString(36).slice(2, 8)}`,
+    secret: `sim-${i}-${Math.random().toString(36).slice(2)}${Math.random().toString(36).slice(2)}`,
     model: pick(TESLA_MODELS),
     colour: pick(CAR_COLOURS).id,
     nick: NICKS[i % NICKS.length] ?? `Sim ${i}`,
@@ -98,7 +99,7 @@ function connect(driver: Driver): void {
   ws.addEventListener('open', () => {
     send(driver, {
       t: 'hello',
-      id: driver.id,
+      secret: driver.secret,
       model: driver.model,
       colour: driver.colour,
       nick: driver.nick,

@@ -255,7 +255,7 @@ export const FR: Copy = {
       'Votre position GPS, telle quelle, tant que vous êtes visible. Elle sert uniquement à vous afficher aux conducteurs autour de vous.',
       'Votre cap et votre vitesse, pour que les autres voitures glissent au lieu de sauter.',
       'Le modèle et la couleur que vous avez choisis, et un pseudo si vous en avez saisi un.',
-      'Un identifiant aléatoire généré dans votre navigateur. Il n’est lié ni à vous ni à Tesla.',
+      'Un secret aléatoire généré dans votre navigateur. Les autres conducteurs n’en voient qu’une empreinte, qui n’est liée ni à vous ni à Tesla et ne permet pas de se faire passer pour vous.',
     ],
     keptTitle: 'Ce qui est conservé',
     kept: [

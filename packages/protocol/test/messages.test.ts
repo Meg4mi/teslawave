@@ -3,7 +3,7 @@ import { parseClientMsg, parseServerMsg } from '../src/messages.js';
 
 const hello = {
   t: 'hello',
-  id: 'a-b-c',
+  secret: '3f2b7c1e-9d4a-4b6f-8e2a-5c7d9a1b3e4f',
   model: '3',
   colour: 'red',
   nick: 'Nico',
@@ -14,6 +14,13 @@ describe('parseClientMsg', () => {
   it('accepts a well-formed hello, from a string or an object', () => {
     expect(parseClientMsg(hello)?.t).toBe('hello');
     expect(parseClientMsg(JSON.stringify(hello))?.t).toBe('hello');
+  });
+
+  it('rejects a hello that carries an id instead of a secret, or a short secret', () => {
+    const withoutSecret: Record<string, unknown> = { ...hello, id: 'car-a' };
+    delete withoutSecret['secret'];
+    expect(parseClientMsg(withoutSecret)).toBeNull();
+    expect(parseClientMsg({ ...hello, secret: 'short' })).toBeNull();
   });
 
   it('rejects unknown models, colours and cells', () => {

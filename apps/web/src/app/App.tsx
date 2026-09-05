@@ -12,6 +12,7 @@ import {
   WAVE_PROMPT_TTL_MS,
   isColourId,
   isModel,
+  isSecret,
   type ServerMsg,
   type TeslaModel,
 } from '@teslawave/protocol';
@@ -33,7 +34,7 @@ import {
   setSubscribedCells,
   subscribeSummary,
 } from '../sim/world';
-import { newId, useIdentity } from '../identity/store';
+import { identityFrom, newSecret, useIdentity } from '../identity/store';
 import { play, setMuted, unlockAudio } from '../ui/sound';
 import { ControlButton, Toast, type ToastContent } from '../ui/primitives';
 import {
@@ -228,7 +229,7 @@ export function App(): ReactNode {
     netRef.current = net;
     resetWorld(identityId);
     net.start({
-      id: identityId,
+      secret: profileRef.current?.secret ?? '',
       model: profileRef.current?.model ?? '3',
       colour: profileRef.current?.colour ?? 'pearl',
       spectator,
@@ -244,7 +245,7 @@ export function App(): ReactNode {
   useEffect(() => {
     if (!identity) return;
     netRef.current?.setProfile({
-      id: identity.id,
+      secret: identity.secret,
       model: identity.model,
       colour: identity.colour,
       spectator,
@@ -309,13 +310,14 @@ export function App(): ReactNode {
       if (!current) return;
       // Rebuilt rather than patched, so deleting the name actually deletes it. The new profile
       // reaches everyone around you on the socket that is already open.
-      setIdentity({
-        id: current.id,
-        createdAt: current.createdAt,
-        model: next.model,
-        colour: next.colour,
-        ...(next.nick === undefined ? {} : { nick: next.nick }),
-      });
+      setIdentity(
+        identityFrom(current.secret, {
+          createdAt: current.createdAt,
+          model: next.model,
+          colour: next.colour,
+          ...(next.nick === undefined ? {} : { nick: next.nick }),
+        }),
+      );
       setSheet(null);
       showToast(copy.garage.saved);
     },
@@ -323,15 +325,18 @@ export function App(): ReactNode {
   );
 
   const adopt = useCallback(
-    (paired: { id: string; model: string; colour: string; nick?: string }): void => {
-      if (!isModel(paired.model) || !isColourId(paired.colour)) return;
-      setIdentity({
-        id: paired.id,
-        model: paired.model,
-        colour: paired.colour,
-        createdAt: Date.now(),
-        ...(paired.nick === undefined ? {} : { nick: paired.nick }),
-      });
+    (paired: { secret: string; model: string; colour: string; nick?: string }): void => {
+      if (!isSecret(paired.secret) || !isModel(paired.model) || !isColourId(paired.colour))
+        return;
+      // The car becomes the phone's driver: same secret, so the hub gives it the same id.
+      setIdentity(
+        identityFrom(paired.secret, {
+          model: paired.model,
+          colour: paired.colour,
+          createdAt: Date.now(),
+          ...(paired.nick === undefined ? {} : { nick: paired.nick }),
+        }),
+      );
       setPrefs({ sharing: true });
       setSheet(null);
       showToast(copy.pairing.done);
@@ -351,7 +356,7 @@ export function App(): ReactNode {
       .then((res) =>
         res.ok
           ? (res.json() as Promise<{
-              identity: { id: string; model: string; colour: string; nick?: string };
+              identity: { secret: string; model: string; colour: string; nick?: string };
             }>)
           : null,
       )
@@ -367,7 +372,7 @@ export function App(): ReactNode {
   // --- Boot ------------------------------------------------------------------------
   const start = (result: OnboardingResult): void => {
     unlockAudio();
-    setIdentity({ id: newId(), createdAt: Date.now(), ...result });
+    setIdentity(identityFrom(newSecret(), { createdAt: Date.now(), ...result }));
     setPrefs({ sharing: true });
     rendererRef.current?.playSonar();
   };

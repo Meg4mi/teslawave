@@ -16,6 +16,7 @@ import {
   encode,
   haversineM,
   hubOf,
+  idFromSecret,
   type CarPublic,
   type CarState,
   type ClientMsg,
@@ -200,14 +201,15 @@ function onHello(state: HubState, s: Socket, msg: Extract<ClientMsg, { t: 'hello
   unindexCells(state, s);
   if (s.id) removeFrom(state.socketsById, s.id, s.key);
 
-  s.id = msg.id;
+  // The public id is ours to derive, never the client's to choose (ADR-0025).
+  s.id = idFromSecret(msg.secret);
   s.model = msg.model;
   s.colour = msg.colour;
   if (msg.nick === undefined) delete s.nick;
   else s.nick = msg.nick;
   s.cells = [...msg.cells];
   s.spectator = msg.spectator === true;
-  s.since = state.presence.get(msg.id)?.since ?? (s.since || now);
+  s.since = state.presence.get(s.id)?.since ?? (s.since || now);
   indexSocket(state, s);
 
   const self = state.presence.get(s.id);

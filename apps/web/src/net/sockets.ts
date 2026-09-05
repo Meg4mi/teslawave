@@ -18,7 +18,8 @@ import { wsUrl } from '../config/env';
 export type NetStatus = 'idle' | 'connecting' | 'live' | 'reconnecting' | 'budget' | 'paused';
 
 export type NetProfile = {
-  id: string;
+  /** Hashed by the hub into the id everyone else sees. Never sent anywhere but the hello. */
+  secret: string;
   model: TeslaModel;
   colour: CarColourId;
   nick?: string;
@@ -114,7 +115,7 @@ export function createNet(handlers: {
     if (!profile) return null;
     return {
       t: 'hello',
-      id: profile.id,
+      secret: profile.secret,
       model: profile.model,
       colour: profile.colour,
       cells: hub.cells,

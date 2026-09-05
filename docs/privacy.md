@@ -10,7 +10,7 @@ The design goal is that there is nothing to leak. No account, no email, no trip 
 | Heading and speed | So other cars glide instead of jumping between updates. |
 | Model and colour | Chosen by hand. No Tesla account, no Fleet API, no VIN. |
 | Nickname | Optional, at most 16 characters. |
-| A random id | Generated in the browser (`crypto.randomUUID`), stored in `localStorage`. Not linked to a person. |
+| A random secret | Generated in the browser (`crypto.randomUUID`), stored in `localStorage`. The hub hashes it into the id other drivers see; the secret itself is never shown or stored server-side, so an id read off the wire cannot be used to pose as its driver (ADR-0025). |
 
 Positions are exact. What protects a driver is not blur but scope: a position is shown only
 to drivers in the same map area, only while it is under 60 s old, and it is never written
@@ -23,7 +23,7 @@ anywhere (ADR-0024).
 | Positions | Durable Object memory only | 60 seconds since the last update, then evicted |
 | Wave counters | Durable Object storage, as numbers | Until reset; no timestamps, no places |
 | Waves per map cell per day | D1, as numbers | 7 days |
-| Pairing codes | D1 | 10 minutes, single use, then deleted |
+| Pairing codes | D1 | 10 minutes, single use; the row (which carries the secret) is deleted the moment it is claimed |
 
 Positions are never written to storage of any kind. That is enforced by a test, not by
 intent: the hub's storage effects are asserted to contain only counter keys.

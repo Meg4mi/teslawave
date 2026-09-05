@@ -53,7 +53,7 @@ class FakeSocket {
   }
 }
 
-const PROFILE = { id: 'me', model: '3', colour: 'red', spectator: false } as const;
+const PROFILE = { secret: 'secret-me-0123456789', model: '3', colour: 'red', spectator: false } as const;
 const GENEVA = { lat: 46.2044, lng: 6.1432, heading: 90, speed: 50 };
 
 describe('net', () => {

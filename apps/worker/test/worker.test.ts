@@ -10,7 +10,7 @@ import {
   hubOf,
 } from '@teslawave/protocol';
 import { applyMigrations } from './apply-migrations.js';
-import { connect, helloMsg, posMsg, wait } from './helpers.js';
+import { connect, helloMsg, idOf, posMsg, secretOf, wait } from './helpers.js';
 
 const GENEVA = { lat: 46.2044, lng: 6.1432 };
 const CELL = encode(GENEVA.lat, GENEVA.lng, CELL_PRECISION);
@@ -44,7 +44,7 @@ describe('/ws', () => {
     const b = await connect(HUB);
     b.send(helloMsg('worker-b', [CELL]));
     const welcome = await b.next((m) => m.t === 'welcome');
-    expect(welcome.t === 'welcome' && welcome.snapshot.map((c) => c.id)).toContain('worker-a');
+    expect(welcome.t === 'welcome' && welcome.snapshot.map((c) => c.id)).toContain(idOf('worker-a'));
     a.close();
     b.close();
   });
@@ -61,7 +61,7 @@ describe('/ws', () => {
     await wait(SERVER_TICK_MS + 200);
     a.send(posMsg(GENEVA.lat + 0.0005, GENEVA.lng));
 
-    const diff = await b.next((m) => m.t === 'diff' && m.upd.some((c) => c.id === 'diff-a'));
+    const diff = await b.next((m) => m.t === 'diff' && m.upd.some((c) => c.id === idOf('diff-a')));
     expect(diff.t === 'diff' && diff.online).toBeGreaterThan(0);
     a.close();
     b.close();
@@ -99,11 +99,11 @@ describe('/ws', () => {
     const near = destination(GENEVA.lat, GENEVA.lng, 90, 100);
     b.send(posMsg(near.lat, near.lng));
 
-    a.send({ t: 'wave', to: 'wave-b' });
+    a.send({ t: 'wave', to: idOf('wave-b') });
     const ack = await a.next((m) => m.t === 'waved');
     expect(ack).toMatchObject({ t: 'waved', ok: true });
     const wave = await b.next((m) => m.t === 'wave');
-    expect(wave.t === 'wave' && wave.from.id).toBe('wave-a');
+    expect(wave.t === 'wave' && wave.from.id).toBe(idOf('wave-a'));
     a.close();
     b.close();
   });
@@ -151,7 +151,7 @@ describe('/api', () => {
   it('creates and claims a pairing code exactly once', async () => {
     const created = await SELF.fetch('https://teslawave.test/api/pair', {
       method: 'POST',
-      body: JSON.stringify({ id: 'pair-1', model: 'Y', colour: 'deepblue', nick: 'Nico' }),
+      body: JSON.stringify({ secret: secretOf('pair-1'), model: 'Y', colour: 'deepblue', nick: 'Nico' }),
     });
     const { code } = (await created.json()) as { code: string };
     expect(code).toHaveLength(6);
@@ -161,8 +161,8 @@ describe('/api', () => {
       body: JSON.stringify({ code: code.toLowerCase() }),
     });
     expect(claimed.status).toBe(200);
-    expect((await claimed.json()) as { identity: { id: string } }).toMatchObject({
-      identity: { id: 'pair-1', model: 'Y' },
+    expect((await claimed.json()) as { identity: { secret: string } }).toMatchObject({
+      identity: { secret: secretOf('pair-1'), model: 'Y' },
     });
 
     const again = await SELF.fetch('https://teslawave.test/api/pair/claim', {
@@ -175,7 +175,7 @@ describe('/api', () => {
   it('rejects a malformed pairing payload and an unknown code', async () => {
     const bad = await SELF.fetch('https://teslawave.test/api/pair', {
       method: 'POST',
-      body: JSON.stringify({ id: 'x', model: 'Roadster', colour: 'red' }),
+      body: JSON.stringify({ secret: secretOf('x'), model: 'Roadster', colour: 'red' }),
     });
     expect(bad.status).toBe(400);
 

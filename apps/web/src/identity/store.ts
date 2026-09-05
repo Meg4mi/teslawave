@@ -1,7 +1,21 @@
 import { create } from 'zustand';
-import { WAVE_MILESTONES, isColourId, isModel, type CarColourId, type TeslaModel } from '@teslawave/protocol';
+import {
+  WAVE_MILESTONES,
+  idFromSecret,
+  isColourId,
+  isModel,
+  isSecret,
+  type CarColourId,
+  type TeslaModel,
+} from '@teslawave/protocol';
 
 export type Identity = {
+  /**
+   * The one thing that makes this browser this driver. It leaves the device only inside the
+   * hello message and a pairing hand-over; everyone else sees `id`, its hash (ADR-0025).
+   */
+  secret: string;
+  /** Derived from the secret, never chosen: what other drivers see and wave at. */
   id: string;
   model: TeslaModel;
   colour: CarColourId;
@@ -9,19 +23,34 @@ export type Identity = {
   createdAt: number;
 };
 
-/** Stored identities are as untrusted as anything else: a stale or edited one is discarded. */
+/** Everything an identity holds apart from the secret and the id it derives. */
+export type IdentityCar = Pick<Identity, 'model' | 'colour' | 'nick' | 'createdAt'>;
+
+/** The whole identity, from a secret and the car: the id is always derived here. */
+export const identityFrom = (secret: string, car: IdentityCar): Identity => ({
+  secret,
+  id: idFromSecret(secret),
+  model: car.model,
+  colour: car.colour,
+  createdAt: car.createdAt,
+  ...(car.nick === undefined ? {} : { nick: car.nick }),
+});
+
+/**
+ * Stored identities are as untrusted as anything else: a stale or edited one is discarded.
+ * One without a secret is from before ADR-0025, when the id was the whole identity; it gets
+ * a fresh secret and therefore a fresh id, since the old one was never provably theirs.
+ */
 export function parseIdentity(value: unknown): Identity | null {
   if (typeof value !== 'object' || value === null) return null;
-  const { id, model, colour, nick, createdAt } = value as Record<string, unknown>;
-  if (typeof id !== 'string' || id.length === 0) return null;
+  const { secret, model, colour, nick, createdAt } = value as Record<string, unknown>;
   if (!isModel(model) || !isColourId(colour)) return null;
-  return {
-    id,
+  return identityFrom(isSecret(secret) ? secret : newSecret(), {
     model,
     colour,
     createdAt: typeof createdAt === 'number' ? createdAt : Date.now(),
     ...(typeof nick === 'string' && nick.length > 0 ? { nick } : {}),
-  };
+  });
 }
 
 export type Prefs = {
@@ -54,10 +83,11 @@ function write(key: string, value: unknown): void {
   }
 }
 
-export const newId = (): string =>
+/** 122 bits from the platform; the fallback is only for a browser with no `randomUUID`. */
+export const newSecret = (): string =>
   typeof crypto.randomUUID === 'function'
     ? crypto.randomUUID()
-    : `tw-${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`;
+    : `tw-${Math.random().toString(36).slice(2)}${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`;
 
 type IdentityStore = {
   identity: Identity | null;
@@ -70,7 +100,14 @@ type IdentityStore = {
 };
 
 export const useIdentity = create<IdentityStore>((set, get) => ({
-  identity: parseIdentity(read<unknown>(IDENTITY_KEY)),
+  identity: (() => {
+    const stored = read<unknown>(IDENTITY_KEY);
+    const identity = parseIdentity(stored);
+    // A migrated identity is written back at once, so the new secret survives the reload.
+    if (identity && (stored as { secret?: unknown } | null)?.secret !== identity.secret)
+      write(IDENTITY_KEY, identity);
+    return identity;
+  })(),
   prefs: { ...DEFAULT_PREFS, ...(read<Partial<Prefs>>(PREFS_KEY) ?? {}) },
 
   setIdentity: (identity) => {

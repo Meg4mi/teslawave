@@ -244,7 +244,7 @@ export const EN = {
       'Your GPS position, as it is, while you are visible. It is used only to show you to the drivers around you.',
       'Your heading and speed, so other cars glide instead of jumping.',
       'The model and colour you picked, and a nickname if you typed one.',
-      'A random id generated in your browser. It is not linked to you or to Tesla.',
+      'A random secret generated in your browser. Other drivers see only a hash of it, which is not linked to you or to Tesla and cannot be used to pose as you.',
     ],
     keptTitle: 'What is kept',
     kept: [

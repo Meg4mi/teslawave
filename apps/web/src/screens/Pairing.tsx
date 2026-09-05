@@ -35,8 +35,9 @@ export function ShowPairingSheet({
     void fetch('/api/pair', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
+      // The secret crosses, not the id: the car derives the same id from it (ADR-0025).
       body: JSON.stringify({
-        id: identity.id,
+        secret: identity.secret,
         model: identity.model,
         colour: identity.colour,
         ...(identity.nick === undefined ? {} : { nick: identity.nick }),
@@ -92,7 +93,7 @@ export function EnterCodeSheet({
   onPaired,
   onClose,
 }: {
-  onPaired: (identity: { id: string; model: string; colour: string; nick?: string }) => void;
+  onPaired: (identity: { secret: string; model: string; colour: string; nick?: string }) => void;
   onClose: () => void;
 }): ReactNode {
   const copy = useCopy();
@@ -111,7 +112,7 @@ export function EnterCodeSheet({
       });
       if (!res.ok) throw new Error('rejected');
       const body = (await res.json()) as {
-        identity: { id: string; model: string; colour: string; nick?: string };
+        identity: { secret: string; model: string; colour: string; nick?: string };
       };
       onPaired(body.identity);
     } catch {
