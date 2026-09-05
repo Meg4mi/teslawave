@@ -2,6 +2,7 @@ import {
   CELL_PRECISION,
   MAX_SOCKETS_PER_CLIENT,
   NEIGHBOUR_RADIUS_M,
+  POS_INTERVAL_STATIONARY_MS,
   cellsWithin,
   groupByHub,
   parseServerMsg,
@@ -50,6 +51,12 @@ const BACKOFF_MS = [1_000, 2_000, 4_000, 8_000, 15_000, 30_000];
 const PROBE_AFTER_ATTEMPTS = 2;
 const KEEPALIVE_MS = 25_000;
 const STALE_MS = 60_000;
+/**
+ * How often we check that the hub has heard from us lately. The hub forgets a driver 60 s
+ * after their last position and a stopped car reports every 30 s, so the check has to run
+ * a few times inside that window, not once.
+ */
+const FEED_CHECK_MS = 5_000;
 
 /**
  * Why a socket will not open. The Worker answers 503 when the kill switch is off and 429
@@ -83,6 +90,12 @@ export function createNet(handlers: {
   let status: NetStatus = 'idle';
   let running = false;
   let subscribed: string[] = [];
+  let feed: number | null = null;
+  /**
+   * When a position last went out on any socket. Separate from `lastSent`, which is the send
+   * policy's memory and is cleared on purpose by `wake` so the next fix goes straight out.
+   */
+  let lastSentAt = 0;
 
   const setStatus = (next: NetStatus): void => {
     if (status === next) return;
@@ -117,6 +130,40 @@ export function createNet(handlers: {
     } catch {
       // The socket is on its way out; the close handler will reconnect.
     }
+  };
+
+  const sendPos = (
+    fuzzed: { lat: number; lng: number; heading: number; speed: number },
+    now: number,
+  ): void => {
+    lastSent = { heading: fuzzed.heading, speed: fuzzed.speed, sentAt: now };
+    lastSentAt = now;
+    const msg: ClientMsg = {
+      t: 'pos',
+      lat: fuzzed.lat,
+      lng: fuzzed.lng,
+      heading: fuzzed.heading,
+      speed: fuzzed.speed,
+      ts: now,
+    };
+    for (const hub of hubs.values()) sendTo(hub, msg);
+  };
+
+  /**
+   * Keep the hub fed when fixes stop arriving. `update` only runs when the device delivers a
+   * new fix, and a parked car's `watchPosition`, or a phone whose screen went dark, can go
+   * quiet for minutes. The socket stays open, pings keep being answered, the HUD says live,
+   * and the hub evicts us 60 s after the last position anyway: everyone else watches the car
+   * disappear for no reason. So the last fuzzed position is repeated at the stationary
+   * cadence, and only when nothing else was sent in that time, so a device that is getting
+   * fixes sends nothing extra (ADR-0009, which rejected send-on-change for exactly this).
+   */
+  const feedIfQuiet = (): void => {
+    if (!running || !profile || hidden || profile.spectator || !lastFuzzed) return;
+    if (![...hubs.values()].some((h) => h.ws?.readyState === WebSocket.OPEN)) return;
+    const now = Date.now();
+    if (now - lastSentAt < POS_INTERVAL_STATIONARY_MS) return;
+    sendPos(lastFuzzed, now);
   };
 
   const teardown = (hub: Hub): void => {
@@ -190,6 +237,7 @@ export function createNet(handlers: {
         const now = Date.now();
         sendTo(hub, { t: 'pos', ...lastFuzzed, ts: now });
         lastSent = { heading: lastFuzzed.heading, speed: lastFuzzed.speed, sentAt: now };
+        lastSentAt = now;
       }
       hub.keepalive = window.setInterval(() => {
         // Answered by the runtime without waking the durable object: free keepalive.
@@ -309,11 +357,15 @@ export function createNet(handlers: {
       document.addEventListener('visibilitychange', onVisibility);
       window.addEventListener('online', wake);
       window.addEventListener('pageshow', wake);
+      if (feed !== null) clearInterval(feed);
+      feed = window.setInterval(feedIfQuiet, FEED_CHECK_MS);
       setStatus('connecting');
     },
 
     stop() {
       running = false;
+      if (feed !== null) clearInterval(feed);
+      feed = null;
       document.removeEventListener('visibilitychange', onVisibility);
       window.removeEventListener('online', wake);
       window.removeEventListener('pageshow', wake);
@@ -346,16 +398,7 @@ export function createNet(handlers: {
 
       const now = Date.now();
       if (!shouldSendPos(lastSent, fuzzed, now)) return false;
-      lastSent = { heading: fuzzed.heading, speed: fuzzed.speed, sentAt: now };
-      const msg: ClientMsg = {
-        t: 'pos',
-        lat: fuzzed.lat,
-        lng: fuzzed.lng,
-        heading: fuzzed.heading,
-        speed: fuzzed.speed,
-        ts: now,
-      };
-      for (const hub of hubs.values()) sendTo(hub, msg);
+      sendPos(fuzzed, now);
       return true;
     },
 

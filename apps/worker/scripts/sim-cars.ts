@@ -1,7 +1,7 @@
 #!/usr/bin/env tsx
 /**
  * Simulated drivers, so the map is never empty during development and the perf test has
- * something to render. Uses the real protocol: same send policy, same fuzzing, same rates.
+ * something to render. Uses the real protocol: same send policy, same rates.
  *
  *   pnpm sim -- --n 20 --center 46.2044,6.1432 --radius 5000
  */
@@ -11,17 +11,13 @@ import {
   NEIGHBOUR_RADIUS_M,
   TESLA_MODELS,
   WAVE_PROMPT_RANGE_M,
-  applyFuzz,
   cellsWithin,
-  createFuzz,
   destination,
   groupByHub,
   haversineM,
   shouldSendPos,
-  stepFuzz,
   type CarColourId,
   type ClientMsg,
-  type FuzzState,
   type SentPos,
   type ServerMsg,
   type TeslaModel,
@@ -59,7 +55,6 @@ type Driver = {
   lng: number;
   heading: number;
   speed: number;
-  fuzz: FuzzState;
   lastSent: SentPos | null;
   ws: WebSocket | null;
   cells: string[];
@@ -79,7 +74,6 @@ const drivers: Driver[] = Array.from({ length: count }, (_, i) => {
     lng: start.lng,
     heading: Math.random() * 360,
     speed: 30 + Math.random() * 60,
-    fuzz: createFuzz(),
     lastSent: null,
     ws: null,
     cells: [],
@@ -144,8 +138,7 @@ setInterval(() => {
     driver.lat = next.lat;
     driver.lng = next.lng;
 
-    driver.fuzz = stepFuzz(driver.fuzz);
-    const reported = applyFuzz(driver.lat, driver.lng, driver.fuzz);
+    const reported = { lat: driver.lat, lng: driver.lng };
 
     if (shouldSendPos(driver.lastSent, driver, now)) {
       driver.lastSent = { heading: driver.heading, speed: driver.speed, sentAt: now };

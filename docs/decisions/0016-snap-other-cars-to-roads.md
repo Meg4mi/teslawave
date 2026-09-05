@@ -1,6 +1,6 @@
 # 0016. Other cars are drawn on the road they are plausibly on
 
-Status: accepted
+Status: superseded by 0024
 Date: 2026-09-04
 
 ## Context

@@ -28,7 +28,7 @@ export const COUNTER_WRITE_MS = 30_000;
 export const MAX_PERSIST_KEYS = 128;
 /** A message arriving faster than this is not jitter, it is a client that must be closed. */
 const ABUSE_POS_MS = RATE_POS_MS / 2;
-/** Slack over MAX_SPEED_KMH for GPS noise and the fuzz random walk. */
+/** Slack over MAX_SPEED_KMH for GPS noise. */
 const IMPLIED_SPEED_GRACE_KMH = 30;
 
 export const dayKey = (now: number): string => new Date(now).toISOString().slice(0, 10);

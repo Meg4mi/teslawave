@@ -15,7 +15,7 @@ export type HookCar = {
   lng: number;
   heading: number;
   distanceM: number;
-  /** Where the sprite is drawn, once nudged onto a road. */
+  /** Where the sprite is drawn. The same as lat/lng since ADR-0024; kept for the tests. */
   drawn: { lat: number; lng: number };
 };
 

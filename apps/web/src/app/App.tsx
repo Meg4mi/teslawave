@@ -18,7 +18,6 @@ import {
 import { LiveMap } from '../map/LiveMap';
 import { createNet, type Net, type NetStatus } from '../net/sockets';
 import { usePosition } from '../geo/usePosition';
-import { fuzzed, resetFuzz } from '../geo/fuzz';
 import {
   applyServerMsg,
   bumpSelfWaves,
@@ -228,7 +227,6 @@ export function App(): ReactNode {
     });
     netRef.current = net;
     resetWorld(identityId);
-    resetFuzz();
     net.start({
       id: identityId,
       model: profileRef.current?.model ?? '3',
@@ -275,11 +273,12 @@ export function App(): ReactNode {
     setMuted(prefs.muted);
   }, [prefs.muted]);
 
-  // Your own car is drawn from the raw local fix; only the fuzzed one is ever sent (ADR-0012).
+  // The fix goes out exactly as the device gave it (ADR-0024). Your own sprite is smoothed
+  // between fixes; distances are measured from the fix itself, which is what the hub holds.
   useEffect(() => {
     if (!fix) return;
-    setSelfPlacement({ lat: fix.lat, lng: fix.lng, heading: fix.heading, speed: fix.speed });
-    const reported = fuzzed(fix);
+    const reported = { lat: fix.lat, lng: fix.lng, heading: fix.heading, speed: fix.speed };
+    setSelfPlacement(reported);
     setSelfReported(reported);
     netRef.current?.update(reported);
   }, [fix]);

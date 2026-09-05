@@ -57,7 +57,6 @@ export function HowToWave({ onClose }: { onClose: () => void }): ReactNode {
       appearedAt: -1e12,
       lastServerTs: 0,
       placement: { lat: 0, lng: 0, heading: 180, speed: 0 },
-      reported: { lat: 0, lng: 0, heading: 180, speed: 0 },
       distanceM: 0,
     };
 

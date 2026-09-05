@@ -44,14 +44,14 @@ export type TestHook = {
  */
 export function installTestHook(): void {
   const hook: TestHook = {
-    // `lat`/`lng` are what the server sent, so tests of the network and motion pipeline are
-    // not disturbed by the display nudge onto roads; `drawn` is where the sprite actually is.
+    // `drawn` used to differ from `lat`/`lng` by a display nudge onto roads; cars are drawn
+    // exactly where the server put them now (ADR-0024), and the field stays for the tests.
     cars: () =>
       tickWorld(performance.now()).map((car) => ({
         id: car.id,
-        lat: car.reported.lat,
-        lng: car.reported.lng,
-        heading: car.reported.heading,
+        lat: car.placement.lat,
+        lng: car.placement.lng,
+        heading: car.placement.heading,
         distanceM: car.distanceM,
         drawn: { lat: car.placement.lat, lng: car.placement.lng },
       })),

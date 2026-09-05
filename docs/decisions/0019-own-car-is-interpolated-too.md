@@ -38,7 +38,7 @@ nothing. Only a gesture that actually moved leaves the camera held, and only tha
 pill.
 
 **While a pointer is down, or the map is turning faster than 6°/s, our own per-frame work
-stands aside** — road snapping and trails. The map is re-tessellating every frame in both
+stands aside** — trails. The map is re-tessellating every frame in both
 cases, which on an Intel Atom is the whole budget, and `queryRenderedFeatures` against a map
 in that state is the worst possible moment to ask.
 
@@ -57,7 +57,7 @@ in that state is the worst possible moment to ask.
 
 `getSelfPlacement()` now returns a value that changes every frame rather than once a second,
 which is what the camera, the sprite and the direction cone all read. Distances still come
-from `setSelfReported`, the fuzzed position, unchanged — smoothing is about pixels, and the
+from `setSelfReported`, the position as sent, unchanged — smoothing is about pixels, and the
 wave prompt must still agree with the server (ADR-0012).
 
 `?sim=lat,lng,heading,speed,turn` gained the turn rate, in degrees per second, so a bend can be

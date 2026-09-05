@@ -1,6 +1,6 @@
 # 0012. Your own car is drawn from the raw fix, everyone else from fuzzed data
 
-Status: accepted
+Status: superseded by 0024
 Date: 2026-09-04
 
 ## Context

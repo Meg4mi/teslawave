@@ -1,5 +1,6 @@
 import { createSelfFollower } from './self';
 import {
+  POS_INTERVAL_STATIONARY_MS,
   PRESENCE_EXPIRY_MS,
   TRAIL_MS,
   WAVE_PROMPT_RANGE_M,
@@ -35,12 +36,8 @@ export type WorldCar = {
   lastServerTs: number;
 };
 
-/**
- * `placement` is where the sprite goes; `reported` is what the server actually sent. They
- * differ by the display nudge that puts cars back on the road (map/snap.ts). Anything that
- * has to agree with the server — distances, wave range — uses `reported`.
- */
-export type RenderCar = WorldCar & { placement: Placement; reported: Placement; distanceM: number };
+/** `placement` is this frame's interpolated position, exactly where the server put the car. */
+export type RenderCar = WorldCar & { placement: Placement; distanceM: number };
 
 export type Summary = {
   online: number;
@@ -65,25 +62,6 @@ const cellStats = new Map<string, { online: number; wavesToday: number; lastWave
 let subscribed = new Set<string>();
 const listeners = new Set<() => void>();
 
-/**
- * Where a car is *drawn* can differ from where the server says it is: the map layer nudges
- * sprites onto the road they are plausibly on, to undo the sideways part of the privacy fuzz
- * (see map/snap.ts). Distances — and therefore the wave prompt — are always measured from the
- * unnudged position, because that is the one the hub validates against.
- */
-export type DisplayOffset = {
-  lat: number;
-  lng: number;
-  /** Degrees to add to the drawn heading, so a snapped car lies along its road. */
-  turn?: number;
-};
-
-let displayOffsetOf: (id: string) => DisplayOffset | null = () => null;
-
-export function setDisplayOffsetSource(source: ((id: string) => DisplayOffset | null) | null): void {
-  displayOffsetOf = source ?? ((): null => null);
-}
-
 let clockOffset = 0;
 let selfId = '';
 /**
@@ -92,7 +70,7 @@ let selfId = '';
  */
 const follower = createSelfFollower();
 let selfPlacement: Placement | null = null;
-/** The fuzzed position, which is what the server sees and validates waves against. */
+/** The last fix as it was sent, which is what the server holds and validates waves against. */
 let selfReported: { lat: number; lng: number } | null = null;
 let selfWaves = 0;
 let lastSummaryAt = 0;
@@ -147,9 +125,9 @@ export function setSelfPlacement(placement: Placement | null, at = Date.now()): 
 }
 
 /**
- * Distances are measured from here, not from the raw fix: the wave button must appear
- * exactly when the server would accept the wave, and the server only ever sees fuzzed
- * positions. The raw fix is for drawing your own car and nothing else (ADR-0012).
+ * Distances are measured from here, not from the smoothed placement: the wave button must
+ * appear exactly when the server would accept the wave, and the server holds the fix as it
+ * was sent, not the eased position the camera follows (ADR-0019).
  */
 export function setSelfReported(position: { lat: number; lng: number } | null): void {
   selfReported = position;
@@ -207,12 +185,18 @@ export function applyServerMsg(msg: ServerMsg): void {
       // A welcome is a fresh start for these cells: after a reconnect the counts from before
       // the drop are stale, and keeping them double-counts everyone.
       for (const cell of msg.cells) cellStats.delete(cell);
-      // The snapshot is the whole truth for these cells. Anyone we still hold there who is
-      // not in it left while the socket was down, and would otherwise sit on the map as a
-      // ghost until the expiry sweep caught up with them a minute later.
+      // The snapshot restates these cells, but it is not always the whole truth: the hub keeps
+      // presence in memory only, and a hibernation wake — which our own reconnect can be what
+      // caused — leaves it empty until every driver reports again, up to 30 s for a stopped
+      // car (ADR-0002). Deleting whoever is missing made every car around vanish on each
+      // reconnect and trickle back one by one. So anyone we hold there who is not in it gets
+      // until their next report to show up, then goes: that still clears a driver who left
+      // while the socket was down twice as fast as the plain expiry sweep would.
       const present = new Set(msg.snapshot.map((car) => car.id));
-      for (const [id, car] of cars)
-        if (msg.cells.includes(car.cell) && !present.has(id)) cars.delete(id);
+      const deadline = serverNow() - (PRESENCE_EXPIRY_MS - POS_INTERVAL_STATIONARY_MS);
+      for (const car of cars.values())
+        if (msg.cells.includes(car.cell) && !present.has(car.id) && car.lastServerTs > deadline)
+          car.lastServerTs = deadline;
       for (const car of msg.snapshot) upsert(car, now);
       break;
     }
@@ -278,20 +262,10 @@ function placements(server: number): RenderCar[] {
   for (const car of cars.values()) {
     const placement = sample(car.track, server);
     if (!placement) continue;
-    // Measured before the display nudge, always.
     const distanceM = from
       ? haversineM(from.lat, from.lng, placement.lat, placement.lng)
       : Number.POSITIVE_INFINITY;
-    const offset = displayOffsetOf(car.id);
-    const shown = offset
-      ? {
-          ...placement,
-          lat: placement.lat + offset.lat,
-          lng: placement.lng + offset.lng,
-          heading: (((placement.heading + (offset.turn ?? 0)) % 360) + 360) % 360,
-        }
-      : placement;
-    out.push({ ...car, placement: shown, reported: placement, distanceM });
+    out.push({ ...car, placement, distanceM });
   }
   return out;
 }

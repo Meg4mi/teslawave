@@ -48,10 +48,9 @@ export const MAX_SOCKETS_PER_CELL = 500;
 export const MAX_SOCKETS_PER_HUB = 2_000;
 
 /**
- * Client shows the wave button below this distance, measured between fuzzed positions. It
- * was 150 m, and on a real road that was too tight: two cars genuinely side by side can read
- * as 200 m apart once both positions carry their 50-100 m fuzz, so the button hardly ever
- * came (ADR-0007, amended).
+ * Client shows the wave button below this distance, measured between reported positions. It
+ * was 150 m, and on a real road that was too tight while positions still carried a 50-100 m
+ * privacy fuzz each (ADR-0007, amended). Positions are exact now (ADR-0024); the range stays.
  */
 export const WAVE_PROMPT_RANGE_M = 300;
 export const WAVE_PROMPT_TTL_MS = 10_000;
@@ -62,10 +61,6 @@ export const WAVE_PROMPT_TTL_MS = 10_000;
 export const WAVE_VALIDATE_RANGE_M = 450;
 /** Two waves within this window read as a "wave back". */
 export const WAVE_BACK_WINDOW_MS = 4_000;
-
-export const FUZZ_MIN_M = 50;
-export const FUZZ_MAX_M = 100;
-export const FUZZ_STEP_M = 5;
 
 export const TRAIL_MS = 30_000;
 

@@ -29,3 +29,4 @@ Format: Context / Decision / Rejected alternatives / Consequences (`0000-templat
 | [0021](0021-map-resolution-follows-the-frame-rate.md) | The map's resolution follows the measured frame rate, and the overlay projects for itself |
 | [0022](0022-the-wave-is-an-event-on-the-whole-screen.md) | The wave is an event on the whole screen, not a ripple on one sprite |
 | [0023](0023-one-catalogue-per-language.md) | One catalogue per language, with grammar inside it, and the language detected not asked |
+| [0024](0024-exact-positions.md) | Positions are sent exactly, and drawn exactly where they were sent |
