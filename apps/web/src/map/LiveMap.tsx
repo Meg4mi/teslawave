@@ -9,7 +9,7 @@ import { affineProjector } from './projector';
 import { MAPLIBRE_WORKER_URL } from './maplibre-worker-url';
 import { useCopy } from '../i18n';
 import { LocateIcon, MinusIcon, PlusIcon } from '../ui/icons';
-import { recordFrameCost } from '../app/testHook';
+import { noteRender, recordFrameCost } from '../perf/frames';
 import { isE2E } from '../config/env';
 import './map.css';
 
@@ -279,7 +279,6 @@ export function LiveMap({
     let lastCentre: { lng: number; lat: number; bearing: number } | null = null;
     let overlayAt = 0;
     let raf = 0;
-    const instrumented = isE2E();
 
     const frame = (now: number): void => {
       raf = requestAnimationFrame(frame);
@@ -334,7 +333,9 @@ export function LiveMap({
         cameraAt = now;
       }
 
-      const measure = instrumented ? performance.now() : 0;
+      // Two clock reads and one array push a frame: cheap enough to keep on always, so the
+      // performance beacon has the same numbers the e2e gate has (ADR-0027).
+      const measure = performance.now();
       const cars = tickWorld(now);
       carsRef.current = cars;
       renderer.render(
@@ -362,7 +363,8 @@ export function LiveMap({
         },
         dpr,
       );
-      if (instrumented) recordFrameCost(performance.now() - measure);
+      recordFrameCost(performance.now() - measure);
+      noteRender({ halfRate, lowRes, cars: cars.length });
     };
     raf = requestAnimationFrame(frame);
 

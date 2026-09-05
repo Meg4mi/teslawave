@@ -9,8 +9,9 @@ import {
   encode,
   hubOf,
 } from '@teslawave/protocol';
+import { pruneAndAggregate } from '../src/stats.js';
 import { applyMigrations } from './apply-migrations.js';
-import { connect, helloMsg, posMsg, wait } from './helpers.js';
+import { connect, helloMsg, idOf, posMsg, secretOf, wait } from './helpers.js';
 
 const GENEVA = { lat: 46.2044, lng: 6.1432 };
 const CELL = encode(GENEVA.lat, GENEVA.lng, CELL_PRECISION);
@@ -44,7 +45,7 @@ describe('/ws', () => {
     const b = await connect(HUB);
     b.send(helloMsg('worker-b', [CELL]));
     const welcome = await b.next((m) => m.t === 'welcome');
-    expect(welcome.t === 'welcome' && welcome.snapshot.map((c) => c.id)).toContain('worker-a');
+    expect(welcome.t === 'welcome' && welcome.snapshot.map((c) => c.id)).toContain(idOf('worker-a'));
     a.close();
     b.close();
   });
@@ -61,7 +62,7 @@ describe('/ws', () => {
     await wait(SERVER_TICK_MS + 200);
     a.send(posMsg(GENEVA.lat + 0.0005, GENEVA.lng));
 
-    const diff = await b.next((m) => m.t === 'diff' && m.upd.some((c) => c.id === 'diff-a'));
+    const diff = await b.next((m) => m.t === 'diff' && m.upd.some((c) => c.id === idOf('diff-a')));
     expect(diff.t === 'diff' && diff.online).toBeGreaterThan(0);
     a.close();
     b.close();
@@ -99,11 +100,11 @@ describe('/ws', () => {
     const near = destination(GENEVA.lat, GENEVA.lng, 90, 100);
     b.send(posMsg(near.lat, near.lng));
 
-    a.send({ t: 'wave', to: 'wave-b' });
+    a.send({ t: 'wave', to: idOf('wave-b') });
     const ack = await a.next((m) => m.t === 'waved');
     expect(ack).toMatchObject({ t: 'waved', ok: true });
     const wave = await b.next((m) => m.t === 'wave');
-    expect(wave.t === 'wave' && wave.from.id).toBe('wave-a');
+    expect(wave.t === 'wave' && wave.from.id).toBe(idOf('wave-a'));
     a.close();
     b.close();
   });
@@ -136,8 +137,50 @@ describe('durable object hygiene', () => {
     // ctx.getWebSockets() only returns sockets accepted through ctx.acceptWebSocket().
     expect(stats.accepted).toBeGreaterThan(0);
     expect(stats.presence).toBeGreaterThan(0);
-    for (const key of stats.storageKeys) expect(key).toMatch(/^(meta:hub|w:|c:)/);
+    for (const key of stats.storageKeys) expect(key).toMatch(/^(meta:hub|w:|wt:|c:)/);
     a.close();
+  });
+});
+
+describe('daily harvest', () => {
+  it('rolls finished cell-day counters into D1 and remembers which hubs exist', async () => {
+    const a = await connect(HUB);
+    const b = await connect(HUB);
+    a.send(helloMsg('harvest-a', [CELL]));
+    b.send(helloMsg('harvest-b', [CELL]));
+    await b.next((m) => m.t === 'welcome');
+    a.send(posMsg(GENEVA.lat, GENEVA.lng));
+    const near = destination(GENEVA.lat, GENEVA.lng, 90, 100);
+    b.send(posMsg(near.lat, near.lng));
+    a.send({ t: 'wave', to: idOf('harvest-b') });
+    await a.next((m) => m.t === 'waved' && m.ok);
+
+    // The edge wrote the hub down when the socket opened.
+    const hubs = await env.DB.prepare('SELECT hub FROM hubs').all<{ hub: string }>();
+    expect(hubs.results.map((r) => r.hub)).toContain(HUB);
+
+    // Today's counter stays with the hub: the pulse still reads it.
+    const stub = env.HUB.get(env.HUB.idFromName(HUB));
+    expect(await stub.harvest(Date.now())).toEqual([]);
+
+    // Tomorrow's cron harvests every hub it knows and writes the finished day into D1.
+    // (Called directly: the test plugin cannot serialise its bindings through SELF.scheduled.)
+    const tomorrow = Date.now() + 86_400_000;
+    await pruneAndAggregate(env, tomorrow);
+    const rows = await env.DB.prepare('SELECT cell, waves FROM daily_stats WHERE cell = ?')
+      .bind(CELL)
+      .all<{ cell: string; waves: number }>();
+    expect(rows.results[0]?.waves).toBeGreaterThanOrEqual(1);
+    const stats = (await (await SELF.fetch('https://teslawave.test/api/stats')).json()) as {
+      total: number;
+    };
+    expect(stats.total).toBeGreaterThanOrEqual(1);
+
+    // The hub let go of the finished day.
+    const after = (await stub.debugStats()) as { storageKeys: string[] };
+    expect(after.storageKeys.filter((k) => k.startsWith('c:'))).toHaveLength(0);
+    a.close();
+    b.close();
   });
 });
 
@@ -151,7 +194,7 @@ describe('/api', () => {
   it('creates and claims a pairing code exactly once', async () => {
     const created = await SELF.fetch('https://teslawave.test/api/pair', {
       method: 'POST',
-      body: JSON.stringify({ id: 'pair-1', model: 'Y', colour: 'deepblue', nick: 'Nico' }),
+      body: JSON.stringify({ secret: secretOf('pair-1'), model: 'Y', colour: 'deepblue', nick: 'Nico' }),
     });
     const { code } = (await created.json()) as { code: string };
     expect(code).toHaveLength(6);
@@ -161,8 +204,8 @@ describe('/api', () => {
       body: JSON.stringify({ code: code.toLowerCase() }),
     });
     expect(claimed.status).toBe(200);
-    expect((await claimed.json()) as { identity: { id: string } }).toMatchObject({
-      identity: { id: 'pair-1', model: 'Y' },
+    expect((await claimed.json()) as { identity: { secret: string } }).toMatchObject({
+      identity: { secret: secretOf('pair-1'), model: 'Y' },
     });
 
     const again = await SELF.fetch('https://teslawave.test/api/pair/claim', {
@@ -175,7 +218,7 @@ describe('/api', () => {
   it('rejects a malformed pairing payload and an unknown code', async () => {
     const bad = await SELF.fetch('https://teslawave.test/api/pair', {
       method: 'POST',
-      body: JSON.stringify({ id: 'x', model: 'Roadster', colour: 'red' }),
+      body: JSON.stringify({ secret: secretOf('x'), model: 'Roadster', colour: 'red' }),
     });
     expect(bad.status).toBe(400);
 
@@ -184,6 +227,41 @@ describe('/api', () => {
       body: JSON.stringify({ code: 'ZZZZZZ' }),
     });
     expect(unknown.status).toBe(404);
+  });
+
+  it('records an anonymous performance sample and refuses anything that is not one', async () => {
+    const sample = {
+      v: 1,
+      dpr: 2,
+      tesla: true,
+      chromium: 148,
+      width: 1920,
+      height: 1200,
+      mean: 4.2,
+      p95: 9.8,
+      samples: 600,
+      halfRate: false,
+      lowRes: true,
+      cars: 14,
+    };
+    const ok = await SELF.fetch('https://teslawave.test/api/perf', {
+      method: 'POST',
+      body: JSON.stringify(sample),
+    });
+    expect(ok.status).toBe(204);
+    const rows = await env.DB.prepare('SELECT * FROM perf_samples').all();
+    expect(rows.results).toHaveLength(1);
+    expect(rows.results[0]).toMatchObject({ dpr: 2, tesla: 1, low_res: 1, cars: 14 });
+    // The schema is the privacy guarantee: there is no column a position could land in.
+    expect(Object.keys(rows.results[0] ?? {})).not.toContain('lat');
+
+    const bad = await SELF.fetch('https://teslawave.test/api/perf', {
+      method: 'POST',
+      body: JSON.stringify({ ...sample, lat: 46.2, mean: 'fast' }),
+    });
+    expect(bad.status).toBe(400);
+    const wrongMethod = await SELF.fetch('https://teslawave.test/api/perf');
+    expect(wrongMethod.status).toBe(404);
   });
 
   it('serves aggregate stats and 404s anything else under /api', async () => {

@@ -1,5 +1,5 @@
 import { SELF } from 'cloudflare:test';
-import { parseServerMsg, type ClientMsg, type ServerMsg } from '@teslawave/protocol';
+import { idFromSecret, parseServerMsg, type ClientMsg, type ServerMsg } from '@teslawave/protocol';
 
 export type Client = {
   send: (msg: ClientMsg | string) => void;
@@ -71,11 +71,15 @@ export async function connect(hub = 'u0'): Promise<Client> {
   };
 }
 
+/** A test driver is named; the secret it holds and the id the hub gives it both follow. */
+export const secretOf = (name: string): string => `secret-${name}-0123456789`;
+export const idOf = (name: string): string => idFromSecret(secretOf(name));
+
 export const helloMsg = (
-  id: string,
+  name: string,
   cells: string[],
   extra: Partial<Extract<ClientMsg, { t: 'hello' }>> = {},
-): ClientMsg => ({ t: 'hello', id, model: '3', colour: 'red', cells, ...extra });
+): ClientMsg => ({ t: 'hello', secret: secretOf(name), model: '3', colour: 'red', cells, ...extra });
 
 export const posMsg = (lat: number, lng: number, speed = 50): ClientMsg => ({
   t: 'pos',

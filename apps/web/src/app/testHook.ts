@@ -1,26 +1,5 @@
 import { getSelfPlacement, getSummary, tickWorld } from '../sim/world';
-
-/**
- * How long our own per-frame work takes (world tick plus the canvas overlay), excluding the
- * map's internal repaint. This is the part we control, so this is the part the performance
- * test gates on.
- */
-const costs: number[] = [];
-
-export function recordFrameCost(ms: number): void {
-  costs.push(ms);
-  if (costs.length > 600) costs.shift();
-}
-
-const frameCost = (): { mean: number; p95: number; samples: number } => {
-  if (costs.length === 0) return { mean: 0, p95: 0, samples: 0 };
-  const sorted = [...costs].sort((a, b) => a - b);
-  return {
-    mean: sorted.reduce((a, b) => a + b, 0) / sorted.length,
-    p95: sorted[Math.floor(sorted.length * 0.95)] ?? 0,
-    samples: sorted.length,
-  };
-};
+import { frameStats, resetFrameStats } from '../perf/frames';
 
 export type TestHook = {
   cars: () => Array<{
@@ -57,8 +36,8 @@ export function installTestHook(): void {
       })),
     summary: getSummary,
     self: getSelfPlacement,
-    frameCost,
-    resetFrameCost: () => costs.splice(0, costs.length),
+    frameCost: frameStats,
+    resetFrameCost: resetFrameStats,
     identity: () => {
       try {
         return JSON.parse(localStorage.getItem('tw.identity.v1') ?? 'null');

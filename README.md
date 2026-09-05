@@ -67,9 +67,10 @@ pnpm check:size  # under 400 kB gzipped, excluding MapLibre
 ```
 
 Every push and pull request runs the fast checks (`.github/workflows/ci.yml`). The Playwright
-suite is not part of that: it is slow and needs a Chromium download, so it lives in its own
-manual workflow (`.github/workflows/e2e.yml`). Run it from the Actions tab, or with
-`gh workflow run e2e.yml`, when the rendering path changed.
+suite is not part of that: it is slow and needs a Chromium download, so it has its own
+workflow (`.github/workflows/e2e.yml`) that runs every night, on any pull request touching
+the rendering path (`apps/web/src/{map,overlay,screens,ui,app}`, the CSS, the specs), and on
+demand from the Actions tab or with `gh workflow run e2e.yml`.
 
 The end-to-end suite runs the real worker under `wrangler dev`, supervised
 (`apps/worker/scripts/dev-supervised.mjs`): wrangler's dev proxy can exit when a client drops
@@ -150,7 +151,9 @@ development stay unmeasured.
 Two things worth doing on the first deploy, in this order:
 
 1. Open it on a real Tesla and fill in a row of [docs/tesla-notes.md](docs/tesla-notes.md).
-   CI has no GPU, so that is the only real performance data that exists.
+   CI has no GPU, so that and the performance beacon are the only real performance data
+   that exist. Turn on "Share performance data" in Settings on the car, and `pnpm perf`
+   prints what real screens report (ADR-0027).
 2. After 24 hours of traffic, run `pnpm usage`. Durable Object duration should be in the low
    hundreds of GB-s. If it is near 10,800, the hub is not hibernating: stop and find the
    timer, the `ws.accept()`, the alarm or the in-flight `fetch` before anything else.

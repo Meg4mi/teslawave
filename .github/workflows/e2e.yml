@@ -1,9 +1,25 @@
 name: E2E
 
 # The browser suite is slow and needs a Chromium download, so it is not part of CI on every
-# push and pull request. Run it from the Actions tab (or `gh workflow run e2e.yml`) when the
-# rendering path changed and the acceptance criteria are worth re-checking.
+# push. It runs every night, on any pull request that touches the rendering path, and from
+# the Actions tab (or `gh workflow run e2e.yml`) whenever the acceptance criteria are worth
+# re-checking. A manual-only suite is a suite nobody runs.
 on:
+  schedule:
+    # 03:17 UTC, off the hour so it does not queue behind everyone else's nightly.
+    - cron: '17 3 * * *'
+  pull_request:
+    paths:
+      - 'apps/web/src/map/**'
+      - 'apps/web/src/overlay/**'
+      - 'apps/web/src/screens/**'
+      - 'apps/web/src/ui/**'
+      - 'apps/web/src/app/**'
+      - 'apps/web/src/**/*.css'
+      - 'apps/web/e2e/**'
+      - 'apps/web/playwright.config.ts'
+      - 'apps/worker/scripts/dev-supervised.mjs'
+      - '.github/workflows/e2e.yml'
   workflow_dispatch:
     inputs:
       projects:
@@ -34,7 +50,8 @@ jobs:
 
       - name: Acceptance criteria (car screen at both densities, and a phone)
         env:
-          PROJECTS: ${{ inputs.projects }}
+          # Empty outside a manual run: the schedule and pull requests get the full set.
+          PROJECTS: ${{ inputs.projects || 'tesla tesla-dpr2 phone' }}
         run: |
           args=()
           for p in $PROJECTS; do args+=("--project=$p"); done
@@ -43,7 +60,7 @@ jobs:
       # Advisory: a CI container has no GPU, so the composite frame rate is not comparable
       # to a car. The gate inside the spec is on our own per-frame work.
       - name: Frame budget
-        if: inputs.perf
+        if: github.event_name != 'workflow_dispatch' || inputs.perf
         continue-on-error: true
         run: pnpm --filter @teslawave/web exec playwright test --project=perf
 

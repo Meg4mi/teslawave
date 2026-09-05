@@ -48,3 +48,13 @@ seconds the client renders behind plus a tick of hub latency. Everything else ab
 proximity is still measured between fuzzed positions, the button still only offers a wave
 the server will accept, and the true distance a wave can bridge is bounded by the validate
 range plus twice the maximum fuzz.
+
+## Amendment, 2026-09-05: one hub accepts a wave
+
+A driver near a hub boundary reports to every hub they hold a socket for, so two cars either
+side of a boundary exist in both hubs. The client used to send a wave down every socket and
+both hubs accepted it: two acknowledgements, so the sender's count bumped twice; two `wave`
+messages, so the receiver got two cards and two chimes; and both hubs incremented their
+counters. The client now sends a wave only to the hub that owns the target's cell, and a hub
+refuses a wave whose target sits in a cell it does not own, so a misbehaving client cannot
+bring the double back.

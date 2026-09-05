@@ -16,6 +16,7 @@ import {
   encode,
   haversineM,
   hubOf,
+  idFromSecret,
   type CarPublic,
   type CarState,
   type ClientMsg,
@@ -31,8 +32,12 @@ const ABUSE_POS_MS = RATE_POS_MS / 2;
 /** Slack over MAX_SPEED_KMH for GPS noise. */
 const IMPLIED_SPEED_GRACE_KMH = 30;
 
+/** A driver who has not waved in this long is forgotten by the daily harvest. */
+export const USER_WAVES_TTL_MS = 180 * 86_400_000;
+
 export const dayKey = (now: number): string => new Date(now).toISOString().slice(0, 10);
 export const userWavesKey = (id: string): string => `w:${id}`;
+export const userWaveTsKey = (id: string): string => `wt:${id}`;
 export const cellDayKey = (cell: string, now: number): string => `c:${cell}:${dayKey(now)}`;
 
 export function createHub(hub: string, now: number, counters?: Partial<Counters>): HubState {
@@ -47,6 +52,7 @@ export function createHub(hub: string, now: number, counters?: Partial<Counters>
     lastFlushAt: now,
     counters: {
       wavesByUser: counters?.wavesByUser ?? new Map(),
+      lastWaveByUser: counters?.lastWaveByUser ?? new Map(),
       wavesByCellDay: counters?.wavesByCellDay ?? new Map(),
       lastWaveTsByCell: counters?.lastWaveTsByCell ?? new Map(),
       dirtyKeys: new Set(),
@@ -200,14 +206,15 @@ function onHello(state: HubState, s: Socket, msg: Extract<ClientMsg, { t: 'hello
   unindexCells(state, s);
   if (s.id) removeFrom(state.socketsById, s.id, s.key);
 
-  s.id = msg.id;
+  // The public id is ours to derive, never the client's to choose (ADR-0025).
+  s.id = idFromSecret(msg.secret);
   s.model = msg.model;
   s.colour = msg.colour;
   if (msg.nick === undefined) delete s.nick;
   else s.nick = msg.nick;
   s.cells = [...msg.cells];
   s.spectator = msg.spectator === true;
-  s.since = state.presence.get(msg.id)?.since ?? (s.since || now);
+  s.since = state.presence.get(s.id)?.since ?? (s.since || now);
   indexSocket(state, s);
 
   const self = state.presence.get(s.id);
@@ -314,6 +321,10 @@ function onWave(state: HubState, s: Socket, to: string, now: number): Effect[] {
   if (!from || s.hidden || s.spectator) return fail('hidden');
   const target = state.presence.get(to);
   if (!target || to === s.id) return fail('offline');
+  // A driver near a hub boundary reports to both hubs, so both hold both cars. The wave is
+  // accepted by the hub that owns the target's cell and by no other: otherwise a client that
+  // sent it everywhere would have it counted, chimed and carded twice.
+  if (hubOf(target.cell) !== state.hub) return fail('offline');
   if (haversineM(from.lat, from.lng, target.lat, target.lng) > WAVE_VALIDATE_RANGE_M)
     return fail('range');
 
@@ -326,6 +337,8 @@ function onWave(state: HubState, s: Socket, to: string, now: number): Effect[] {
     const next = (c.wavesByUser.get(key) ?? 0) + 1;
     c.wavesByUser.set(key, next);
     c.dirtyKeys.add(key);
+    c.lastWaveByUser.set(userWaveTsKey(id), now);
+    c.dirtyKeys.add(userWaveTsKey(id));
     const car = state.presence.get(id);
     if (car) {
       car.waves = next;
@@ -426,12 +439,73 @@ export function flushIfDue(state: HubState, now: number, force = false): Effect[
     const entries: [string, number][] = [];
     for (const key of keys) {
       c.dirtyKeys.delete(key);
-      const value = key.startsWith('w:') ? c.wavesByUser.get(key) : c.wavesByCellDay.get(key);
+      const value = counterValue(c, key);
       if (value !== undefined) entries.push([key, value]);
     }
     if (entries.length > 0) effects.push({ k: 'persist', entries });
   }
   return effects;
+}
+
+const counterValue = (c: Counters, key: string): number | undefined =>
+  key.startsWith('w:')
+    ? c.wavesByUser.get(key)
+    : key.startsWith('wt:')
+      ? c.lastWaveByUser.get(key)
+      : c.wavesByCellDay.get(key);
+
+export type Harvest = {
+  /** Finished days, one row per cell, for the daily aggregate in D1. */
+  cellDays: Array<{ cell: string; day: string; waves: number }>;
+  /** Storage keys the hub no longer needs. */
+  deleteKeys: string[];
+  /** Storage keys to write, bounded like any other flush. */
+  persist: [string, number][];
+};
+
+/**
+ * Once a day, from the Worker cron and never from a message handler: hand over the finished
+ * cell-day counters so they can be written to D1, drop them from the hub, and forget drivers
+ * who have not waved in USER_WAVES_TTL_MS. Without this the hub's storage grew by one key per
+ * cell per day and one per driver ever seen, and a restore that lists ten thousand keys would
+ * one day have silently started from zero for everyone past the limit.
+ *
+ * A `w:` key from before the timestamps has none: it is given one now, and counted from here.
+ */
+export function harvest(state: HubState, now: number): Harvest {
+  const c = state.counters;
+  const today = dayKey(now);
+  const out: Harvest = { cellDays: [], deleteKeys: [], persist: [] };
+
+  for (const [key, waves] of [...c.wavesByCellDay]) {
+    // c:<cell>:<yyyy-mm-dd>
+    const [, cell, day] = key.split(':');
+    if (!cell || !day || day >= today) continue;
+    out.cellDays.push({ cell, day, waves });
+    c.wavesByCellDay.delete(key);
+    c.dirtyKeys.delete(key);
+    out.deleteKeys.push(key);
+  }
+
+  for (const key of [...c.wavesByUser.keys()]) {
+    const id = key.slice('w:'.length);
+    const tsKey = userWaveTsKey(id);
+    const ts = c.lastWaveByUser.get(tsKey);
+    if (ts === undefined) {
+      if (out.persist.length < MAX_PERSIST_KEYS) {
+        c.lastWaveByUser.set(tsKey, now);
+        out.persist.push([tsKey, now]);
+      }
+      continue;
+    }
+    if (now - ts <= USER_WAVES_TTL_MS) continue;
+    c.wavesByUser.delete(key);
+    c.lastWaveByUser.delete(tsKey);
+    c.dirtyKeys.delete(key);
+    c.dirtyKeys.delete(tsKey);
+    out.deleteKeys.push(key, tsKey);
+  }
+  return out;
 }
 
 /** Test and observability helper. Never returns positions. */

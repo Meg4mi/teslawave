@@ -1,40 +1,10 @@
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  useSyncExternalStore,
-  type ReactNode,
-} from 'react';
-import {
-  WAVE_BACK_WINDOW_MS,
-  WAVE_PROMPT_TTL_MS,
-  isColourId,
-  isModel,
-  type ServerMsg,
-  type TeslaModel,
-} from '@teslawave/protocol';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
+import { isColourId, isModel, isSecret } from '@teslawave/protocol';
 import { LiveMap } from '../map/LiveMap';
-import { createNet, type Net, type NetStatus } from '../net/sockets';
-import { usePosition } from '../geo/usePosition';
-import {
-  applyServerMsg,
-  bumpSelfWaves,
-  dropCells,
-  getCar,
-  getSelfWaves,
-  getSummary,
-  pruneExpired,
-  refreshSummary,
-  resetWorld,
-  setSelfPlacement,
-  setSelfReported,
-  setSubscribedCells,
-  subscribeSummary,
-} from '../sim/world';
-import { newId, useIdentity } from '../identity/store';
-import { play, setMuted, unlockAudio } from '../ui/sound';
+import { nextResetLabel } from '../net/budget';
+import { getCar, getSummary, subscribeSummary } from '../sim/world';
+import { identityFrom, newSecret, useIdentity } from '../identity/store';
+import { unlockAudio } from '../ui/sound';
 import { ControlButton, Toast, type ToastContent } from '../ui/primitives';
 import {
   EyeIcon,
@@ -50,7 +20,7 @@ import { Disclaimer } from '../ui/Disclaimer';
 import { Onboarding, type OnboardingResult } from '../screens/Onboarding';
 import { Hud } from '../screens/Hud';
 import { WaveButton, type WaveTarget } from '../screens/WaveButton';
-import { WaveCard, type WaveCardContent } from '../screens/WaveCard';
+import { WaveCard } from '../screens/WaveCard';
 import { CarCard } from '../screens/CarCard';
 import { PulseSheet } from '../screens/PulseSheet';
 import { SettingsSheet } from '../screens/SettingsSheet';
@@ -59,6 +29,7 @@ import { GarageSheet, type CarEdit } from '../screens/GarageSheet';
 import { HowToWave } from '../screens/HowToWave';
 import type { Renderer } from '../overlay/renderer';
 import { installTestHook } from './testHook';
+import { useSession } from './useSession';
 import { isE2E } from '../config/env';
 import './app.css';
 import '../screens/sheets.css';
@@ -67,40 +38,33 @@ type SheetName = 'settings' | 'pulse' | 'pair-show' | 'pair-enter' | 'how-to' | 
 
 const BOOT_KEY = 'tw.booted';
 
+type Paired = { secret: string; model: string; colour: string; nick?: string };
+
+/**
+ * The screens, and what opens them. Everything between the driver and the hub — the socket,
+ * the position feed, the wave, the parking clock — lives in `useSession`; this file decides
+ * what is on the screen.
+ */
 export function App(): ReactNode {
   const copy = useCopy();
   const { identity, prefs, setIdentity, setPrefs, claimMilestone } = useIdentity();
-  // Read by the connection effect, which must not re-run when the car changes.
-  const profileRef = useRef(identity);
-  useEffect(() => {
-    profileRef.current = identity;
-  });
-  const [status, setStatus] = useState<NetStatus>('idle');
   const [sheet, setSheet] = useState<SheetName>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [toast, setToast] = useState<ToastContent | null>(null);
-  const [milestone, setMilestone] = useState<number | null>(null);
-  const [waveCard, setWaveCard] = useState<WaveCardContent | null>(null);
-  /** The edge flash of a received wave: a keyed element that lives for under a second. */
-  const [flashId, setFlashId] = useState<number | null>(null);
-  /**
-   * Who waved at you last, unprompted, and is still around: the wave button comes back for
-   * them as "Wave back", whatever the summary thinks the closest car is.
-   */
-  const [backFrom, setBackFrom] = useState<{
-    id: string;
-    model: TeslaModel;
-    colour: string;
-    at: number;
-  } | null>(null);
   const [tiles, setTiles] = useState(true);
   const [origin, setOrigin] = useState<{ lat: number; lng: number } | null>(null);
-  const netRef = useRef<Net | null>(null);
   const rendererRef = useRef<Renderer | null>(null);
-  const sentWaves = useRef(new Map<string, number>());
   const toastId = useRef(0);
 
   const summary = useSyncExternalStore(subscribeSummary, getSummary, getSummary);
+
+  const showToast = useCallback((text: string, icon?: ReactNode, warm = false): void => {
+    toastId.current += 1;
+    setToast({ id: toastId.current, text, ...(icon ? { icon } : {}), warm });
+  }, []);
+
+  const session = useSession({ identity, prefs, claimMilestone, rendererRef, showToast });
+  const { status, spectator, parked, wave: sendWave } = session;
 
   useEffect(() => {
     if (isE2E()) installTestHook();
@@ -125,213 +89,48 @@ export function App(): ReactNode {
       cancelled = true;
     };
   }, []);
-  const { status: geo, fix } = usePosition(identity !== null);
-  const spectator = geo === 'denied' || geo === 'unavailable';
 
-  const showToast = useCallback((text: string, icon?: ReactNode, warm = false): void => {
-    toastId.current += 1;
-    setToast({ id: toastId.current, text, ...(icon ? { icon } : {}), warm });
-  }, []);
-
-  /**
-   * Milestones are personal and local: no leaderboard, nothing to compare against
-   * (brief 4.3). Raised from the event that caused them rather than from an effect watching
-   * the counter, so it fires exactly once per wave.
-   */
-  const celebrate = useCallback((): void => {
-    const reached = claimMilestone(getSelfWaves());
-    if (reached === null) return;
-    setMilestone(reached);
-    play('milestone');
-    window.setTimeout(() => setMilestone(null), 5_000);
-  }, [claimMilestone]);
-
-  // --- The wave, in both directions -------------------------------------------------
-  const onServerMsg = useCallback(
-    (msg: ServerMsg): void => {
-      applyServerMsg(msg);
-      if (msg.t === 'wave') {
-        const sentAt = sentWaves.current.get(msg.from.id);
-        const isWaveBack = sentAt !== undefined && Date.now() - sentAt < WAVE_BACK_WINDOW_MS;
-        rendererRef.current?.addWave({ kind: 'received', fromId: msg.from.id, toId: null });
-        play('received');
-        bumpSelfWaves();
-        celebrate();
-        const at = Date.now();
-        setWaveCard({ id: at, model: msg.from.model, colour: msg.from.colour, back: isWaveBack });
-        setFlashId(at);
-        // A nod you did not start is one you can return. One you did start is already done.
-        setBackFrom(
-          isWaveBack
-            ? null
-            : { id: msg.from.id, model: msg.from.model, colour: msg.from.colour, at },
-        );
-      }
-      if (msg.t === 'waved') {
-        if (msg.ok) {
-          bumpSelfWaves();
-          celebrate();
-        } else {
-          sentWaves.current.delete(msg.to);
-          const why =
-            msg.reason === 'range'
-              ? copy.wave.tooFar
-              : msg.reason === 'offline'
-                ? copy.wave.offline
-                : msg.reason === 'rate'
-                  ? copy.wave.tooSoon
-                  : copy.wave.hidden;
-          showToast(why);
-        }
-      }
+  // A wave from the button or the card closes the card: the tap was the whole point of it.
+  const wave = useCallback(
+    (id: string): void => {
+      setSelectedId(null);
+      sendWave(id);
     },
-    [showToast, celebrate, copy],
+    [sendWave],
   );
-
-  const wave = useCallback((id: string): void => {
-    sentWaves.current.set(id, Date.now());
-    netRef.current?.send({ t: 'wave', to: id });
-    rendererRef.current?.addWave({ kind: 'sent', fromId: null, toId: id });
-    play('sent');
-    setSelectedId(null);
-  }, []);
-
-  // The flash unmounts itself; the "wave back" offer outlives the button's window by nothing.
-  useEffect(() => {
-    if (flashId === null) return;
-    const timer = window.setTimeout(() => setFlashId(null), 1_000);
-    return () => window.clearTimeout(timer);
-  }, [flashId]);
-  useEffect(() => {
-    if (!backFrom) return;
-    const timer = window.setTimeout(() => setBackFrom(null), WAVE_PROMPT_TTL_MS);
-    return () => window.clearTimeout(timer);
-  }, [backFrom]);
-
-  /*
-   * --- Connection ---------------------------------------------------------------------
-   *
-   * Keyed on who you are, not on what you are driving. Changing your paint used to replace the
-   * identity object, which tore the socket down, cleared the world and re-fuzzed the position:
-   * the map blinked and everyone around you saw you leave and come back. Profile changes go
-   * down the open socket instead, as a fresh `hello`.
-   */
-  const identityId = identity?.id;
-  useEffect(() => {
-    if (!identityId) return;
-    const net = createNet({
-      onMessage: onServerMsg,
-      onStatus: setStatus,
-      onCellsDropped: dropCells,
-      onCells: setSubscribedCells,
-    });
-    netRef.current = net;
-    resetWorld(identityId);
-    net.start({
-      id: identityId,
-      model: profileRef.current?.model ?? '3',
-      colour: profileRef.current?.colour ?? 'pearl',
-      spectator,
-      ...(profileRef.current?.nick === undefined ? {} : { nick: profileRef.current.nick }),
-    });
-    return () => {
-      net.stop();
-      netRef.current = null;
-    };
-  }, [identityId, spectator, onServerMsg]);
-
-  // What you are driving, pushed down the socket that is already open.
-  useEffect(() => {
-    if (!identity) return;
-    netRef.current?.setProfile({
-      id: identity.id,
-      model: identity.model,
-      colour: identity.colour,
-      spectator,
-      ...(identity.nick === undefined ? {} : { nick: identity.nick }),
-    });
-  }, [identity, spectator]);
-
-  /**
-   * Wall-clock heartbeat. The render loop expires cars, but a hidden tab gets no animation
-   * frames at all, so a phone put in a pocket used to come back showing drivers who had left
-   * minutes earlier. An interval keeps firing (throttled, but firing) while hidden.
-   */
-  useEffect(() => {
-    if (!identity) return;
-    const beat = window.setInterval(() => {
-      if (pruneExpired() > 0 || document.visibilityState === 'visible') refreshSummary();
-    }, 5_000);
-    return () => clearInterval(beat);
-  }, [identity]);
-
-  useEffect(() => {
-    netRef.current?.setHidden(!prefs.sharing);
-  }, [prefs.sharing]);
-
-  useEffect(() => {
-    setMuted(prefs.muted);
-  }, [prefs.muted]);
-
-  // The fix goes out exactly as the device gave it (ADR-0024). Your own sprite is smoothed
-  // between fixes; distances are measured from the fix itself, which is what the hub holds.
-  useEffect(() => {
-    if (!fix) return;
-    const reported = { lat: fix.lat, lng: fix.lng, heading: fix.heading, speed: fix.speed };
-    setSelfPlacement(reported);
-    setSelfReported(reported);
-    netRef.current?.update(reported);
-  }, [fix]);
-
-  // Spectators have no position of their own, so start the camera where the request came from.
-  useEffect(() => {
-    if (!spectator || !identity) return;
-    let cancelled = false;
-    void fetch('/api/whereami')
-      .then((res) =>
-        res.ok ? (res.json() as Promise<{ lat: number | null; lng: number | null }>) : null,
-      )
-      .then((body) => {
-        if (cancelled || !body?.lat || !body.lng) return;
-        setSelfPlacement({ lat: body.lat, lng: body.lng, heading: 0, speed: 0 });
-        setSelfReported({ lat: body.lat, lng: body.lng });
-        netRef.current?.update({ lat: body.lat, lng: body.lng, heading: 0, speed: 0 });
-      })
-      .catch(() => undefined);
-    return () => {
-      cancelled = true;
-    };
-  }, [spectator, identity]);
 
   const editCar = useCallback(
     (next: CarEdit): void => {
-      const current = profileRef.current;
-      if (!current) return;
+      if (!identity) return;
       // Rebuilt rather than patched, so deleting the name actually deletes it. The new profile
       // reaches everyone around you on the socket that is already open.
-      setIdentity({
-        id: current.id,
-        createdAt: current.createdAt,
-        model: next.model,
-        colour: next.colour,
-        ...(next.nick === undefined ? {} : { nick: next.nick }),
-      });
+      setIdentity(
+        identityFrom(identity.secret, {
+          createdAt: identity.createdAt,
+          model: next.model,
+          colour: next.colour,
+          ...(next.nick === undefined ? {} : { nick: next.nick }),
+        }),
+      );
       setSheet(null);
       showToast(copy.garage.saved);
     },
-    [setIdentity, showToast, copy],
+    [identity, setIdentity, showToast, copy],
   );
 
   const adopt = useCallback(
-    (paired: { id: string; model: string; colour: string; nick?: string }): void => {
-      if (!isModel(paired.model) || !isColourId(paired.colour)) return;
-      setIdentity({
-        id: paired.id,
-        model: paired.model,
-        colour: paired.colour,
-        createdAt: Date.now(),
-        ...(paired.nick === undefined ? {} : { nick: paired.nick }),
-      });
+    (paired: Paired): void => {
+      if (!isSecret(paired.secret) || !isModel(paired.model) || !isColourId(paired.colour))
+        return;
+      // The car becomes the phone's driver: same secret, so the hub gives it the same id.
+      setIdentity(
+        identityFrom(paired.secret, {
+          model: paired.model,
+          colour: paired.colour,
+          createdAt: Date.now(),
+          ...(paired.nick === undefined ? {} : { nick: paired.nick }),
+        }),
+      );
       setPrefs({ sharing: true });
       setSheet(null);
       showToast(copy.pairing.done);
@@ -348,13 +147,7 @@ export function App(): ReactNode {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ code }),
     })
-      .then((res) =>
-        res.ok
-          ? (res.json() as Promise<{
-              identity: { id: string; model: string; colour: string; nick?: string };
-            }>)
-          : null,
-      )
+      .then((res) => (res.ok ? (res.json() as Promise<{ identity: Paired }>) : null))
       .then((body) => {
         if (body?.identity) adopt(body.identity);
         history.replaceState(null, '', location.pathname);
@@ -367,7 +160,7 @@ export function App(): ReactNode {
   // --- Boot ------------------------------------------------------------------------
   const start = (result: OnboardingResult): void => {
     unlockAudio();
-    setIdentity({ id: newId(), createdAt: Date.now(), ...result });
+    setIdentity(identityFrom(newSecret(), { createdAt: Date.now(), ...result }));
     setPrefs({ sharing: true });
     rendererRef.current?.playSonar();
   };
@@ -388,15 +181,15 @@ export function App(): ReactNode {
   }, []);
 
   const selected = selectedId ? getCar(selectedId) : undefined;
-  const nearby = useMemo(
-    () => (prefs.sharing && !spectator ? summary.nearby : null),
-    [summary.nearby, prefs.sharing, spectator],
-  );
+  // No wave button while hidden, by hand or by the clock: the hub would refuse the wave.
+  const canWave = prefs.sharing && !spectator && !parked;
+  const nearby = useMemo(() => (canWave ? summary.nearby : null), [summary.nearby, canWave]);
   // The car that just waved at you takes the button over while it is still on the map. Not
   // memoised: the button is built to take a fresh object every render, and whether they are
   // still on the map is a question for the world, which the summary re-renders us for.
+  const { backFrom } = session;
   const waveTarget: WaveTarget | null =
-    backFrom && prefs.sharing && !spectator && getCar(backFrom.id)
+    backFrom && canWave && getCar(backFrom.id)
       ? { ...backFrom, back: true, prompt: backFrom.at }
       : nearby;
   // Stable while the car is: the map re-renders twice a second for the HUD, and a fresh
@@ -458,26 +251,11 @@ export function App(): ReactNode {
       />
 
       {/* Notices sit at the foot, centred, one above the other if there are two. */}
-      {spectator ? (
-        <div className="hud hud--foot">
-          <p className="hud__banner">{copy.map.spectator}</p>
-        </div>
-      ) : null}
-      {status === 'budget' ? (
-        <div className="hud hud--foot">
-          <p className="hud__banner">{copy.map.budget('02:00')}</p>
-        </div>
-      ) : null}
-      {status === 'paused' ? (
-        <div className="hud hud--foot">
-          <p className="hud__banner">{copy.map.paused}</p>
-        </div>
-      ) : null}
-      {!tiles ? (
-        <div className="hud hud--foot">
-          <p className="hud__banner">{copy.map.tilesOffline}</p>
-        </div>
-      ) : null}
+      {spectator ? <Notice>{copy.map.spectator}</Notice> : null}
+      {parked && prefs.sharing ? <Notice>{copy.map.parked}</Notice> : null}
+      {status === 'budget' ? <Notice>{copy.map.budget(nextResetLabel())}</Notice> : null}
+      {status === 'paused' ? <Notice>{copy.map.paused}</Notice> : null}
+      {!tiles ? <Notice>{copy.map.tilesOffline}</Notice> : null}
 
       {/* Labelled, not cryptic: on a touch screen there is no hover, so a tooltip would
           never appear. Each control says what it does and what state it is in. */}
@@ -513,13 +291,15 @@ export function App(): ReactNode {
 
       <WaveButton target={waveTarget} onWave={wave} />
 
-      {flashId !== null ? <div key={flashId} className="wave-flash" aria-hidden /> : null}
-      <WaveCard card={waveCard} onDone={() => setWaveCard(null)} />
+      {session.flashId !== null ? (
+        <div key={session.flashId} className="wave-flash" aria-hidden />
+      ) : null}
+      <WaveCard card={session.waveCard} onDone={session.dismissWaveCard} />
 
-      {milestone !== null ? (
+      {session.milestone !== null ? (
         <div className="milestone" role="status">
-          <span className="milestone__count num">{milestone}</span>
-          <span>{copy.milestones[milestone]}</span>
+          <span className="milestone__count num">{session.milestone}</span>
+          <span>{copy.milestones[session.milestone]}</span>
         </div>
       ) : null}
 
@@ -546,10 +326,10 @@ export function App(): ReactNode {
           onClose={() => setSheet(null)}
         />
       ) : null}
-      {sheet === 'garage' && identity ? (
+      {sheet === 'garage' ? (
         <GarageSheet car={identity} onSave={editCar} onClose={() => setSheet(null)} />
       ) : null}
-      {sheet === 'pair-show' && identity ? (
+      {sheet === 'pair-show' ? (
         <ShowPairingSheet identity={identity} onClose={() => setSheet(null)} />
       ) : null}
       {sheet === 'pair-enter' ? (
@@ -559,5 +339,14 @@ export function App(): ReactNode {
 
       <Disclaimer />
     </>
+  );
+}
+
+/** One line at the foot of the screen. */
+function Notice({ children }: { children: ReactNode }): ReactNode {
+  return (
+    <div className="hud hud--foot">
+      <p className="hud__banner">{children}</p>
+    </div>
   );
 }

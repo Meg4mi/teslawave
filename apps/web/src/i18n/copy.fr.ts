@@ -1,6 +1,7 @@
 import {
   BRAND,
   MODEL_LABELS,
+  PARKED_HIDE_MS,
   PRESENCE_EXPIRY_MS,
   colourOf,
   isColourId,
@@ -99,7 +100,7 @@ export const FR: Copy = {
     havePairingCode: 'J’ai déjà tout réglé sur mon téléphone',
     havePairingCodeHint: 'Reprenez votre nom et vos saluts avec un code court.',
     howItWorks: 'Comment saluer',
-    privacy: 'Votre position n’est partagée que lorsque vous êtes visible, et jamais conservée.',
+    privacy: `Votre position n’est partagée que lorsque vous êtes visible, jamais conservée, et masquée après ${n(PARKED_HIDE_MS / 60_000)} minutes à l’arrêt.`,
   },
 
   map: {
@@ -117,6 +118,7 @@ export const FR: Copy = {
     spectator: 'La localisation est désactivée. Vous voyez les autres, ils ne vous voient pas.',
     spectatorRetry: 'L’activer',
     hidden: 'Vous êtes invisible. Personne ne vous voit ni ne peut vous saluer.',
+    parked: 'À l’arrêt depuis un moment, vous êtes donc masqué. Vous réapparaissez sur la carte dès que vous roulez.',
     paused: 'TeslaWave est en pause. De retour très vite.',
     budget: (time: string): string =>
       `TeslaWave a dépassé sa capacité gratuite pour aujourd’hui. De retour à ${time}.`,
@@ -225,6 +227,9 @@ export const FR: Copy = {
     northUp: 'Nord en haut',
     northUpHint: 'Désactivé, la carte tourne avec vous.',
     phone: 'Utiliser sur ma voiture',
+    perf: 'Partager les données de performance',
+    perfHint:
+      'De temps en temps, envoyer la fluidité de la carte sur cet écran. Anonyme : ni position, ni nom, ni identifiant.',
   },
 
   controls: {
@@ -252,16 +257,17 @@ export const FR: Copy = {
       `${brand} est conçu pour qu’il n’y ait rien à divulguer. Pas de compte, pas d’e-mail, pas d’historique de trajets.`,
     leavesTitle: 'Ce qui quitte votre voiture',
     leaves: [
-      'Votre position GPS, telle quelle, tant que vous êtes visible. Elle sert uniquement à vous afficher aux conducteurs autour de vous.',
+      `Votre position GPS, telle quelle, tant que vous êtes visible et en mouvement. Une voiture à l’arrêt depuis ${n(PARKED_HIDE_MS / 60_000)} minutes est masquée jusqu’à ce qu’elle roule, pour que personne ne puisse voir où vous vous arrêtez. La position sert uniquement à vous afficher aux conducteurs autour de vous.`,
       'Votre cap et votre vitesse, pour que les autres voitures glissent au lieu de sauter.',
       'Le modèle et la couleur que vous avez choisis, et un pseudo si vous en avez saisi un.',
-      'Un identifiant aléatoire généré dans votre navigateur. Il n’est lié ni à vous ni à Tesla.',
+      'Un secret aléatoire généré dans votre navigateur. Les autres conducteurs n’en voient qu’une empreinte, qui n’est liée ni à vous ni à Tesla et ne permet pas de se faire passer pour vous.',
     ],
     keptTitle: 'Ce qui est conservé',
     kept: [
       `Les positions vivent en mémoire pendant ${n(PRESENCE_EXPIRY_MS / 1000)} secondes et ne sont jamais écrites dans une base de données.`,
       'Les nombres de saluts. Les vôtres, et un total quotidien par zone de carte.',
       'Pas d’historique de trajets, pas d’itinéraires, pas d’horodatage de vos passages.',
+      'Si vous activez « Partager les données de performance » : densité et taille de l’écran, durée des images, et nombre de voitures sur la carte. Rien qui dise qui ou où vous êtes. Conservé 30 jours.',
     ],
     thirdPartiesTitle: 'Tiers',
     thirdParties: [

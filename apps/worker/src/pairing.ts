@@ -3,12 +3,19 @@ import {
   generateCode,
   isColourId,
   isModel,
+  isSecret,
   isValidCode,
   normaliseCode,
   NICK_MAX_LEN,
 } from '@teslawave/protocol';
+import { overLimit } from './limits.js';
 
-export type PairPayload = { id: string; model: string; colour: string; nick?: string };
+/**
+ * What crosses from the phone to the car: the secret, not the id. The car derives the same
+ * id from it, and from then on both devices are the same driver (ADR-0025). The row that
+ * carries it lives ten minutes at most and is deleted the moment it is claimed.
+ */
+export type PairPayload = { secret: string; model: string; colour: string; nick?: string };
 
 const json = (body: unknown, status = 200): Response =>
   new Response(JSON.stringify(body), {
@@ -16,29 +23,16 @@ const json = (body: unknown, status = 200): Response =>
     headers: { 'content-type': 'application/json', 'cache-control': 'no-store' },
   });
 
-/** Per-isolate soft limit. Enough at our scale, and it costs nothing. */
-const claims = new Map<string, { count: number; resetAt: number }>();
 const CLAIM_LIMIT = 10;
 const CLAIM_WINDOW_MS = 60_000;
 
-const overClaimLimit = (ip: string, now: number): boolean => {
-  const entry = claims.get(ip);
-  if (!entry || now > entry.resetAt) {
-    claims.set(ip, { count: 1, resetAt: now + CLAIM_WINDOW_MS });
-    if (claims.size > 10_000) claims.clear();
-    return false;
-  }
-  entry.count += 1;
-  return entry.count > CLAIM_LIMIT;
-};
-
 const readPayload = (body: unknown): PairPayload | null => {
   if (typeof body !== 'object' || body === null) return null;
-  const { id, model, colour, nick } = body as Record<string, unknown>;
-  if (typeof id !== 'string' || id.length === 0 || id.length > 64) return null;
+  const { secret, model, colour, nick } = body as Record<string, unknown>;
+  if (!isSecret(secret)) return null;
   if (!isModel(model) || !isColourId(colour)) return null;
   const clean = typeof nick === 'string' ? nick.trim().slice(0, NICK_MAX_LEN) : '';
-  return { id, model, colour, ...(clean ? { nick: clean } : {}) };
+  return { secret, model, colour, ...(clean ? { nick: clean } : {}) };
 };
 
 /** Create a short code that carries an identity from the phone to the car. */
@@ -64,11 +58,12 @@ export async function createPairing(request: Request, env: Env): Promise<Respons
   return json({ error: 'could not allocate a code' }, 503);
 }
 
-/** Claim a code once. The car adopts the phone's identity. */
+/** Claim a code once. The car adopts the phone's identity, and the row is gone. */
 export async function claimPairing(request: Request, env: Env): Promise<Response> {
   const now = Date.now();
   const ip = request.headers.get('cf-connecting-ip') ?? 'unknown';
-  if (overClaimLimit(ip, now)) return json({ error: 'too many attempts' }, 429);
+  if (overLimit('pair', ip, CLAIM_LIMIT, CLAIM_WINDOW_MS, now))
+    return json({ error: 'too many attempts' }, 429);
 
   const body = (await request.json().catch(() => null)) as { code?: unknown } | null;
   const raw = typeof body?.code === 'string' ? normaliseCode(body.code) : '';
@@ -81,10 +76,10 @@ export async function claimPairing(request: Request, env: Env): Promise<Response
     .first<{ payload: string }>();
   if (!row) return json({ error: 'unknown or expired code' }, 404);
 
-  const claimed = await env.DB.prepare(
-    'UPDATE pairing_codes SET used_at = ? WHERE code = ? AND used_at IS NULL',
-  )
-    .bind(now, raw)
+  // Delete rather than mark: the payload carries a secret, and nothing should hold it a
+  // moment longer than the hand-over needs. The row count is what makes this single-use.
+  const claimed = await env.DB.prepare('DELETE FROM pairing_codes WHERE code = ? AND used_at IS NULL')
+    .bind(raw)
     .run();
   if (claimed.meta.changes === 0) return json({ error: 'unknown or expired code' }, 404);
 

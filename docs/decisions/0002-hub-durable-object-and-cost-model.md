@@ -108,3 +108,18 @@ a bounded object count bounds the damage to roughly the price of the plan.
 - A daily usage report (`scripts/usage-report.mjs`) checks actual Durable Object duration and
   requests against these numbers. If duration ever approaches 10,800 GB-s/day, an invariant
   has been broken: find it before anything else.
+
+## Amendment, 2026-09-05: the daily harvest
+
+The cell-day counters were meant to reach D1 through a daily aggregation, but nothing ever
+called it: the hub accumulated one storage key per cell per day and one per driver ever seen,
+and a restore listed at most ten thousand keys, after which counters would have silently
+restarted from zero. Two changes, neither touching the invariants:
+
+- The Worker cron calls `harvest()` on each hub as an RPC request, one per hub per day. The
+  hub hands over the finished days, deletes them from its storage, forgets any driver who has
+  not waved in 180 days (it now keeps the time of a driver's last wave, `wt:<id>`, for that),
+  and the Worker writes the rows into D1. D1 stays out of the hub; the hub stays out of D1.
+- The Worker writes each hub id into a `hubs` table the first time an isolate sees it, so the
+  cron knows what to harvest. A namespace cannot be listed; at most 1,024 rows can exist.
+- A restore lists storage in pages of a thousand rather than one capped call.

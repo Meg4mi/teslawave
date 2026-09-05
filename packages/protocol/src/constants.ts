@@ -27,6 +27,12 @@ export const MAX_SOCKETS_PER_CLIENT = 3;
 export const POS_INTERVAL_MOVING_MS = 5_000;
 export const POS_INTERVAL_STATIONARY_MS = 30_000;
 export const STATIONARY_SPEED_KMH = 2;
+/**
+ * A car that has not moved for this long is hidden until it moves again. A parked car with
+ * the tab open used to repeat its exact position for as long as the tab lived, which for a
+ * car in a driveway is where its driver lives (ADR-0026).
+ */
+export const PARKED_HIDE_MS = 10 * 60_000;
 export const POS_HEADING_DELTA_DEG = 20;
 export const POS_SPEED_DELTA_KMH = 15;
 

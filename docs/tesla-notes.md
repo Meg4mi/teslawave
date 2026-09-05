@@ -19,6 +19,22 @@ Live at **https://teslawave.meg4mi.workers.dev** — open that on the car screen
 | _pending_ | 2019 Model 3, MCU 2 | first load, map, own car moving | not yet run on a car |
 | _pending_ | 2022 Model Y, MCU 3 | same | not yet run on a car |
 
+## The beacon
+
+A row in the table above needs someone to remember to write it. The app can also report for
+itself: **Settings → Share performance data** sends, two minutes into a drive and then every
+ten, the numbers that matter here and nothing else (screen density and size, browser
+version, mean and p95 of our own per-frame work, whether the 30 fps and low-resolution
+fallbacks engaged, how many cars were on the map). Off by default, anonymous by schema, kept
+30 days (ADR-0027). Turn it on in the car, drive, and read it back with:
+
+```bash
+pnpm perf          # last 7 days, one line per kind of screen
+pnpm perf 30
+```
+
+A mean over 8 ms is the e2e budget being missed on a real screen, and it is marked.
+
 ## What to record
 
 - **Cold load time** on LTE, from typing the URL to seeing your own car. Target: under 3 s.

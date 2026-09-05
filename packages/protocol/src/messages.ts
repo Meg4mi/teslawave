@@ -1,4 +1,5 @@
 import { CELL_ID_RE, MAX_CELLS_PER_CLIENT, NICK_MAX_LEN } from './constants.js';
+import { isSecret } from './hash.js';
 import { isColourId, isModel, type CarColourId, type TeslaModel } from './models.js';
 
 export type CarPublic = {
@@ -24,7 +25,11 @@ export type CarState = CarPublic & {
 export type ClientMsg =
   | {
       t: 'hello';
-      id: string;
+      /**
+       * The driver's secret, never their id: the hub derives the public id by hashing it, so
+       * an id read off the wire cannot be used to become that driver (ADR-0025).
+       */
+      secret: string;
       model: TeslaModel;
       colour: CarColourId;
       nick?: string;
@@ -98,12 +103,17 @@ export function parseClientMsg(raw: unknown): ClientMsg | null {
   switch (value['t']) {
     case 'hello': {
       const cells = parseCells(value['cells']);
-      if (!cells || !isId(value['id']) || !isModel(value['model']) || !isColourId(value['colour']))
+      if (
+        !cells ||
+        !isSecret(value['secret']) ||
+        !isModel(value['model']) ||
+        !isColourId(value['colour'])
+      )
         return null;
       const nick = cleanNick(value['nick']);
       return {
         t: 'hello',
-        id: value['id'],
+        secret: value['secret'],
         model: value['model'],
         colour: value['colour'],
         cells,
