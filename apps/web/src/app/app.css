@@ -463,6 +463,7 @@
   background-size: 160px 160px;
   color: var(--fg);
   white-space: nowrap;
+  max-width: calc(100vw - 2 * var(--edge));
   pointer-events: none;
   transform: translate(-50%, 0);
   animation: wave-card-in var(--d-slow) var(--e-spring) both;
@@ -483,6 +484,9 @@
   display: flex;
   flex-direction: column;
   gap: 2px;
+  /* So the lines below can actually clip: a flex item will not shrink under its content
+     without this, and a 16-character name would push the pill off the side of a phone. */
+  min-width: 0;
 }
 
 .wave-card__who {
@@ -491,6 +495,28 @@
   letter-spacing: -0.02em;
   line-height: 1.05;
   text-transform: capitalize;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* A driver's own spelling and their own capitals: never `capitalize`, unlike the
+   description above, which is ours to write. */
+.wave-card__who--name {
+  text-transform: none;
+}
+
+/* The car under its name: quieter than both the name and the beat, because it is the line
+   you already know from the drawing next to it. Only present when there is a name to sit
+   under — otherwise the description is the big line, as it always was. */
+.wave-card__model {
+  font-weight: 500;
+  font-size: 20px;
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+  text-transform: capitalize;
+  color: var(--fg-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .wave-card__what {
@@ -750,7 +776,6 @@
     top: calc(var(--edge) + 104px);
     gap: var(--sp-3);
     padding: var(--sp-2) var(--sp-5) var(--sp-2) var(--sp-2);
-    max-width: calc(100vw - 2 * var(--edge));
   }
 
   .wave-card__car {
@@ -765,8 +790,10 @@
 
   .wave-card__who {
     font-size: 20px;
-    overflow: hidden;
-    text-overflow: ellipsis;
+  }
+
+  .wave-card__model {
+    font-size: 14px;
   }
 
   .wave-card__what {

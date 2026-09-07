@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { GENEVA, onboard, simUrl } from './helpers';
+import { dragBy, GENEVA, onboard, simUrl } from './helpers';
 
 /**
  * A real two-finger pinch, dispatched through CDP. Playwright's mouse cannot express one, so
@@ -178,4 +178,50 @@ test('the zoom you pinched to survives the camera picking you up again', async (
     .poll(async () => (await state(page)).held, { timeout: 20_000 })
     .toBe(false);
   expect((await state(page)).zoom).toBeCloseTo(zoomed, 1);
+});
+
+/**
+ * The camera's shortcut is that it does not repaint the map when the driver has not moved
+ * since the last time it did. That is only true while nothing else moves the map — and a pan
+ * does. A car standing still, panned away from, therefore stayed panned away from: the next
+ * frame saw a position it had already used and decided there was nothing to do. Reported from
+ * a phone, where the car is usually parked. Both ways back are checked, because the button
+ * and the hold running out on their own are two different paths to the same frame.
+ */
+test('the camera comes back to a car that is standing still', async ({ page }) => {
+  test.slow();
+  await onboard(page, simUrl(GENEVA.lat, GENEVA.lng, 90, 0));
+  await page.waitForFunction(() => window.__twMap !== undefined);
+  await expect.poll(async () => page.evaluate(() => window.__tw.self() !== null)).toBe(true);
+
+  const size = page.viewportSize() ?? { width: 1_920, height: 1_200 };
+  const drag = async (): Promise<void> => {
+    // A finger, not a mouse: the car screen is touch-only, and so is the phone this was
+    // reported from.
+    await dragBy(page, { x: size.width / 2, y: size.height / 2 }, -size.width * 0.3, -120);
+    const home = await page.evaluate(() => window.__tw.self());
+    const away = await page.evaluate(() => window.__twMap?.getCenter());
+    expect(Math.abs((away?.lng ?? 0) - (home?.lng ?? 0))).toBeGreaterThan(1e-4);
+  };
+  const offBy = async (): Promise<number> => {
+    const centre = await page.evaluate(() => window.__twMap?.getCenter());
+    const self = await page.evaluate(() => window.__tw.self());
+    if (!centre || !self) return 1;
+    return Math.max(Math.abs(centre.lat - self.lat), Math.abs(centre.lng - self.lng));
+  };
+
+  await drag();
+  const button = page.getByRole('button', { name: 'Back to my car' });
+  await expect(button).toBeVisible();
+  await button.click();
+  await expect
+    .poll(offBy, { timeout: 5_000, message: 'the button should bring the camera back' })
+    .toBeLessThan(1e-5);
+
+  // And again without touching anything: the hold runs out by itself after a few seconds.
+  await drag();
+  await expect.poll(async () => (await state(page)).held, { timeout: 20_000 }).toBe(false);
+  await expect
+    .poll(offBy, { timeout: 5_000, message: 'the hold running out should bring it back too' })
+    .toBeLessThan(1e-5);
 });

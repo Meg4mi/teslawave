@@ -30,6 +30,25 @@ function readSim(): Sim | null {
 const MIN_HEADING_SPEED_KMH = 3;
 
 /**
+ * How long we wait for the very first fix before running as a spectator instead.
+ *
+ * The watch is given `timeout: 15_000`, and a device that cannot get a fix answers that with
+ * a TIMEOUT error. This is for the one that answers with nothing at all: an iOS permission
+ * sheet that is never dismissed, a watch the browser dropped on its way out of the
+ * background. Nothing arrives, nothing fails, and `status` sits at `idle` — which meant no
+ * position, so no cells, so no socket, so a HUD that said "Reconnecting…" for the rest of the
+ * drive on a phone whose connection was perfectly fine. Giving up here is not giving up on
+ * the fix: the watch stays registered, and a late one still promotes the driver back.
+ */
+const FIRST_FIX_TIMEOUT_MS = 20_000;
+/**
+ * How quiet the watch has to have been, when the tab comes back, before we replace it. iOS
+ * stops delivering to a watch registered before the app went away and never says so, so a
+ * phone put in a pocket at a services and taken out again would never move on the map again.
+ */
+const WATCH_STALE_MS = 30_000;
+
+/**
  * One position source for the whole app. Below walking pace the device heading is noise,
  * so we hold the last one: a car sitting at a light should not spin on the map.
  */
@@ -78,33 +97,94 @@ export function usePosition(enabled: boolean): { status: GeoStatus; fix: Fix | n
       return () => clearTimeout(timer);
     }
 
-    const watch = navigator.geolocation.watchPosition(
-      (position) => {
-        const { latitude, longitude, speed, heading: deviceHeading } = position.coords;
-        const kmh = typeof speed === 'number' && speed >= 0 ? speed * 3.6 : 0;
-        const last = previous.current;
-        if (typeof deviceHeading === 'number' && !Number.isNaN(deviceHeading) && kmh >= MIN_HEADING_SPEED_KMH) {
-          heading.current = deviceHeading;
-        } else if (last && haversineM(last.lat, last.lng, latitude, longitude) > 8) {
-          heading.current = bearingDeg(last.lat, last.lng, latitude, longitude);
-        }
-        const next: Fix = {
-          lat: latitude,
-          lng: longitude,
-          heading: ((heading.current % 360) + 360) % 360,
-          speed: kmh,
-          at: Date.now(),
-        };
-        previous.current = next;
-        setStatus('granted');
-        setFix(next);
-      },
-      (error) => {
-        setStatus(error.code === error.PERMISSION_DENIED ? 'denied' : 'unavailable');
-      },
-      { enableHighAccuracy: true, maximumAge: 1_000, timeout: 15_000 },
-    );
-    return () => navigator.geolocation.clearWatch(watch);
+    let watch: number | null = null;
+    /** When the current watch was registered, and when it last said anything. */
+    let armedAt = 0;
+    let lastFixAt = 0;
+    let firstFixTimer: number | null = null;
+
+    const stopWaiting = (): void => {
+      if (firstFixTimer === null) return;
+      clearTimeout(firstFixTimer);
+      firstFixTimer = null;
+    };
+
+    const onFix = (position: GeolocationPosition): void => {
+      const { latitude, longitude, speed, heading: deviceHeading } = position.coords;
+      const kmh = typeof speed === 'number' && speed >= 0 ? speed * 3.6 : 0;
+      const last = previous.current;
+      if (
+        typeof deviceHeading === 'number' &&
+        !Number.isNaN(deviceHeading) &&
+        kmh >= MIN_HEADING_SPEED_KMH
+      ) {
+        heading.current = deviceHeading;
+      } else if (last && haversineM(last.lat, last.lng, latitude, longitude) > 8) {
+        heading.current = bearingDeg(last.lat, last.lng, latitude, longitude);
+      }
+      const next: Fix = {
+        lat: latitude,
+        lng: longitude,
+        heading: ((heading.current % 360) + 360) % 360,
+        speed: kmh,
+        at: Date.now(),
+      };
+      previous.current = next;
+      lastFixAt = next.at;
+      stopWaiting();
+      // A fix after a spell as a spectator puts the driver back on the map.
+      setStatus('granted');
+      setFix(next);
+    };
+
+    const onError = (error: GeolocationPositionError): void => {
+      if (error.code === error.PERMISSION_DENIED) {
+        stopWaiting();
+        setStatus('denied');
+        return;
+      }
+      // A device that has already given us fixes loses one now and then — a tunnel, a car
+      // park, a street of tall buildings. That is a gap, not a driver who cannot be located,
+      // and demoting them to spectator over it would tear down the socket mid-drive.
+      if (lastFixAt > 0) return;
+      stopWaiting();
+      setStatus('unavailable');
+    };
+
+    const arm = (): void => {
+      armedAt = Date.now();
+      watch = navigator.geolocation.watchPosition(onFix, onError, {
+        enableHighAccuracy: true,
+        maximumAge: 1_000,
+        timeout: 15_000,
+      });
+    };
+
+    /** Nothing at all for long enough that the watch itself is the suspect: replace it. */
+    const revive = (): void => {
+      if (Date.now() - Math.max(armedAt, lastFixAt) < WATCH_STALE_MS) return;
+      if (watch !== null) navigator.geolocation.clearWatch(watch);
+      arm();
+    };
+    const onVisible = (): void => {
+      if (document.visibilityState === 'visible') revive();
+    };
+
+    arm();
+    firstFixTimer = window.setTimeout(() => {
+      firstFixTimer = null;
+      // Only if nothing has been heard at all: an error has already had its say.
+      setStatus((current) => (current === 'idle' ? 'unavailable' : current));
+    }, FIRST_FIX_TIMEOUT_MS);
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('pageshow', revive);
+
+    return () => {
+      stopWaiting();
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('pageshow', revive);
+      if (watch !== null) navigator.geolocation.clearWatch(watch);
+    };
   }, [enabled]);
 
   return { status, fix };

@@ -86,6 +86,8 @@ describe('English', () => {
   it('names a car the way a driver would', () => {
     expect(EN.wave.prompt('Y', 'deepblue')).toBe('Wave at the blue Model Y');
     expect(EN.wave.received('3', 'ultrared')).toBe('A red Model 3 waved at you');
+    // A name takes no article: it is who they are, not what they are driving.
+    expect(EN.wave.promptTargetNamed('Ghost')).toBe('at Ghost');
   });
 
   it('keeps the last-wave label glanceable', () => {
@@ -129,6 +131,8 @@ describe('French', () => {
 
   it('picks the article the model takes, and contracts nothing it should not', () => {
     expect(FR.wave.prompt('Y', 'deepblue')).toBe('Saluer la Model Y bleue');
+    // "Saluer Ghost", never "Saluer la Ghost": a name takes no article in either language.
+    expect(FR.wave.promptTargetNamed('Ghost')).toBe('Ghost');
     expect(FR.wave.prompt('CT', 'deepblue')).toBe('Saluer le Cybertruck bleu');
     expect(FR.wave.received('3', 'ultrared')).toBe('Une Model 3 rouge vous a fait signe');
     expect(FR.wave.received('CT', 'ultrared')).toBe('Un Cybertruck rouge vous a fait signe');

@@ -3,7 +3,14 @@ import type { TeslaModel } from '@teslawave/protocol';
 import { CarSvg } from '../ui/CarSvg';
 import { useCopy } from '../i18n';
 
-export type WaveCardContent = { id: number; model: TeslaModel; colour: string; back: boolean };
+export type WaveCardContent = {
+  id: number;
+  model: TeslaModel;
+  colour: string;
+  /** What their driver called the car, if they named it. Their spelling, their capitals. */
+  nick?: string;
+  back: boolean;
+};
 
 /** On screen for this long, then the exit animation in app.css. */
 const SHOW_MS = 4_000;
@@ -45,15 +52,27 @@ export function WaveCard({
 
   if (!card) return null;
   const leaving = leavingId === card.id;
-  // A live region reads its text, so the two lines are left readable: "blue Model Y waved
-  // at you" is the sentence, and the drawing is decoration.
+  const described = copy.cars.describe(card.model, card.colour);
+  /*
+   * A named car is named here. The name is who they are — that is the point of typing one —
+   * so it takes the big line, and the car it belongs to keeps its own line underneath rather
+   * than being displaced by it: at a glance across a lane you recognise the paint, not the
+   * name. Without a name the card is exactly what it was.
+   *
+   * A live region reads the text as it stands, so the lines are left readable in order:
+   * "Ghost, blue Model Y, waved at you". The drawing is decoration.
+   */
   return (
     <div className={`wave-card ${leaving ? 'wave-card--leaving' : ''}`.trim()} role="status">
       <span className="wave-card__car" aria-hidden>
         <CarSvg model={card.model} colour={card.colour} size={96} heading={90} />
       </span>
       <span className="wave-card__text">
-        <span className="wave-card__who">{copy.cars.describe(card.model, card.colour)}</span>
+        {/* Never capitalised by us: a name is written the way its owner wrote it. */}
+        {card.nick ? (
+          <span className="wave-card__who wave-card__who--name">{card.nick}</span>
+        ) : null}
+        <span className={card.nick ? 'wave-card__model' : 'wave-card__who'}>{described}</span>
         <span className="wave-card__what">
           {card.back ? copy.wave.cardBackTitle : copy.wave.cardTitle}
         </span>

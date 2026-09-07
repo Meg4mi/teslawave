@@ -133,6 +133,8 @@ export const FR: Copy = {
     paused: 'TeslaWave est en pause. De retour très vite.',
     budget: (time: string): string =>
       `TeslaWave a dépassé sa capacité gratuite pour aujourd’hui. De retour à ${time}.`,
+    locating: 'En attente de votre position…',
+    connecting: 'Connexion…',
     reconnecting: 'Reconnexion…',
     recentre: 'Revenir à ma voiture',
     nearby: 'à proximité',
@@ -173,6 +175,8 @@ export const FR: Copy = {
     verb: 'Saluer',
     backVerb: 'Saluer en retour',
     promptTarget: (model: TeslaModel, colour: string): string => theCar(model, colour),
+    /** Un nom n’a pas d’article : « Saluer Ghost », jamais « Saluer la Ghost ». */
+    promptTargetNamed: (nick: string): string => nick,
     prompt: (model: TeslaModel, colour: string): string => `Saluer ${theCar(model, colour)}`,
     received: (model: TeslaModel, colour: string): string =>
       `${aCar(model, colour)} vous a fait signe`,

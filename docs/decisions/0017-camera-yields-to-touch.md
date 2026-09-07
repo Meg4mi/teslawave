@@ -39,3 +39,24 @@ the bearing but **not** the zoom: if you pinched out to see what is ahead, you k
 `jumpTo` now has one condition in front of it, and the hold is measured on the same monotonic
 clock as the frame loop. The e2e suite covers all three cases: a drag holds the camera, the
 camera comes back by itself, and a tap does not hold it.
+
+## Amendment, 2026-09-07: the camera's memory ends where the gesture begins
+
+The camera does not call `jumpTo` when the driver has not moved since the last one it made:
+every jump repaints the whole vector map, and a car standing at a light would otherwise repaint
+it thirty times a second to draw the same frame. That shortcut compared the new position
+against the last centre the camera had chosen — and said nothing about where the map actually
+was, which is a different thing the moment a hand touches it.
+
+So a car that was standing still and had been panned away from stayed panned away from. "Back
+to my car" cleared the hold, the next frame compared a position it had already used against
+itself, found nothing had moved, and left the map where the driver's thumb had put it. The
+same held when the six seconds simply ran out. It never showed on a moving car, because a
+moving car's next fix is always different, which is why it arrived as a report from a phone —
+where the car is usually parked.
+
+The follow camera is now its own module (`map/camera.ts`) with one rule: every hold and every
+release forgets the last centre, so the shortcut only ever suppresses a jump the camera itself
+would have made twice. "Back to my car" also jumps there and then rather than leaving it to
+the next tick, and falls back to the rough origin from `/api/whereami` when there is no fix
+yet — a button that names your car has to move the map every time it is pressed.
