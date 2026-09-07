@@ -1,9 +1,18 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { POS_INTERVAL_STATIONARY_MS, PRESENCE_EXPIRY_MS } from '@teslawave/protocol';
-import type { CarState, ServerMsg } from '@teslawave/protocol';
+import {
+  CELL_PRECISION,
+  POS_INTERVAL_STATIONARY_MS,
+  PRESENCE_EXPIRY_MS,
+  WIRE_COORD_SCALE,
+  decodeBounds,
+  destination,
+  encode,
+} from '@teslawave/protocol';
+import type { CarMeta, CarState, CarWire, ServerMsg } from '@teslawave/protocol';
 import {
   applyServerMsg,
   dropCells,
+  getCar,
   getSummary,
   resetWorld,
   setSelfPlacement,
@@ -43,6 +52,44 @@ const welcome = (snapshot: CarState[]): ServerMsg => ({
 const diff = (over: Partial<Extract<ServerMsg, { t: 'diff' }>> = {}): ServerMsg => ({
   t: 'diff',
   cell: 'u0hq',
+  upd: [],
+  gone: [],
+  online: 1,
+  wavesToday: 0,
+  lastWaveTs: null,
+  ...over,
+});
+
+const CELL = encode(GENEVA.lat, GENEVA.lng, CELL_PRECISION);
+/** The cell over CELL's northern edge. */
+const NORTH_EDGE = decodeBounds(CELL).maxLat;
+const NORTH_CELL = encode(NORTH_EDGE + 0.01, GENEVA.lng, CELL_PRECISION);
+
+const meta = (h: number, id: string, cell: string): CarMeta => ({
+  h,
+  id,
+  model: 'Y',
+  colour: 'deepblue',
+  since: 0,
+  cell,
+});
+const wire = (h: number, lat: number, lng: number, age = 0): CarWire => [
+  h,
+  Math.round(lat * WIRE_COORD_SCALE),
+  Math.round(lng * WIRE_COORD_SCALE),
+  0,
+  0,
+  0,
+  age,
+];
+const diff2 = (
+  cell: string,
+  over: Partial<Extract<ServerMsg, { t: 'diff2' }>> = {},
+): ServerMsg => ({
+  t: 'diff2',
+  cell,
+  now: Date.now(),
+  meta: [],
   upd: [],
   gone: [],
   online: 1,
@@ -95,6 +142,43 @@ describe('world', () => {
     expect(getSummary().nearby?.id).toBe('other');
   });
 
+  it('keeps offering the car it offered until the hub would refuse the wave', () => {
+    vi.useFakeTimers();
+    try {
+      const start = Date.now();
+      // Stopped, so nothing dead-reckons: the distances below are the ones measured.
+      const at = (metres: number): Partial<CarState> => ({
+        ...destination(GENEVA.lat, GENEVA.lng, 90, metres),
+        speed: 0,
+      });
+      apply(welcome([car({ ...at(250), ts: start })]));
+      tickWorld(1_000);
+      expect(getSummary().nearby?.id).toBe('other');
+
+      // Past the prompt range, still inside the range a wave is accepted at.
+      vi.setSystemTime(start + 5_000);
+      apply(diff({ upd: [car({ ...at(400), ts: start + 5_000 })] }));
+      vi.setSystemTime(start + 8_000);
+      tickWorld(2_000);
+      expect(getSummary().nearby?.id, 'the offer used to vanish a metre past 300').toBe('other');
+
+      // A car inside the prompt range takes the offer over from one that is only kept.
+      apply(diff({ upd: [car({ ...at(100), id: 'closer', ts: start + 8_000 })] }));
+      vi.setSystemTime(start + 11_000);
+      tickWorld(3_000);
+      expect(getSummary().nearby?.id).toBe('closer');
+
+      // And the hub's own limit is where the offer ends.
+      apply(diff({ gone: ['closer'] }));
+      apply(diff({ upd: [car({ ...at(500), ts: start + 11_000 })] }));
+      vi.setSystemTime(start + 14_000);
+      tickWorld(4_000);
+      expect(getSummary().nearby).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('accumulates counters across the cells you are subscribed to', () => {
     setSubscribedCells(['u0hq', 'u0hr']);
     apply(diff({ cell: 'u0hq', online: 3, wavesToday: 2 }));
@@ -135,6 +219,50 @@ describe('world', () => {
     tickWorld(performance.now() + 4_000);
     expect(getSummary().online).toBe(0);
     expect(tickWorld(performance.now() + 4_000)).toHaveLength(0);
+  });
+});
+
+describe('letting go of a cell', () => {
+  const inCell = { lat: NORTH_EDGE - 0.02, lng: GENEVA.lng };
+  const north = { lat: NORTH_EDGE + 0.02, lng: GENEVA.lng };
+
+  it('keeps hearing the cars in the cells it still holds', () => {
+    setSubscribedCells([CELL, NORTH_CELL]);
+    apply(
+      diff2(CELL, {
+        meta: [meta(1, 'behind', CELL), meta(2, 'beside', NORTH_CELL)],
+        upd: [wire(1, inCell.lat, inCell.lng), wire(2, north.lat, north.lng)],
+      }),
+    );
+    expect(tickWorld(1_000)).toHaveLength(2);
+
+    // We drove on: the cell behind us left the set, the one we are in did not.
+    dropCells([CELL], HUB);
+    setSubscribedCells([NORTH_CELL]);
+    expect(getCar('behind')).toBeUndefined();
+    expect(getCar('beside')).toBeDefined();
+
+    // The hub still refers to the car beside us by the handle it gave. That used to fall on
+    // deaf ears: every handle on the hub had been forgotten, and the car froze.
+    const later = Date.now() + 2_000;
+    const moved = destination(north.lat, north.lng, 90, 30);
+    apply(diff2(NORTH_CELL, { now: later, upd: [wire(2, moved.lat, moved.lng)] }));
+    expect(getCar('beside')?.lastServerTs).toBe(later);
+  });
+
+  it('judges a car by where it is now, not by the cell it was first met in', () => {
+    setSubscribedCells([CELL, NORTH_CELL]);
+    // Described in CELL, then driven north across the edge as six numbers a tick.
+    apply(diff2(CELL, { meta: [meta(1, 'companion', CELL)], upd: [wire(1, inCell.lat, inCell.lng)] }));
+    apply(diff2(NORTH_CELL, { now: Date.now() + 2_000, upd: [wire(1, north.lat, north.lng)] }));
+    expect(getCar('companion')?.cell).toBe(NORTH_CELL);
+
+    // The cell we met in falls behind us. The companion is not in it any more.
+    dropCells([CELL], HUB);
+    expect(getCar('companion'), 'deleted for the cell it was described in').toBeDefined();
+
+    dropCells([NORTH_CELL], HUB);
+    expect(getCar('companion')).toBeUndefined();
   });
 });
 
