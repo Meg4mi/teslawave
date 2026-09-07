@@ -121,3 +121,21 @@ Three things fell out of the work and are part of it:
 - Past 1,000 in one cell the lever is `HUB_PRECISION`, not this cap: 3 gives 32,768 possible
   objects instead of 1,024 and divides a city between several of them. Per-tick cost is per
   object, so that is what buys the next order of magnitude.
+
+## Amendment, 2026-09-07: what a client lets go of, and what a hub keeps holding
+
+Two pieces of bookkeeping on this wire were wrong, and together they took cars off the map
+mid-drive. When the set of cells around a driver changed on a hub they were still connected
+to, the client forgot every handle that hub had ever given it, not only the ones for the cells
+it dropped: every car still held went deaf to its own updates, dead-reckoned along its last
+heading, and expired a minute later, while only a car newly in range moved again. And a car
+was deleted by the cell it had been *described* in, which the wire never restates: a companion
+driven twenty kilometres since was deleted the moment the cell they were met in fell out of
+range behind. A wave in flight at that moment lost the car it was drawn on.
+
+The client now keeps a car's cell from the positions it is sent, drops on that, and forgets
+only the handles of the cars it dropped. The hub, for its part, no longer counts a car as held
+by a connection once that connection has let go of the car's cell: it would otherwise have
+sent six numbers for a handle the client had rightly forgotten when the car later drove into
+a cell the connection did hold, and the car never reappeared. The round-trip suite drives
+both cases against the real hub.

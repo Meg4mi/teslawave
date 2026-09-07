@@ -187,6 +187,19 @@ function createRig(ourCells: string[] = [CELL]) {
     forgetCells(cells: string[]): void {
       dropCells(cells);
     },
+
+    /**
+     * We drove on and the cells around us changed on the same hub: a `sub` for the new set,
+     * and the client lets go of the cells that left it, exactly as `net/sockets.ts` does.
+     */
+    resubscribe(cells: string[]): void {
+      const dropped = ourCellsHeld.filter((cell) => !cells.includes(cell));
+      send(US, { t: 'sub', cells });
+      ourCellsHeld = [...cells];
+      dropCells(dropped, HUB);
+      setSubscribedCells(ourCellsHeld);
+      deliver();
+    },
   };
 }
 
@@ -259,6 +272,58 @@ describe('the hub and the client, against each other', () => {
 
     expect(crossed, 'the test has to actually cross a border to mean anything').toBe(true);
     expect(gaps, `car vanished ${gaps.join('; ')}`).toEqual([]);
+  });
+
+  it('keeps a companion moving after the cell you met them in falls behind you', () => {
+    // Two cars driving together, met just short of a cell edge and crossing it together.
+    const rig = createRig([CELL, NORTH_CELL]);
+    rig.join(US, 'us', [CELL, NORTH_CELL]);
+    rig.join('b', 'car-b', [CELL, NORTH_CELL]);
+    const us = { key: US, lat: NORTH_EDGE - 0.002, lng: GENEVA.lng, speed: 90, heading: 0 };
+    const b = { key: 'b', lat: NORTH_EDGE - 0.002, lng: GENEVA.lng + 0.001, speed: 90, heading: 0 };
+    run(rig, 20, [us, b], () => undefined);
+    expect(rig.hub.presence.get(idOf('car-b'))?.cell).toBe(NORTH_CELL);
+    expect(onMap(idOf('car-b'))).toBe(true);
+
+    // The cell we met in is behind us now and leaves the set. The bug: the client deleted
+    // the companion for the cell it had been *described* in, and forgot every handle on the
+    // hub besides, so whatever survived stopped moving.
+    rig.resubscribe([NORTH_CELL]);
+    expect(onMap(idOf('car-b')), 'the companion was deleted with the cell behind us').toBe(true);
+
+    const seen = new Set<number>();
+    run(rig, 10, [us, b], () => {
+      const car = getCar(idOf('car-b'));
+      if (car) seen.add(car.lastServerTs);
+    });
+    // Ten ticks of reports: the car on the map has to have heard most of them.
+    expect(seen.size, 'the companion froze: its updates fell on a forgotten handle').toBeGreaterThan(5);
+  });
+
+  it('shows a car again that drives into a cell you hold after leaving one you let go of', () => {
+    const rig = createRig([CELL, NORTH_CELL]);
+    rig.join(US, 'us', [CELL, NORTH_CELL]);
+    rig.join('b', 'car-b', [CELL, NORTH_CELL]);
+    rig.pos(US, NORTH_EDGE - 0.01, GENEVA.lng, 0);
+    const b = { key: 'b', lat: NORTH_EDGE + 0.004, lng: GENEVA.lng, speed: 90, heading: 180 };
+    rig.pos('b', b.lat, b.lng, 0, b.heading);
+    rig.advance(SERVER_TICK_MS);
+    rig.tick();
+    expect(onMap(idOf('car-b'))).toBe(true);
+
+    // We let go of the northern cell; the car in it goes with it.
+    rig.resubscribe([CELL]);
+    expect(onMap(idOf('car-b'))).toBe(false);
+
+    // It drives south into ours. The hub has to describe it afresh, not refer to a handle
+    // the client no longer knows.
+    let back = false;
+    run(rig, 25, [b], () => {
+      rig.pos(US, NORTH_EDGE - 0.01, GENEVA.lng, 0);
+      if (onMap(idOf('car-b'))) back = true;
+    });
+    expect(rig.hub.presence.get(idOf('car-b'))?.cell).toBe(CELL);
+    expect(back, 'the car crossed into our cell and never reappeared').toBe(true);
   });
 
   it('does not wipe the map when the hub wakes from hibernation', () => {

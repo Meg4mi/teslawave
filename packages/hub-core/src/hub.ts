@@ -510,6 +510,18 @@ function onSub(state: HubState, s: Socket, msg: Extract<ClientMsg, { t: 'sub' }>
   unindexCells(state, s);
   s.cells = [...msg.cells];
   for (const cell of s.cells) addTo(state.socketsByCell, cell, s.key);
+  /*
+   * A car in a cell this connection has just let go of is no longer held: the client drops
+   * it, since no diff for that cell will reach it again. Keeping it in `holding` meant that
+   * when the same car later drove into a cell the connection does hold, it was sent as six
+   * numbers for a handle the client had forgotten — and it never appeared again.
+   */
+  if (s.holding.size > 0)
+    for (const car of state.presence.values()) {
+      if (s.cells.includes(car.cell)) continue;
+      const handle = state.handles.get(car.id);
+      if (handle) s.holding.delete(handle.h);
+    }
 
   const compact = s.v >= COMPACT_WIRE_VERSION;
   const effects: Effect[] = [{ k: 'attach', to: s.key, profile: profileOf(s) }];

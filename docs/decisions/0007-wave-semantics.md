@@ -58,3 +58,13 @@ messages, so the receiver got two cards and two chimes; and both hubs incremente
 counters. The client now sends a wave only to the hub that owns the target's cell, and a hub
 refuses a wave whose target sits in a cell it does not own, so a misbehaving client cannot
 bring the double back.
+
+## Amendment, 2026-09-07: the offer stays until the hub would refuse
+
+The button offered the closest car within the prompt range and withdrew it the moment that
+car read a metre past it, although the hub would still have taken the wave for another 150 m.
+Two cars in traffic sit around 300 m apart for a long time, so the button landed and vanished
+with every fluctuation: its ten-second countdown ran for one, and the wave looked as if it
+had been called off. The car already offered now stays offered while it is inside the
+validate range; a car inside the prompt range still takes the offer over. The prompt range
+is unchanged, so a wave is still only ever offered where the server would accept it.

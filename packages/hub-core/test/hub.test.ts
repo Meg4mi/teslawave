@@ -298,6 +298,29 @@ describe('presence and diffs', () => {
     expect(updIds(out, 'b')).toEqual([ID('car-a')]);
   });
 
+  it('describes a car again when it comes back into a cell the connection let go of and re-held', () => {
+    const edge = decodeBounds(CELL).maxLat;
+    hello('a', 'car-a', [CELL, ACROSS_EDGE]);
+    hello('b', 'car-b', [CELL, ACROSS_EDGE]);
+    pos('a', edge - 0.01, GENEVA.lng);
+    pos('b', edge + 0.001, GENEVA.lng);
+    now += SERVER_TICK_MS;
+    expect(updIds(flush(), 'a')).toContain(ID('car-b'));
+
+    // A drives on and lets go of the cell B is in. A's client drops B on its own.
+    onMessage(state, 'a', { t: 'sub', cells: [CELL] }, now);
+
+    // B drives south into A's cell, at a speed the hub believes. The hub used to remember it
+    // was still "holding" B for A and send six numbers for a handle A had forgotten, so B
+    // never reappeared.
+    now += 10_000;
+    pos('b', edge - 0.001, GENEVA.lng);
+    now += SERVER_TICK_MS;
+    const out = flush();
+    const described = diff2sFor(out, 'a').flatMap((d) => d.meta.map((m) => m.id));
+    expect(described).toContain(ID('car-b'));
+  });
+
   it('evicts a driver that stops sending after PRESENCE_EXPIRY_MS', () => {
     hello('a', 'car-a');
     hello('b', 'car-b');

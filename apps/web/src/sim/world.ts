@@ -1,10 +1,13 @@
 import { createSelfFollower } from './self';
 import {
+  CELL_PRECISION,
   POS_INTERVAL_STATIONARY_MS,
   PRESENCE_EXPIRY_MS,
   TRAIL_MS,
   WAVE_PROMPT_RANGE_M,
+  WAVE_VALIDATE_RANGE_M,
   createTrack,
+  encode,
   haversineM,
   pushSample,
   sample,
@@ -31,6 +34,13 @@ export type WorldCar = {
   nick?: string;
   waves: number;
   since: number;
+  /**
+   * The cell the car is in now, from its latest position. The hub states a cell only when
+   * it describes a car; after that a car is six numbers a tick, so this is kept from those.
+   * It used to be the cell of the description, which is where the car was first met — and
+   * a companion driven twenty kilometres since was deleted, mid-drive, the moment that cell
+   * fell out of range behind you.
+   */
   cell: string;
   /**
    * Which hub told us about this car. A wave goes only to the hub that owns the target, and
@@ -255,6 +265,7 @@ const applyWire = (wire: CarWire, hub: string, msgNow: number, appearedAt: numbe
   }
   car.waves = wire[5];
   car.hub = hub;
+  car.cell = encode(sample.lat, sample.lng, CELL_PRECISION);
   car.lastServerTs = sample.ts;
   pushSample(car.track, sample, serverNow());
 };
@@ -332,11 +343,25 @@ export function applyServerMsg(msg: ServerMsg, hub: string): void {
   }
 }
 
-/** A hub socket went away: forget the cells it was feeding us, and what its handles meant. */
+/**
+ * We stopped holding these cells: a hub socket went away, or we drove on and the set of
+ * cells around us changed. The cars in them go, and with them what their handles meant on
+ * that hub — and nothing else. This used to forget every handle the hub had ever given us,
+ * which left every car still held on it deaf to its own updates: they dead-reckoned along
+ * their last heading until they expired, and only a car newly in range moved again.
+ */
 export function dropCells(cells: readonly string[], hub?: string): void {
   for (const cell of cells) cellStats.delete(cell);
-  for (const [id, car] of cars) if (cells.includes(car.cell)) cars.delete(id);
-  if (hub !== undefined) handles.delete(hub);
+  const dropped = new Set<string>();
+  for (const [id, car] of cars)
+    if (cells.includes(car.cell)) {
+      cars.delete(id);
+      dropped.add(id);
+    }
+  if (hub === undefined) return;
+  const map = handles.get(hub);
+  if (!map) return;
+  for (const [h, id] of map) if (dropped.has(id)) map.delete(h);
 }
 
 export function bumpSelfWaves(): void {
@@ -431,18 +456,29 @@ function updateSummary(rendered: RenderCar[], server: number): void {
 
   let near = 0;
   let closest: RenderCar | null = null;
+  /**
+   * The car already offered stays offered for as long as the hub would still take the wave
+   * (WAVE_VALIDATE_RANGE_M), not only for as long as it would first be offered. Two cars in
+   * traffic sit around the prompt range for a long time, and the button used to land and
+   * vanish with every metre either side of it; the countdown that means "ten seconds" ran
+   * for one. A closer car inside the prompt range still takes the offer over.
+   */
+  let kept: RenderCar | null = null;
+  const offered = summary.nearby?.id;
   for (const car of rendered) {
     if (car.distanceM <= 10_000) near++;
     if (car.distanceM <= WAVE_PROMPT_RANGE_M && (!closest || car.distanceM < closest.distanceM))
       closest = car;
+    if (car.id === offered && car.distanceM <= WAVE_VALIDATE_RANGE_M) kept = car;
   }
+  const chosen = closest ?? kept;
 
-  const nearby = closest
+  const nearby = chosen
     ? {
-        id: closest.id,
-        model: closest.model,
-        colour: closest.colour,
-        ...(closest.nick === undefined ? {} : { nick: closest.nick }),
+        id: chosen.id,
+        model: chosen.model,
+        colour: chosen.colour,
+        ...(chosen.nick === undefined ? {} : { nick: chosen.nick }),
       }
     : null;
 
