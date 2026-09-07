@@ -232,6 +232,7 @@ from Workers Builds on non-production branches, or `wrangler versions upload`.
 ## Documents
 
 - [docs/decisions](docs/decisions) — one file per non-obvious decision, written as it was made
+- [docs/protocol.md](docs/protocol.md) — the wire between the car and the hub, end to end: every message, every rule, and the numbers behind them
 - [docs/privacy.md](docs/privacy.md) — what leaves the car, what is kept, and for how long
 - `/privacy` and `/terms` — the same two promises inside the app, in every language, from
   the catalogue rather than from a file a driver would never find (ADR-0037)
