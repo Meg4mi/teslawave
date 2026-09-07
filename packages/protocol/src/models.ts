@@ -1,4 +1,5 @@
-export const TESLA_MODELS = ['3', 'Y', 'S', 'X', 'CT'] as const;
+/** Ordered the way Tesla named them: S3XY, then the truck. */
+export const TESLA_MODELS = ['S', '3', 'X', 'Y', 'CT'] as const;
 export type TeslaModel = (typeof TESLA_MODELS)[number];
 
 export const MODEL_LABELS: Record<TeslaModel, string> = {
