@@ -81,6 +81,16 @@ by design.
 tiers 5 and 6 waits for this, because without it every post is a description of a feeling
 and with it the post is the feeling.
 
+That is the filmed clip, and it needs two drivers who both have this and who cross paths —
+so it is gated on the same density the press step is gated on, and a club drive is where it
+gets made. Until then `pnpm gen:demo` records the app crossing itself: the real client, the
+real hub, only the GPS simulated (ADR-0038). The two are not substitutes. The generated one
+answers "what is this", and belongs on the landing page, in the how-to, in a maker post, in
+the TMC thread and in a directory listing. The filmed one answers "are people really out
+there doing this", which is the question the press and the clubs are actually asking, and
+nothing generated can answer it. Post the generated clip as what it is — a screen recording
+— and never dressed as footage from a road.
+
 **Then the next region**, using the first as proof. A region launches when a group or a
 club there is willing to run a drive; if none is, the region is not ready.
 
