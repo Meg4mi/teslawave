@@ -108,9 +108,29 @@ describe('model art', () => {
         for (const y of spec.doorCuts) expect(Math.abs(y)).toBeLessThan(spec.lengthMm / 2 - 500);
       });
 
+      it('parks its wipers on the windscreen, driver on the left', () => {
+        // Authored whole, not mirrored: a left-hand-drive car's wipers are not symmetric.
+        expect(spec.wipers.length).toBeGreaterThan(0);
+        const screen = extentY(spec.windscreen);
+        const halfW = extentX(spec.windscreen);
+        for (const arm of spec.wipers) {
+          const y = extentY(arm);
+          expect(y.front).toBeGreaterThan(screen.front);
+          expect(y.rear).toBeLessThan(screen.rear);
+          // Along the base of the glass, not across the middle of it — except the
+          // Cybertruck's, which parks standing up the driver's side.
+          if (!spec.angular) expect(y.rear).toBeLessThan(screen.front + (screen.rear - screen.front) * 0.4);
+          expect(extentX(arm)).toBeLessThan(halfW + 60);
+        }
+        expect(Math.min(...spec.wipers.flatMap((arm) => samplePoints(arm).map(([x]) => x)))).toBeLessThan(-200);
+      });
+
       it('builds a scene both renderers can draw', () => {
         const scene = buildCarScene(model, 'pearl');
         expect(scene.ops.length).toBeGreaterThan(20);
+        // The wipers are cut to the glass, the arches to the body's edge.
+        expect(scene.clips['windscreen']).toBeDefined();
+        expect(scene.clips['flanks']).toBeDefined();
         for (const op of scene.ops) {
           expect(op.d).toMatch(/^M-?\d/);
           if (op.clip) expect(scene.clips[op.clip]).toBeDefined();
@@ -147,6 +167,19 @@ describe('model art', () => {
   it('gives the Model X falcon-wing roof glass and nothing else', () => {
     for (const model of TESLA_MODELS)
       expect(art(model).falconGlass === undefined).toBe(model !== 'X');
+  });
+
+  it('gives the Cybertruck flares that stand proud of its doors, and nobody else any', () => {
+    for (const model of TESLA_MODELS) expect(art(model).flares !== undefined).toBe(model === 'CT');
+    const spec = art('CT');
+    const doorHalf = samplePoints(spec.body).filter(([, y]) => Math.abs(y) < 1000).reduce((m, [x]) => Math.max(m, x), 0);
+    for (const flare of spec.flares ?? []) {
+      expect(extentX(flare)).toBeGreaterThan(doorHalf + 50);
+      expect(extentX(flare)).toBeLessThanOrEqual(spec.widthMm / 2 + 1);
+      // Over a wheel: the flare spans the axle.
+      const { front, rear } = extentY(flare);
+      expect(spec.wheels.axles.some((axle) => axle > front && axle < rear)).toBe(true);
+    }
   });
 
   it('builds the Cybertruck out of straight lines', () => {
