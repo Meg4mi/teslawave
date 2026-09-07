@@ -101,16 +101,16 @@ function createRig(ourCells: string[] = [CELL]) {
 
   const send = (key: string, msg: ClientMsg): void => apply(onMessage(hub, key, msg, now));
 
-  const hello = (key: string, name: string, cells: string[]): void => {
+  const hello = (key: string, name: string, cells: string[], v = PROTOCOL_VERSION): void => {
     openSocket(hub, key);
-    send(key, {
-      t: 'hello',
-      secret: secretOf(name),
-      model: '3',
-      colour: 'red',
-      cells,
-      v: PROTOCOL_VERSION,
-    });
+    // A hello with no version at all is what a hub from before ADR-0029 receives, and what
+    // every client deployed before it sends.
+    const msg = { t: 'hello', secret: secretOf(name), model: '3', colour: 'red', cells } as Record<
+      string,
+      unknown
+    >;
+    if (v >= 0) msg['v'] = v;
+    send(key, msg as unknown as ClientMsg);
   };
 
   return {
@@ -132,8 +132,8 @@ function createRig(ourCells: string[] = [CELL]) {
       vi.setSystemTime(now);
     },
 
-    join(key: string, name: string, cells: string[] = [CELL]): void {
-      hello(key, name, cells);
+    join(key: string, name: string, cells: string[] = [CELL], v = PROTOCOL_VERSION): void {
+      hello(key, name, cells, v);
       if (key === US) {
         ourCellsHeld = [...cells];
         setSubscribedCells(ourCellsHeld);
@@ -455,5 +455,47 @@ describe('the hub and the client, against each other', () => {
     expect(sawCompactWire).toBe(true);
     // Everyone stayed inside interest, so the invariant above was never skipped.
     expect(beyondInterest).toBe(false);
+  });
+});
+
+/**
+ * What happens if the new hub has to be rolled back.
+ *
+ * The compact wire is the largest change the core data path has ever had, and it goes out to
+ * every car at once. The question that decides how safe that is: once a driver has reloaded
+ * into the new build, can the hub be put back to the old one without stranding them?
+ *
+ * It can, and not by accident — the client still understands whole car states, because that
+ * is the same code path that carries a client which has *not* reloaded yet (ADR-0029). The
+ * two directions of compatibility turn out to be the same one. Worth a test, because it is
+ * the property a deploy is trusted on and nothing else asserts it.
+ */
+describe('a rollback', () => {
+  it('leaves a client on the new build working against a hub on the old wire', () => {
+    const rig = createRig();
+    // A hub from before ADR-0029 never reads a version, so every socket looks legacy to it
+    // and it answers everyone in whole car states. `-1` is this rig's way of saying that.
+    rig.join(US, 'us', [CELL], -1);
+    rig.join('b', 'car-b', [CELL], -1);
+
+    let sawWholeWire = false;
+    let sawCompactWire = false;
+    rig.onEachMessage((msg) => {
+      if (msg.t === 'diff') sawWholeWire = true;
+      if (msg.t === 'diff2') sawCompactWire = true;
+    });
+
+    const b = { key: 'b', lat: GENEVA.lat, lng: GENEVA.lng, speed: 50, heading: 90 };
+    const gaps: number[] = [];
+    run(rig, 8, [b], (step) => {
+      rig.pos(US, GENEVA.lat, GENEVA.lng, 0);
+      if (!onMap(idOf('car-b'))) gaps.push(step);
+    });
+
+    expect(gaps, `car missing on ticks ${gaps.join(', ')}`).toEqual([]);
+    expect(sawWholeWire, 'the rolled-back hub should be speaking the old wire').toBe(true);
+    expect(sawCompactWire).toBe(false);
+    // And the car is still routable for a wave, which needs the hub it arrived on.
+    expect(getCar(idOf('car-b'))?.hub).toBe(HUB);
   });
 });

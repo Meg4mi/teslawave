@@ -76,9 +76,18 @@ wave itself, which lasts two seconds and happens at speed.
 
 - Two new public endpoints, both counts-only, both cached, neither reading anything the app
   did not already store. `privacy.md` gains a row for each.
-- The pulse number is up to a minute stale. For "is anyone out there", a minute is nothing.
+- The pulse number is up to a minute stale, and up to ten minutes stale when the answer is
+  "nobody". Asking a hibernated hub costs a reconstruction and a paged read of its storage to
+  learn that nobody is there, and most regions are empty most of the time. An empty region does
+  not become busy between one minute and the next: the first driver to arrive opens a socket,
+  which wakes the hub anyway.
 - The tint depends on the nightly cron having run. Before the first harvest it draws nothing,
   which is what the map did before this existed.
+- The isolate memo is what bounds this in practice. `Cache-Control` only collapses requests at
+  the edge once the custom domain is live, because the Cache API does nothing on a workers.dev
+  subdomain — so until then the ceiling is one lookup per populated cell per isolate per minute,
+  which is loose. If the landing page ever gets a large spike before the domain moves, watch
+  `pnpm usage` for Durable Object requests.
 - The share card is drawn on the client, so it costs no request at all — and on the car
   browser it very likely cannot be shared or saved. It is still drawn on screen there: the
   phone that paired to the car can send it properly.

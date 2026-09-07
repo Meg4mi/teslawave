@@ -370,6 +370,26 @@ describe('/api', () => {
     expect(res.headers.get('cache-control')).toContain('max-age=');
   });
 
+  it('holds a quiet region far longer than a busy one', async () => {
+    // Somewhere nobody has ever driven. Asking a hibernated hub costs a reconstruction and a
+    // paged read of its storage, to answer "nobody is here" — and most regions are empty most
+    // of the time, so that is the case worth not paying for (ADR-0032).
+    const empty = await SELF.fetch('https://teslawave.test/api/pulse?lat=-40.5&lng=-70.5');
+    expect(empty.status).toBe(200);
+    expect((await empty.json()) as { online: number }).toMatchObject({ online: 0 });
+    const quiet = Number(/max-age=(\d+)/.exec(empty.headers.get('cache-control') ?? '')?.[1] ?? 0);
+
+    const busy = await SELF.fetch(
+      `https://teslawave.test/api/pulse?lat=${GENEVA.lat}&lng=${GENEVA.lng}`,
+    );
+    const live = Number(/max-age=(\d+)/.exec(busy.headers.get('cache-control') ?? '')?.[1] ?? 0);
+
+    expect(quiet).toBeGreaterThan(live);
+    // A first driver arriving opens a socket, which wakes the hub anyway, so the staleness
+    // costs nothing a driver can see.
+    expect(quiet).toBeGreaterThanOrEqual(600);
+  });
+
   it('refuses a pulse request without a sane position', async () => {
     for (const query of ['', '?lat=46.2', '?lat=abc&lng=6.1', '?lat=999&lng=6.1']) {
       const res = await SELF.fetch(`https://teslawave.test/api/pulse${query}`);

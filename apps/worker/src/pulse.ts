@@ -24,14 +24,32 @@ import { overLimit } from './limits.js';
  * page that spends one of them per visitor is a page that takes the app down on the day it
  * gets shared widely, which is the day it must not.
  *
- * So the answer is cached per cell, not per visitor: every driver in the same 39 x 20 km cell
- * shares one lookup for TTL_MS. That turns "one request per page load" into "one request per
- * populated cell per minute", which is a number that does not move when the page goes viral.
- * The isolate memo is the part that always works; the Cache-Control header is for when the
- * custom domain is live, since the Cache API does nothing on a workers.dev subdomain.
+ * So the answer is cached per cell, not per visitor: every driver in the same map cell shares
+ * one lookup. That turns "one request per page load" into "one request per populated cell per
+ * minute", which is a number that does not move when the page goes viral. A region with nobody
+ * in it is held ten times longer again, because that is most regions most of the time and the
+ * lookup that answers "nobody" is the expensive one (see EMPTY_TTL_MS).
+ *
+ * The isolate memo is the part that always works. The Cache-Control header only starts
+ * collapsing requests at the edge once the custom domain is live: the Cache API does nothing
+ * on a workers.dev subdomain, which is where this runs today.
  */
 
 const TTL_MS = 60_000;
+/**
+ * A quiet region is held far longer than a busy one.
+ *
+ * Asking costs a Durable Object request, and asking a *hibernated* hub costs more than that:
+ * the object is reconstructed and its counters are read back from storage in pages, all to
+ * answer "nobody is here". Most regions are empty most of the time, and an empty region does
+ * not become busy between one minute and the next — the first driver to arrive opens a socket,
+ * which wakes the hub anyway.
+ *
+ * So a zero is cached for ten minutes and a real count for one. That removes both the request
+ * and the cold wake for the common case, and costs a landing page at most ten minutes of
+ * staleness on a number it only shows when it is above zero.
+ */
+const EMPTY_TTL_MS = 600_000;
 /** Ten a minute per address: a page load makes one, and a reload is not an attack. */
 const PULSE_LIMIT = 30;
 const PULSE_WINDOW_MS = 60_000;
@@ -98,12 +116,17 @@ export async function readPulse(request: Request, env: Env): Promise<Response> {
   const cells = cellsWithin(lat, lng, NEIGHBOUR_RADIUS_M, CELL_PRECISION);
   const key = cells.join(',');
 
+  const ttlOf = (pulse: Pulse): number => (pulse.online > 0 ? TTL_MS : EMPTY_TTL_MS);
+
   const cached = memo.get(key);
-  if (cached && now - cached.at < TTL_MS)
-    return json(cached.value, 200, Math.round((TTL_MS - (now - cached.at)) / 1000));
+  if (cached) {
+    const ttl = ttlOf(cached.value);
+    const age = now - cached.at;
+    if (age < ttl) return json(cached.value, 200, Math.round((ttl - age) / 1000));
+  }
 
   const value = await fetchPulse(env, cells, now);
   if (memo.size >= MAX_MEMO) memo.clear();
   memo.set(key, { at: now, value });
-  return json(value, 200, TTL_MS / 1000);
+  return json(value, 200, ttlOf(value) / 1000);
 }
