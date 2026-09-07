@@ -108,6 +108,16 @@ describe('model art', () => {
         for (const y of spec.doorCuts) expect(Math.abs(y)).toBeLessThan(spec.lengthMm / 2 - 500);
       });
 
+      it('runs a painted rail down each side of the glass, inside the frame', () => {
+        expect(spec.rail.start[0]).toBeGreaterThan(spec.widthMm * 0.2);
+        expect(endOf(spec.rail)[0]).toBeGreaterThan(100);
+        expect(extentX(spec.rail)).toBeLessThan(extentX(spec.frame));
+        const frame = extentY(spec.frame);
+        const rail = extentY(spec.rail);
+        expect(rail.front).toBeGreaterThan(frame.front);
+        expect(rail.rear).toBeLessThan(frame.rear);
+      });
+
       it('parks its wipers on the windscreen, driver on the left', () => {
         // Authored whole, not mirrored: a left-hand-drive car's wipers are not symmetric.
         expect(spec.wipers.length).toBeGreaterThan(0);

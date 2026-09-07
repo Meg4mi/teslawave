@@ -61,6 +61,11 @@ export type ModelArt = {
   readonly body: Path;
   /** The greenhouse: pillars, roof rails and side glass as one dark frame, right half. */
   readonly frame: Path;
+  /**
+   * The painted A-pillar and roof rail, right side: an open line along the outer edge of the
+   * glass from the base of the windscreen to the end of the rearmost panel.
+   */
+  readonly rail: Path;
   /** Glass panels inside the frame, nose to tail, right halves. */
   readonly windscreen: Path;
   readonly roofGlass: readonly Path[];
@@ -241,6 +246,15 @@ export const MODEL_ART: Record<TeslaModel, ModelArt> = {
       [464, 1810],
       [0, 1905],
     ]),
+    rail: smooth([
+      [500, -1176],
+      [606, -1020],
+      [634, -700],
+      [628, 60],
+      [610, 1000],
+      [520, 1520],
+      [350, 1800],
+    ]),
     windscreen: smooth([
       [0, -1225],
       [500, -1176],
@@ -321,6 +335,15 @@ export const MODEL_ART: Record<TeslaModel, ModelArt> = {
       [504, 2140],
       [0, 2200],
     ]),
+    rail: smooth([
+      [520, -1196],
+      [636, -1030],
+      [656, -700],
+      [646, 700],
+      [636, 1450],
+      [590, 1900],
+      [380, 2110],
+    ]),
     windscreen: smooth([
       [0, -1250],
       [520, -1196],
@@ -399,6 +422,16 @@ export const MODEL_ART: Record<TeslaModel, ModelArt> = {
       [466, 2010],
       [0, 2080],
     ]),
+    rail: smooth([
+      [500, -846],
+      [618, -700],
+      [650, -400],
+      [642, 760],
+      [630, 860],
+      [580, 1400],
+      [464, 1800],
+      [300, 1990],
+    ]),
     windscreen: smooth([
       [0, -890],
       [500, -846],
@@ -476,6 +509,17 @@ export const MODEL_ART: Record<TeslaModel, ModelArt> = {
       [504, 2180],
       [0, 2240],
     ]),
+    rail: smooth([
+      [540, -1400],
+      [666, -1210],
+      [694, -700],
+      [688, -160],
+      [676, 600],
+      [678, 1350],
+      [630, 1520],
+      [555, 1990],
+      [340, 2170],
+    ]),
     windscreen: smooth([
       [0, -1450],
       [540, -1400],
@@ -552,6 +596,12 @@ export const MODEL_ART: Record<TeslaModel, ModelArt> = {
       [780, -130],
       [750, 320],
       [0, 320],
+    ]),
+    rail: polyline([
+      [840, -1740],
+      [740, -160],
+      [720, -90],
+      [706, 250],
     ]),
     windscreen: polyline([
       [0, -1740],

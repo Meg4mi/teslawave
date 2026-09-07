@@ -289,6 +289,20 @@ export function buildCarScene(model: TeslaModel, colourId: string): Scene {
     },
   });
 
+  // The A-pillar and roof rail, seen from above, are painted: one line of body colour down
+  // each side between the glass and the side glass seen edge-on, drawn under the panels so
+  // half its width shows. Without it the greenhouse is a black slab wider than the roof,
+  // which no car has.
+  ops.push({
+    kind: 'stroke',
+    d: pathData(art.rail),
+    paint: mix(base, '#000000', light ? 0.3 : 0.4),
+    width: 90,
+    mirror: true,
+    clip: 'frame',
+    cap: 'round',
+  });
+
   // 7. Glass. The windscreen is the most raked and reflects the most sky; the roof is darkest.
   ops.push({
     kind: 'fill',
@@ -409,7 +423,8 @@ export function buildCarScene(model: TeslaModel, colourId: string): Scene {
     clips['vault'] = vault;
   }
 
-  // 8. Mirrors, in paint, hung off the shoulder.
+  // 8. Mirrors, in paint, hung off the shoulder, with a shadow so they stand off it.
+  ops.push({ kind: 'fill', d: pathData(art.mirror), paint: '#000000', alpha: 0.28, offset: [30, 60], mirror: true, clip: 'body' });
   ops.push({
     kind: 'fill',
     d: pathData(art.mirror),
