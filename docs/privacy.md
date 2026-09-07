@@ -13,8 +13,14 @@ The design goal is that there is nothing to leak. No account, no email, no trip 
 | A random secret | Generated in the browser (`crypto.randomUUID`), stored in `localStorage`. The hub hashes it into the id other drivers see; the secret itself is never shown or stored server-side, so an id read off the wire cannot be used to pose as its driver (ADR-0025). |
 
 Positions are exact. What protects a driver is not blur but scope: a position is shown only
-to drivers in the same map area, only while it is under 60 s old, and it is never written
-anywhere (ADR-0024).
+to drivers within 12 km, only while it is under 60 s old, and it is never written anywhere
+(ADR-0024, ADR-0033). It used to be shown to everyone in the same 27 x 20 km map cell; the
+narrower scope came out of making the app affordable in a city, and is a privacy improvement
+by consequence rather than by design.
+
+On the wire a position is rounded to about 1.1 m, an order of magnitude finer than a GPS fix.
+That is to save bytes, not to obscure anything: there is no offset and no direction to it, and
+a wave is still validated against the exact position the device reported.
 
 ## What is kept, and for how long
 
@@ -28,6 +34,25 @@ anywhere (ADR-0024).
 
 Positions are never written to storage of any kind. That is enforced by a test, not by
 intent: the hub's storage effects are asserted to contain only counter keys.
+
+## What is published
+
+Two endpoints answer questions about a region without anyone connecting. Neither reads
+anything that is not already listed above, and neither can say anything about a person
+(ADR-0032).
+
+| Endpoint | Answers | From |
+|---|---|---|
+| `/api/pulse?lat=&lng=` | How many drivers are online near a point, and how many waves in their cells today | The hub's in-memory counts. Two numbers; no ids, no positions. Cached per map cell, so the answer is about a 39 x 20 km box and never about a request |
+| `/api/activity` | Waves per map cell over the retained week | The `daily_stats` rows already written by the nightly job. No ids, no times, no positions |
+
+Both exist so a driver can see whether anyone is out there before deciding to be seen. The
+finest thing either can say is "somebody waved somewhere in this 39 x 20 km box, some time
+this week".
+
+The share card ("Around you" -> "Share your card") is drawn in your browser and sent nowhere.
+It carries your car, your wave count and the domain: no map, no route, no place, no time, and
+nothing about the drivers you waved at.
 
 ## Third parties
 

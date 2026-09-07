@@ -51,6 +51,7 @@ export function HowToWave({ onClose }: { onClose: () => void }): ReactNode {
       waves: 0,
       since: 0,
       cell: '',
+      hub: 'u0',
       track: createTrack(),
       trail: [],
       // Long ago, so the renderer never plays its "someone appears" ring for them.

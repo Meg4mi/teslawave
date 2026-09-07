@@ -11,6 +11,7 @@
     "pretest": "node -e \"require('fs').mkdirSync('../web/dist',{recursive:true})\"",
     "test": "vitest run",
     "sim": "tsx scripts/sim-cars.ts",
+    "bench": "tsx scripts/bench-hub.ts",
     "db:local": "wrangler d1 migrations apply teslawave --local",
     "db:remote": "wrangler d1 migrations apply teslawave --remote"
   },

@@ -57,6 +57,9 @@ importers:
       '@playwright/test':
         specifier: ^1.56.0
         version: 1.62.1
+      '@teslawave/hub-core':
+        specifier: workspace:*
+        version: link:../../packages/hub-core
       '@types/react':
         specifier: ^19.2.0
         version: 19.2.18

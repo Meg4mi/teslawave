@@ -80,6 +80,7 @@ const car = (id: string, lat: number, lng: number): RenderCar => {
     waves: 0,
     since: 0,
     cell: 'u0hq',
+    hub: 'u0',
     track,
     trail: [],
     appearedAt: -10_000,

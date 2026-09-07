@@ -119,6 +119,47 @@
   font-size: 17px;
 }
 
+/*
+ * "9 drivers out there right now", before you have joined. The accent is the app's one
+ * colour and it means live state, which is exactly what this is.
+ */
+.onboarding__live {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-top: var(--sp-2);
+  color: var(--accent);
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+  animation: fade-in var(--d-base) var(--e-out) both;
+}
+
+.onboarding__live-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  flex: none;
+  /* Opacity only, and slow: a pulsing dot on the first screen must not read as an alarm. */
+  animation: live-breathe 2.4s var(--e-out) infinite;
+}
+
+@keyframes live-breathe {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .onboarding__live-dot {
+    animation: none;
+  }
+}
+
 .field {
   display: flex;
   flex-direction: column;

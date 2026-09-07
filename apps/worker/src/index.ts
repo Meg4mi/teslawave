@@ -1,14 +1,20 @@
 import { HUB_ID_RE } from '@teslawave/protocol';
+import { withSecurityHeaders } from './headers.js';
 import { claimPairing, createPairing } from './pairing.js';
+import { readPulse } from './pulse.js';
 import { recordPerf } from './perf.js';
-import { pruneAndAggregate, readStats, rememberHub } from './stats.js';
+import { pruneAndAggregate, readActivity, readStats, rememberHub } from './stats.js';
 
 export { HubDO } from './hub-do.js';
 
 const json = (body: unknown, status = 200): Response =>
   new Response(JSON.stringify(body), {
     status,
-    headers: { 'content-type': 'application/json', 'cache-control': 'no-store' },
+    headers: {
+      'content-type': 'application/json',
+      'cache-control': 'no-store',
+      'x-content-type-options': 'nosniff',
+    },
   });
 
 /**
@@ -52,35 +58,47 @@ async function reachHub(stub: DurableObjectStub, request: Request): Promise<Resp
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
-    const { pathname } = url;
 
-    if (pathname === '/ws') return upgrade(request, env, ctx);
-
-    if (pathname === '/api/whereami') {
-      const cf = (request as Request & { cf?: Record<string, unknown> }).cf;
-      return json({
-        lat: typeof cf?.['latitude'] === 'string' ? Number(cf['latitude']) : null,
-        lng: typeof cf?.['longitude'] === 'string' ? Number(cf['longitude']) : null,
-        city: typeof cf?.['city'] === 'string' ? cf['city'] : null,
-      });
-    }
-
-    if (pathname === '/api/pair' && request.method === 'POST') return createPairing(request, env);
-    if (pathname === '/api/pair/claim' && request.method === 'POST') return claimPairing(request, env);
-    if (pathname === '/api/stats') return readStats(env);
-    if (pathname === '/api/perf' && request.method === 'POST') return recordPerf(request, env);
-    if (pathname.startsWith('/api/')) return json({ error: 'not found' }, 404);
-
-    // www -> apex, so the domain reads the same everywhere it is shared.
-    if (url.hostname.startsWith('www.')) {
-      url.hostname = url.hostname.slice(4);
-      return Response.redirect(url.toString(), 301);
-    }
-
-    return env.ASSETS.fetch(request);
+    // The socket answers with a 101 and a WebSocket, which is not a response to rewrite.
+    // Everything else goes out through one door, so a new endpoint cannot forget the headers.
+    if (url.pathname === '/ws') return upgrade(request, env, ctx);
+    return withSecurityHeaders(await route(request, env, url), url);
   },
 
   async scheduled(_event: ScheduledController, env: Env): Promise<void> {
     await pruneAndAggregate(env, Date.now());
   },
 };
+
+/** Every response except the socket upgrade, before the security headers go on. */
+async function route(request: Request, env: Env, url: URL): Promise<Response> {
+  const { pathname } = url;
+
+  if (pathname === '/api/whereami') {
+    const cf = (request as Request & { cf?: Record<string, unknown> }).cf;
+    return json({
+      lat: typeof cf?.['latitude'] === 'string' ? Number(cf['latitude']) : null,
+      lng: typeof cf?.['longitude'] === 'string' ? Number(cf['longitude']) : null,
+      city: typeof cf?.['city'] === 'string' ? cf['city'] : null,
+    });
+  }
+
+  if (pathname === '/api/pair' && request.method === 'POST') return createPairing(request, env);
+  if (pathname === '/api/pair/claim' && request.method === 'POST') return claimPairing(request, env);
+  if (pathname === '/api/stats') return readStats(env);
+  // Counts for a driver who has not joined yet, so the first screen is not a dead map.
+  if (pathname === '/api/pulse') return readPulse(request, env);
+  // Where the road has been alive this week, so a quiet map still reads as a place.
+  if (pathname === '/api/activity') return readActivity(env);
+  if (pathname === '/api/perf' && request.method === 'POST') return recordPerf(request, env);
+  if (pathname.startsWith('/api/')) return json({ error: 'not found' }, 404);
+
+  // www -> apex, so the domain reads the same everywhere it is shared.
+  if (url.hostname.startsWith('www.')) {
+    const apex = new URL(url);
+    apex.hostname = url.hostname.slice(4);
+    return Response.redirect(apex.toString(), 301);
+  }
+
+  return env.ASSETS.fetch(request);
+}

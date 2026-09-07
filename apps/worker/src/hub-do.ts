@@ -6,6 +6,7 @@ import {
   type ServerMsg,
 } from '@teslawave/protocol';
 import {
+  cellCounts,
   createHub,
   flushIfDue,
   harvest,
@@ -221,6 +222,22 @@ export class HubDO extends DurableObject<Env> {
       await this.ctx.storage.delete(result.deleteKeys.slice(i, i + DELETE_BATCH));
     if (result.persist.length > 0) await this.ctx.storage.put(Object.fromEntries(result.persist));
     return result.cellDays;
+  }
+
+  /**
+   * How many drivers are in these cells right now, for the screen shown before anyone has
+   * joined (ADR-0032). An RPC request like `harvest`, never a message handler: no fetch, no
+   * D1, no timer, so nothing here makes the object ineligible for hibernation.
+   *
+   * The answer is counts. Asking it of an empty region wakes the object for a millisecond,
+   * which is why the Worker in front of this caches per cell rather than per visitor.
+   */
+  async counts(
+    cells: string[],
+    now = Date.now(),
+  ): Promise<Array<{ cell: string; online: number; wavesToday: number }>> {
+    await this.#ready;
+    return cellCounts(this.#hub(), cells, now);
   }
 
   /** Test and support helper. Returns counts only: there are no positions to hand out. */

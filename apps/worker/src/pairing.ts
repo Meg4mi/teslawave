@@ -25,6 +25,17 @@ const json = (body: unknown, status = 200): Response =>
 
 const CLAIM_LIMIT = 10;
 const CLAIM_WINDOW_MS = 60_000;
+/**
+ * Creating a code writes a D1 row, and D1's free tier allows 100k row writes a day for the
+ * whole app. Claiming was limited and creating was not, so the cheap half of the pair was the
+ * unguarded one: a script could have spent the day's write budget in minutes and taken
+ * pairing — and the daily counter harvest, which shares the budget — down with it.
+ *
+ * A driver makes one code, occasionally two when the first expires unused. Five a minute is
+ * generous for a person and useless for a script.
+ */
+const CREATE_LIMIT = 5;
+const CREATE_WINDOW_MS = 60_000;
 
 const readPayload = (body: unknown): PairPayload | null => {
   if (typeof body !== 'object' || body === null) return null;
@@ -37,10 +48,16 @@ const readPayload = (body: unknown): PairPayload | null => {
 
 /** Create a short code that carries an identity from the phone to the car. */
 export async function createPairing(request: Request, env: Env): Promise<Response> {
+  const now = Date.now();
+  const ip = request.headers.get('cf-connecting-ip') ?? 'unknown';
+  // Before the body is read, and before anything is written: the limit exists to protect the
+  // write budget, so it has to sit in front of the write.
+  if (overLimit('pair-create', ip, CREATE_LIMIT, CREATE_WINDOW_MS, now))
+    return json({ error: 'too many attempts' }, 429);
+
   const payload = readPayload(await request.json().catch(() => null));
   if (!payload) return json({ error: 'bad payload' }, 400);
 
-  const now = Date.now();
   const expiresAt = now + PAIR_TTL_MS;
   for (let attempt = 0; attempt < 5; attempt++) {
     const code = generateCode();

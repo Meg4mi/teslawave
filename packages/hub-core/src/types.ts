@@ -14,14 +14,28 @@ export type SocketProfile = {
   spectator: boolean;
   hidden: boolean;
   since: number;
+  /** The wire format this connection speaks, so a wake keeps talking the same one. */
+  v: number;
 };
 
-/** Volatile per-socket state. Empty after a hibernation wake, which is fine. */
+/**
+ * Volatile per-socket state. Empty after a hibernation wake, which is fine: presence is
+ * empty then too, so a connection that has forgotten what it was holding is in step with a
+ * hub that has forgotten what there was to hold.
+ */
 export type SocketRuntime = {
   lastPosAt: number;
   lastWaveAt: number;
   violations: number;
   lastSeen: { lat: number; lng: number; ts: number } | null;
+  /**
+   * The cars this connection currently has on its map, as handle -> the revision of that
+   * driver's profile we last described to it. Presence in the map is what makes a car
+   * "held"; the value is what makes a car whose driver edited it get a fresh description
+   * (ADR-0033). Compact-wire connections only: a v1 connection is sent whole car states and
+   * has nothing to remember.
+   */
+  holding: Map<number, number>;
 };
 
 export type Socket = SocketProfile & SocketRuntime;
@@ -51,6 +65,19 @@ export type HubState = {
   hub: string;
   /** id -> last known state. Memory only: positions are never persisted (brief 2.3). */
   presence: Map<string, CarState>;
+  /**
+   * cell -> the drivers in it. An index over `presence`, kept in step with it, because the
+   * two hottest things the hub does — counting a cell and building its diff — were both a
+   * scan of every driver in the whole hub (ADR-0033).
+   */
+  presenceByCell: Map<string, Set<string>>;
+  /**
+   * id -> the small integer that stands in for it on the compact wire, and the revision of
+   * that driver's profile. Volatile and reassigned freely: a handle is a compression, never
+   * an identity (ADR-0033).
+   */
+  handles: Map<string, { h: number; rev: number }>;
+  nextHandle: number;
   sockets: Map<SocketKey, Socket>;
   socketsByCell: Map<string, Set<SocketKey>>;
   socketsById: Map<string, Set<SocketKey>>;

@@ -18,6 +18,10 @@ on:
       - 'apps/web/src/**/*.css'
       - 'apps/web/e2e/**'
       - 'apps/web/playwright.config.ts'
+      # The security policy is enforced by the browser and by nothing else, so a change to it
+      # is only ever proved here (e2e/csp.spec.ts). Same for the Worker that serves it.
+      - 'apps/web/public/_headers'
+      - 'apps/worker/src/**'
       - 'apps/worker/scripts/dev-supervised.mjs'
       - '.github/workflows/e2e.yml'
   workflow_dispatch:
