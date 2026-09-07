@@ -99,7 +99,8 @@ const rect = (x: number, y: number, w: number, h: number, r: number): string => 
 };
 
 const GLASS_FRAME = '#0a0d12';
-const TYRE = '#0b0d11';
+const TYRE = '#14171c';
+const FLARE = '#1d2025';
 
 /** The whole greenhouse: frame plus every panel, as one clip for the reflection band. */
 const glassPanels = (art: ModelArt): Path[] => [
@@ -123,9 +124,15 @@ export function buildCarScene(model: TeslaModel, colourId: string): Scene {
   const body = mirroredPathData(art.body);
   const frame = mirroredPathData(art.frame);
   const panels = glassPanels(art).map(mirroredPathData);
+  const windscreen = mirroredPathData(art.windscreen);
+  // A strip either side straddling the body edge, for what only shows where the flank ends.
+  const edge = bodyHalf - 70;
+  const flanks = `M${edge} -${half}h110v${L}h-110Z M${-edge} -${half}h-110v${L}h110Z`;
   const clips: Record<string, string> = {
     body,
     frame,
+    windscreen,
+    flanks,
     // Every panel, both sides: the falcon glass is authored on one side only.
     glass:
       panels.join('') +
@@ -146,7 +153,7 @@ export function buildCarScene(model: TeslaModel, colourId: string): Scene {
     ops.push({
       kind: 'stroke',
       d: rect(wheelX, axle, art.wheels.widthMm - 40, art.wheels.lengthMm - 40, art.angular ? 6 : 50),
-      paint: '#2a2f38',
+      paint: '#353b46',
       width: 18,
       mirror: true,
     });
@@ -193,8 +200,48 @@ export function buildCarScene(model: TeslaModel, colourId: string): Scene {
     width: 150,
     clip: 'body',
   });
+  // The wheel arches: the gap where the fender lip turns down over the tyre. From directly
+  // above it is a dark line along the body edge with a tick at each end of the opening, and
+  // it is what makes the corners read as wheels. Confined to the edge, or it would draw a
+  // rectangle on the fender.
+  for (const axle of art.wheels.axles)
+    ops.push({
+      kind: 'stroke',
+      d: rect(wheelX, axle, art.wheels.widthMm + 20, art.wheels.lengthMm + 80, art.angular ? 12 : 80),
+      paint: 'rgba(0,0,0,0.5)',
+      width: 40,
+      mirror: true,
+      clip: 'flanks',
+    });
 
-  // 4. Bonnet creases: a highlight and a shadow either side of each ridge.
+  // 4. The bonnet, a panel of its own: the fender tops catch the light and the lid between
+  // them sits a shade lower, rising again over the motor into a power dome down the middle.
+  ops.push({
+    kind: 'fill',
+    d: mirroredPathData(art.frunk),
+    paint: {
+      kind: 'linear',
+      from: [-bodyHalf, 0],
+      to: [bodyHalf, 0],
+      stops: [
+        [0.05, 'rgba(0,0,0,0.16)'],
+        [0.3, 'rgba(0,0,0,0.06)'],
+        [0.5, light ? 'rgba(255,255,255,0.07)' : 'rgba(255,255,255,0.1)'],
+        [0.7, 'rgba(0,0,0,0.06)'],
+        [0.95, 'rgba(0,0,0,0.16)'],
+      ],
+    },
+  });
+  ops.push({
+    kind: 'stroke',
+    d: pathData(art.frunk),
+    paint: rgba(mix(base, '#ffffff', 0.6), light ? 0.35 : 0.16),
+    width: 64,
+    mirror: true,
+    clip: 'body',
+  });
+
+  // Bonnet creases: a highlight and a shadow either side of each ridge.
   for (const crease of art.creases) {
     const d = pathData(crease);
     ops.push({ kind: 'stroke', d, paint: rgba(mix(base, '#ffffff', 0.5), light ? 0.55 : 0.28), width: 26, mirror: true, clip: 'body' });
@@ -216,6 +263,13 @@ export function buildCarScene(model: TeslaModel, colourId: string): Scene {
       alpha: 0.7,
     });
 
+  // The Cybertruck's flares: bare composite, matte, over each wheel.
+  for (const flare of art.flares ?? []) {
+    const d = pathData(flare);
+    ops.push({ kind: 'fill', d, paint: FLARE, mirror: true, clip: 'body' });
+    ops.push({ kind: 'stroke', d, paint: 'rgba(255,255,255,0.09)', width: 24, mirror: true, clip: 'body' });
+  }
+
   // 6. The greenhouse frame: pillars, rails and the side glass seen edge-on.
   ops.push({
     kind: 'fill',
@@ -236,7 +290,6 @@ export function buildCarScene(model: TeslaModel, colourId: string): Scene {
   });
 
   // 7. Glass. The windscreen is the most raked and reflects the most sky; the roof is darkest.
-  const windscreen = mirroredPathData(art.windscreen);
   ops.push({
     kind: 'fill',
     d: windscreen,
@@ -294,6 +347,18 @@ export function buildCarScene(model: TeslaModel, colourId: string): Scene {
         ],
       },
     });
+  // The wipers, parked on the glass, and the camera housing behind the mirror at the top of
+  // the screen: the two things on a Tesla's windscreen that show from above.
+  for (const arm of art.wipers)
+    ops.push({ kind: 'stroke', d: pathData(arm), paint: '#0b0e13', width: 30, alpha: 0.9, clip: 'windscreen', cap: 'round' });
+  const screenTop = art.windscreen.segs.at(-1)?.to[1] ?? 0;
+  ops.push({
+    kind: 'fill',
+    d: `M-135 ${screenTop - 240}L135 ${screenTop - 240}L95 ${screenTop - 40}L-95 ${screenTop - 40}Z`,
+    paint: '#0d1116',
+    alpha: 0.9,
+    clip: 'windscreen',
+  });
   // The reflection: one band of sky across every panel, the cue that says "glass".
   ops.push({
     kind: 'fill',
@@ -313,12 +378,13 @@ export function buildCarScene(model: TeslaModel, colourId: string): Scene {
       ],
     },
   });
-  // The Model 3's painted roof bar, across the frame between the two panels.
+  // The Model 3's roof bar, across the frame between the two panels: matte black steel, so it
+  // reads against glass that is reflecting sky, whatever colour the car is.
   if (art.roofBar)
     ops.push({
       kind: 'fill',
       d: rect(0, art.roofBar.y, bodyHalf * 2, art.roofBar.heightMm, 0),
-      paint: mix(base, '#000000', 0.18),
+      paint: '#2c3440',
       clip: 'frame',
     });
   // The Model X's spine between the falcon windows, and its door seams into the roof.

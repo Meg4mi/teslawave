@@ -82,6 +82,14 @@ export type ModelArt = {
   readonly taillight: Lamp;
   readonly mirror: Path;
   readonly wheels: Wheels;
+  /**
+   * The wipers, parked, authored whole because a left-hand-drive car is not symmetric: two
+   * arms lying along the base of the windscreen, or the Cybertruck's single arm standing
+   * up the driver's side.
+   */
+  readonly wipers: readonly Path[];
+  /** The Cybertruck: unpainted trapezoid flares over each wheel, right side, mirrored. */
+  readonly flares?: readonly Path[];
   /** No curves anywhere: sharp corners on the wheels and mirrors too. */
   readonly angular?: boolean;
 };
@@ -169,6 +177,29 @@ const mirror = (bodyX: number, y: number, reach = 175, chord = 240, angular = fa
   return angular ? polyline(pts, true) : smooth(pts, true, 0.9);
 };
 
+/**
+ * Two wiper arms parked along the base of a windscreen whose lower edge sits at `baseY` on
+ * the centreline and curves back by `sag` at the pillars, `halfW` out. Left-hand drive: the
+ * driver's arm reaches from the left pillar to the middle, the passenger's from the middle
+ * to the right, both blades pointing right, both lifted a little further off the base at
+ * their pivots than at their tips, which is how they lie on the real car.
+ */
+const parkedWipers = (baseY: number, halfW: number, sag: number): Path[] => {
+  const edge = (x: number): number => baseY + sag * (x / halfW) ** 2;
+  return [
+    smooth([
+      [-halfW * 0.8, edge(-halfW * 0.8) + 95],
+      [-halfW * 0.45, edge(-halfW * 0.45) + 75],
+      [-halfW * 0.08, edge(-halfW * 0.08) + 60],
+    ]),
+    smooth([
+      [halfW * 0.04, edge(halfW * 0.04) + 105],
+      [halfW * 0.42, edge(halfW * 0.42) + 80],
+      [halfW * 0.8, edge(halfW * 0.8) + 65],
+    ]),
+  ];
+};
+
 export const MODEL_ART: Record<TeslaModel, ModelArt> = {
   /*
    * Model 3 (2024, Highland). 4720 x 1848, wheelbase 2875, front overhang 850.
@@ -245,8 +276,9 @@ export const MODEL_ART: Record<TeslaModel, ModelArt> = {
     doorCuts: [-1120, 80, 1060],
     headlight: lamp(110, [430, -2230], [810, -2000]),
     taillight: lamp(90, [826, 2000], [700, 2160], [470, 2255]),
+    wipers: parkedWipers(-1225, 606, 72),
     mirror: mirror(896, -1010),
-    wheels: { axles: [-1510, 1365], lengthMm: 700, widthMm: 245, proudMm: 46 },
+    wheels: { axles: [-1510, 1365], lengthMm: 700, widthMm: 245, proudMm: 56 },
   },
 
   /*
@@ -323,8 +355,9 @@ export const MODEL_ART: Record<TeslaModel, ModelArt> = {
     doorCuts: [-1150, 90, 1110],
     headlight: lamp(60, [0, -2300], [520, -2262], [760, -2140]),
     taillight: lamp(72, [0, 2296], [560, 2276], [840, 2140]),
+    wipers: parkedWipers(-1250, 636, 81),
     mirror: mirror(944, -1040, 155, 200),
-    wheels: { axles: [-1526, 1364], lengthMm: 720, widthMm: 255, proudMm: 46 },
+    wheels: { axles: [-1526, 1364], lengthMm: 720, widthMm: 255, proudMm: 56 },
   },
 
   /*
@@ -398,8 +431,9 @@ export const MODEL_ART: Record<TeslaModel, ModelArt> = {
     doorCuts: [-800, 260, 1250],
     headlight: lamp(90, [470, -2380], [870, -2130]),
     taillight: lamp(64, [0, 2382], [600, 2362], [886, 2230]),
+    wipers: parkedWipers(-890, 618, 67),
     mirror: mirror(956, -740),
-    wheels: { axles: [-1485, 1475], lengthMm: 740, widthMm: 255, proudMm: 46 },
+    wheels: { axles: [-1485, 1475], lengthMm: 740, widthMm: 255, proudMm: 56 },
   },
 
   /*
@@ -479,15 +513,17 @@ export const MODEL_ART: Record<TeslaModel, ModelArt> = {
     doorCuts: [-1340, 60, 1450],
     headlight: lamp(90, [480, -2420], [890, -2180]),
     taillight: lamp(64, [0, 2424], [620, 2404], [900, 2270]),
+    wipers: parkedWipers(-1450, 666, 76),
     mirror: mirror(984, -1180, 185, 250),
-    wheels: { axles: [-1499, 1466], lengthMm: 760, widthMm: 265, proudMm: 48 },
+    wheels: { axles: [-1499, 1466], lengthMm: 760, widthMm: 265, proudMm: 58 },
   },
 
   /*
    * Cybertruck. 5683 x 2200, wheelbase 3635, front overhang 1000.
-   * Straight lines throughout: a blunt front with chamfered corners, trapezoid wheel flares,
-   * a windscreen the size of a table, a full-width light bar at each end, and a vault behind
-   * the cabin where every other model has a rear screen.
+   * Straight lines throughout: a blunt front with chamfered corners, unpainted trapezoid
+   * wheel flares standing proud of the doors, a windscreen the size of a table, a full-width
+   * light bar at each end, and a vault behind the cabin where every other model has a rear
+   * screen.
    */
   CT: {
     lengthMm: 5683,
@@ -501,8 +537,8 @@ export const MODEL_ART: Record<TeslaModel, ModelArt> = {
       [1040, -2380],
       [1100, -2100],
       [1100, -1560],
-      [1050, -1380],
-      [1050, 1300],
+      [1015, -1380],
+      [1015, 1300],
       [1100, 1500],
       [1100, 2100],
       [1080, 2450],
@@ -545,8 +581,16 @@ export const MODEL_ART: Record<TeslaModel, ModelArt> = {
     doorCuts: [-1500, 40, 1330],
     headlight: lamp(70, [0, -2730], [800, -2730], [960, -2630]),
     taillight: lamp(80, [0, 2752], [880, 2752], [1010, 2640]),
-    mirror: mirror(1050, -1350, 190, 230, true),
-    wheels: { axles: [-1841, 1794], lengthMm: 880, widthMm: 315, proudMm: 50 },
+    // One arm, the length of the glass, parked up the driver's side of the screen.
+    wipers: [line([-770, -1690], [-690, -230])],
+    // The flares slope out and down from the sail line to the widest point, so from above
+    // each is a broad trapezoid, not the sliver that stands proud of the doors.
+    flares: [
+      polyline([[930, -2520], [1100, -2100], [1100, -1560], [930, -1230]], true),
+      polyline([[930, 1180], [1100, 1500], [1100, 2100], [930, 2420]], true),
+    ],
+    mirror: mirror(1015, -1350, 190, 230, true),
+    wheels: { axles: [-1841, 1794], lengthMm: 880, widthMm: 315, proudMm: 62 },
     angular: true,
   },
 };
