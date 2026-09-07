@@ -205,21 +205,14 @@ const mirror = (bodyX: number, y: number, reach = 150, chord = 220, angular = fa
  * the centreline and curves back by `sag` at the pillars, `halfW` out. Left-hand drive: the
  * driver's arm reaches from the left pillar to the middle, the passenger's from the middle
  * to the right, both blades pointing right, both lifted a little further off the base at
- * their pivots than at their tips, which is how they lie on the real car.
+ * their pivots than at their tips, which is how they lie on the real car. Each is a straight
+ * line: a parked blade is straight, and a curved one reads as an eyebrow on the glass.
  */
 const parkedWipers = (baseY: number, halfW: number, sag: number): Path[] => {
   const edge = (x: number): number => baseY + sag * (x / halfW) ** 2;
   return [
-    smooth([
-      [-halfW * 0.8, edge(-halfW * 0.8) + 95],
-      [-halfW * 0.45, edge(-halfW * 0.45) + 75],
-      [-halfW * 0.08, edge(-halfW * 0.08) + 60],
-    ]),
-    smooth([
-      [halfW * 0.04, edge(halfW * 0.04) + 105],
-      [halfW * 0.42, edge(halfW * 0.42) + 80],
-      [halfW * 0.8, edge(halfW * 0.8) + 65],
-    ]),
+    line([-halfW * 0.8, edge(-halfW * 0.8) + 90], [-halfW * 0.08, edge(-halfW * 0.08) + 58]),
+    line([halfW * 0.04, edge(halfW * 0.04) + 100], [halfW * 0.8, edge(halfW * 0.8) + 62]),
   ];
 };
 
@@ -632,12 +625,12 @@ export const MODEL_ART: Record<TeslaModel, ModelArt> = {
     ]),
     roofGlass: [],
     falconGlass: smooth(
-      [corner([120, 190]), corner([640, 190]), corner([640, 1390]), corner([120, 1390])],
+      [corner([100, 190]), corner([640, 190]), corner([640, 1390]), corner([100, 1390])],
       true,
     ),
     roofPaint: [
       smooth([[0, 35], corner([715, 35]), corner([705, 180]), [0, 180]]),
-      smooth([[0, 150], corner([110, 150]), corner([110, 1420]), [0, 1420]]),
+      smooth([[0, 150], corner([92, 150]), corner([92, 1420]), [0, 1420]]),
       smooth([[0, 1400], corner([715, 1400]), corner([690, 1540]), [0, 1540]]),
     ],
     rearGlass: smooth([[0, 1545], corner([640, 1545]), [620, 1820], [560, 2060], [350, 2200], [0, 2220]]),
