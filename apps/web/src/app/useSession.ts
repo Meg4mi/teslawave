@@ -161,6 +161,8 @@ export function useSession({
           celebrate();
         } else {
           sentWaves.current.delete(msg.to);
+          // "Turn yourself back on" is only ever true of a reason that says so. A refusal
+          // this build does not know is not the driver's doing, and is told as the hub's.
           const why =
             msg.reason === 'range'
               ? copy.wave.tooFar
@@ -168,7 +170,9 @@ export function useSession({
                 ? copy.wave.offline
                 : msg.reason === 'rate'
                   ? copy.wave.tooSoon
-                  : copy.wave.hidden;
+                  : msg.reason === 'hidden'
+                    ? copy.wave.hidden
+                    : copy.wave.nofix;
           showToast(why);
         }
       }

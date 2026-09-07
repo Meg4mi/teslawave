@@ -151,8 +151,9 @@ export class HubDO extends DurableObject<Env> {
     const key = this.#keyOf(ws);
     if (!key) return;
     this.#byKey.delete(key);
-    const effects = onClose(state, key);
-    effects.push(...flushIfDue(state, Date.now(), true));
+    const now = Date.now();
+    const effects = onClose(state, key, now);
+    effects.push(...flushIfDue(state, now, true));
     await this.#apply(effects);
   }
 
@@ -165,12 +166,17 @@ export class HubDO extends DurableObject<Env> {
     return null;
   }
 
+  /**
+   * Runs every effect, including the ones a close raises part-way through: a wave held for
+   * a car that has just gone is answered in the same turn, so they are appended to the list
+   * being walked rather than dropped.
+   */
   async #apply(effects: Effect[]): Promise<void> {
     let writes: Record<string, number> | null = null;
     for (const effect of effects) {
       switch (effect.k) {
         case 'send': {
-          this.#send(effect.to, effect.msg);
+          effects.push(...this.#send(effect.to, effect.msg));
           break;
         }
         case 'attach': {
@@ -180,7 +186,7 @@ export class HubDO extends DurableObject<Env> {
         case 'close': {
           const ws = this.#byKey.get(effect.to);
           this.#byKey.delete(effect.to);
-          onClose(this.#hub(), effect.to);
+          effects.push(...onClose(this.#hub(), effect.to, Date.now()));
           try {
             ws?.close(effect.code, effect.reason);
           } catch {
@@ -199,14 +205,16 @@ export class HubDO extends DurableObject<Env> {
     if (writes) await this.ctx.storage.put(writes);
   }
 
-  #send(key: string, msg: ServerMsg): void {
+  /** Returns what closing a socket that would not take the message raised, if anything. */
+  #send(key: string, msg: ServerMsg): Effect[] {
     const ws = this.#byKey.get(key);
-    if (!ws) return;
+    if (!ws) return [];
     try {
       ws.send(JSON.stringify(msg));
+      return [];
     } catch {
       this.#byKey.delete(key);
-      onClose(this.#hub(), key);
+      return onClose(this.#hub(), key, Date.now());
     }
   }
 

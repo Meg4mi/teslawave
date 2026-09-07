@@ -10,6 +10,7 @@ import {
   PRESENCE_EXPIRY_MS,
   PROTOCOL_VERSION,
   SERVER_TICK_MS,
+  WAVE_HOLD_MS,
   WIRE_COORD_SCALE,
   decodeBounds,
   destination,
@@ -312,9 +313,9 @@ describe('presence and diffs', () => {
     hello('phone', 'car-a');
     hello('car', 'car-a');
     pos('phone', GENEVA.lat, GENEVA.lng);
-    onClose(state, 'phone');
+    onClose(state, 'phone', now);
     expect(state.presence.has(ID('car-a'))).toBe(true);
-    onClose(state, 'car');
+    onClose(state, 'car', now);
     expect(state.presence.has(ID('car-a'))).toBe(false);
   });
 });
@@ -519,7 +520,7 @@ describe('cost invariants', () => {
   it('keeps no positions once every driver is gone', () => {
     hello('a', 'car-a');
     pos('a', GENEVA.lat, GENEVA.lng);
-    onClose(state, 'a');
+    onClose(state, 'a', now);
     expect(state.presence.size).toBe(0);
     expect(hubStats(state).sockets).toBe(0);
   });
@@ -573,6 +574,159 @@ describe('hibernation', () => {
     const car: CarState | undefined = woken.presence.get(ID('car-a'));
     expect(car?.waves).toBe(4);
     expect(car?.cell).toBe(CELL);
+  });
+});
+
+describe('a wave into a hub that cannot place somebody yet', () => {
+  /** Two cars side by side, then the object hibernates and wakes with their sockets only. */
+  const wake = (hiddenB = false): void => {
+    hello('a', 'car-a');
+    hello('b', 'car-b');
+    pos('a', GENEVA.lat, GENEVA.lng);
+    const near = destination(GENEVA.lat, GENEVA.lng, 90, 100);
+    pos('b', near.lat, near.lng);
+    if (hiddenB) onMessage(state, 'b', { t: 'hide' }, now);
+    const woken = createHub(HUB, now);
+    for (const s of state.sockets.values())
+      restoreSocket(woken, {
+        key: s.key,
+        id: s.id,
+        model: s.model,
+        colour: s.colour,
+        cells: s.cells,
+        spectator: s.spectator,
+        hidden: s.hidden,
+        since: s.since,
+        v: s.v,
+      });
+    state = woken;
+    expect(state.presence.size).toBe(0);
+  };
+  const near = destination(GENEVA.lat, GENEVA.lng, 90, 100);
+
+  it('asks both drivers where they are instead of calling the sender hidden', () => {
+    wake();
+    const out = onMessage(state, 'a', { t: 'wave', to: ID('car-b') }, now);
+    expect(sends(out, 'a')).toEqual([{ t: 'where' }]);
+    expect(sends(out, 'b')).toEqual([{ t: 'where' }]);
+    expect(hubStats(state).held).toBe(1);
+  });
+
+  it('delivers the wave the moment both answers are in', () => {
+    wake();
+    onMessage(state, 'a', { t: 'wave', to: ID('car-b') }, now);
+    now += 100;
+    expect(sends(pos('b', near.lat, near.lng))).toHaveLength(0);
+    now += 100;
+    const out = pos('a', GENEVA.lat, GENEVA.lng);
+    expect(sends(out, 'a')).toEqual([{ t: 'waved', to: ID('car-b'), ok: true }]);
+    expect(sends(out, 'b')[0]).toMatchObject({ t: 'wave', from: { id: ID('car-a') } });
+    expect(state.counters.wavesByUser.get(userWavesKey(ID('car-a')))).toBe(1);
+    expect(state.counters.wavesByUser.get(userWavesKey(ID('car-b')))).toBe(1);
+    expect(hubStats(state).held).toBe(0);
+  });
+
+  it('still refuses the wave on range once it can be placed', () => {
+    wake();
+    onMessage(state, 'a', { t: 'wave', to: ID('car-b') }, now);
+    now += 100;
+    pos('a', GENEVA.lat, GENEVA.lng);
+    const far = destination(GENEVA.lat, GENEVA.lng, 90, 1_000);
+    const out = pos('b', far.lat, far.lng);
+    expect(sends(out, 'a')).toEqual([{ t: 'waved', to: ID('car-b'), ok: false, reason: 'range' }]);
+    expect(state.counters.wavesByUser.size).toBe(0);
+  });
+
+  it('calls the target off the map when they never answer, at the next message of any kind', () => {
+    wake();
+    hello('c', 'car-c');
+    onMessage(state, 'a', { t: 'wave', to: ID('car-b') }, now);
+    now += 100;
+    pos('a', GENEVA.lat, GENEVA.lng);
+    // Not yet: they have until WAVE_HOLD_MS.
+    now += WAVE_HOLD_MS - 200;
+    expect(sends(pos('c', GENEVA.lat, GENEVA.lng), 'a')).toHaveLength(0);
+    now += 200;
+    const out = pos('c', GENEVA.lat, GENEVA.lng);
+    expect(sends(out, 'a')).toEqual([{ t: 'waved', to: ID('car-b'), ok: false, reason: 'offline' }]);
+    expect(hubStats(state).held).toBe(0);
+  });
+
+  it('names its own silence honestly when the sender never answers', () => {
+    wake();
+    onMessage(state, 'a', { t: 'wave', to: ID('car-b') }, now);
+    now += 100;
+    pos('b', near.lat, near.lng);
+    now += WAVE_HOLD_MS;
+    const out = pos('b', near.lat, near.lng);
+    expect(sends(out, 'a')).toEqual([{ t: 'waved', to: ID('car-b'), ok: false, reason: 'nofix' }]);
+  });
+
+  it('does not hold a wave for a target with no connection that could answer', () => {
+    wake(true);
+    const hidden = onMessage(state, 'a', { t: 'wave', to: ID('car-b') }, now);
+    expect(sends(hidden, 'a')).toEqual([{ t: 'waved', to: ID('car-b'), ok: false, reason: 'offline' }]);
+    expect(sends(hidden, 'b')).toHaveLength(0);
+    const nobody = onMessage(state, 'a', { t: 'wave', to: ID('ghost') }, now);
+    expect(sends(nobody, 'a')).toEqual([{ t: 'waved', to: ID('ghost'), ok: false, reason: 'offline' }]);
+    expect(hubStats(state).held).toBe(0);
+  });
+
+  it('settles as soon as the target closes rather than waiting out the hold', () => {
+    wake();
+    onMessage(state, 'a', { t: 'wave', to: ID('car-b') }, now);
+    now += 100;
+    const out = onClose(state, 'b', now);
+    expect(sends(out, 'a')).toEqual([{ t: 'waved', to: ID('car-b'), ok: false, reason: 'offline' }]);
+    expect(hubStats(state).held).toBe(0);
+  });
+
+  it('is still the driver\'s own doing when they hide while it is held', () => {
+    wake();
+    onMessage(state, 'a', { t: 'wave', to: ID('car-b') }, now);
+    const out = onMessage(state, 'a', { t: 'hide' }, now);
+    expect(sends(out, 'a')).toEqual([{ t: 'waved', to: ID('car-b'), ok: false, reason: 'hidden' }]);
+  });
+
+  it('holds one wave per connection and asks one car once for everybody', () => {
+    wake();
+    hello('c', 'car-c');
+    pos('c', GENEVA.lat, GENEVA.lng);
+    const first = onMessage(state, 'a', { t: 'wave', to: ID('car-b') }, now);
+    expect(sends(first, 'b')).toEqual([{ t: 'where' }]);
+    const again = onMessage(state, 'a', { t: 'wave', to: ID('car-b') }, now);
+    expect(sends(again, 'a')).toEqual([{ t: 'waved', to: ID('car-b'), ok: false, reason: 'rate' }]);
+    // Somebody else waving at the same car does not ask it a second time inside the rate
+    // limit: its two answers would have counted as abuse.
+    const other = onMessage(state, 'c', { t: 'wave', to: ID('car-b') }, now + 500);
+    expect(sends(other, 'b')).toHaveLength(0);
+    expect(hubStats(state).held).toBe(2);
+    now += 1_000;
+    // One answer from the car they are both waving at settles the wave the hub could
+    // already place the sender of; the other waits on its own sender.
+    const fromC = pos('b', near.lat, near.lng);
+    expect(sends(fromC, 'b').filter((m) => m.t === 'wave')).toMatchObject([{ from: { id: ID('car-c') } }]);
+    expect(hubStats(state).held).toBe(1);
+    const fromA = pos('a', GENEVA.lat, GENEVA.lng);
+    expect(sends(fromA, 'b').filter((m) => m.t === 'wave')).toMatchObject([{ from: { id: ID('car-a') } }]);
+    expect(hubStats(state).held).toBe(0);
+  });
+
+  it('holds a wave from a live hub too, when the sender\'s own presence has expired', () => {
+    // A driver whose positions stopped, socket still open, for longer than the expiry.
+    hello('a', 'car-a');
+    hello('b', 'car-b');
+    pos('a', GENEVA.lat, GENEVA.lng);
+    now += PRESENCE_EXPIRY_MS + SERVER_TICK_MS;
+    pos('b', near.lat, near.lng);
+    flush();
+    expect(state.presence.has(ID('car-a'))).toBe(false);
+    const out = onMessage(state, 'a', { t: 'wave', to: ID('car-b') }, now);
+    expect(sends(out, 'a')).toEqual([{ t: 'where' }]);
+    expect(sends(out, 'b')).toHaveLength(0);
+    now += 100;
+    const answered = pos('a', GENEVA.lat, GENEVA.lng);
+    expect(sends(answered, 'a')).toEqual([{ t: 'waved', to: ID('car-b'), ok: true }]);
   });
 });
 

@@ -44,6 +44,12 @@ export const PRESENCE_EXPIRY_MS = 60_000;
 
 export const RATE_POS_MS = 2_000;
 export const RATE_WAVE_MS = 5_000;
+/**
+ * How long the hub holds a wave it cannot place yet. After a hibernation wake it knows
+ * nobody's position until each car reports again, so it asks both parties for one and
+ * waits this long for the answers before calling the wave off.
+ */
+export const WAVE_HOLD_MS = 3_000;
 export const RATE_VIOLATIONS_TO_CLOSE = 5;
 export const MAX_MSG_BYTES = 1_024;
 
