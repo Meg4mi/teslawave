@@ -72,6 +72,8 @@ a wave sent, received and returned, the milestone card, and the whole sprite mat
 `/art?colour=deepblue` renders every model large, in one paint, beside its map-sized sprite:
 the cars are one drawing (`overlay/model-art.ts`) rendered as SVG in the UI and baked to a
 bitmap for the map, and this is where a change to the drawing gets judged.
+`pnpm art out.png all` (in `apps/web`) screenshots the same sheet in every colour without a
+browser open, which is how a pass on the drawings is checked before it is committed.
 
 ## What a link looks like
 
