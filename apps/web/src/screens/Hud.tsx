@@ -7,11 +7,14 @@ import type { NetStatus } from '../net/sockets';
 export function Hud({
   summary,
   status,
+  locating,
   onOpenPulse,
   onHowItWorks,
 }: {
   summary: Summary;
   status: NetStatus;
+  /** Waiting on the device for a first fix, which is not a connection problem. */
+  locating: boolean;
   onOpenPulse: () => void;
   onHowItWorks: () => void;
 }): ReactNode {
@@ -46,8 +49,16 @@ export function Hud({
         </span>
       </button>
 
-      {/* One state at a time: a driver glancing at this should read one line, not three. */}
-      {status === 'reconnecting' || status === 'connecting' ? (
+      {/* One state at a time: a driver glancing at this should read one line, not three.
+          Three ways of not being on the map yet, and they are not the same thing: waiting on
+          the phone for a position, opening the socket for the first time, and having lost
+          one. Saying "Reconnecting…" to all three sent drivers looking for a network fault
+          while their phone was quietly still asking them for their location. */}
+      {locating ? (
+        <p className="hud__note">{copy.map.locating}</p>
+      ) : status === 'connecting' ? (
+        <p className="hud__note">{copy.map.connecting}</p>
+      ) : status === 'reconnecting' ? (
         <p className="hud__note">{copy.map.reconnecting}</p>
       ) : summary.near === 0 ? (
         <>

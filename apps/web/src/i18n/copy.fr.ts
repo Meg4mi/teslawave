@@ -133,6 +133,8 @@ export const FR: Copy = {
     paused: 'TeslaWave est en pause. De retour très vite.',
     budget: (time: string): string =>
       `TeslaWave a dépassé sa capacité gratuite pour aujourd’hui. De retour à ${time}.`,
+    locating: 'En attente de votre position…',
+    connecting: 'Connexion…',
     reconnecting: 'Reconnexion…',
     recentre: 'Revenir à ma voiture',
     nearby: 'à proximité',

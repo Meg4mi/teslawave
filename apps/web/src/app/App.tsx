@@ -263,6 +263,7 @@ export function App(): ReactNode {
       <Hud
         summary={summary}
         status={status}
+        locating={session.locating}
         onOpenPulse={() => setSheet('pulse')}
         onHowItWorks={() => setSheet('how-to')}
       />

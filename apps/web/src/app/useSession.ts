@@ -37,6 +37,8 @@ export type Session = {
   status: NetStatus;
   /** Location denied or unavailable: sees, is not seen, cannot wave. */
   spectator: boolean;
+  /** Still waiting on the device for a first fix: there is nothing wrong with the network. */
+  locating: boolean;
   /** Parked for PARKED_HIDE_MS: hidden by the clock until the car moves (ADR-0026). */
   parked: boolean;
   /** The hub speaks a newer wire format: this build reloads at the next standstill (ADR-0029). */
@@ -91,6 +93,13 @@ export function useSession({
 
   const { status: geo, fix } = usePosition(identity !== null);
   const spectator = geo === 'denied' || geo === 'unavailable';
+  /*
+   * No position yet, and no answer either way from the device. Worth telling apart from a
+   * connection problem: without a position there are no cells to subscribe to, so the socket
+   * has not been opened yet and the HUD would otherwise report a network fault that is not
+   * happening. The wait is bounded — see usePosition.
+   */
+  const locating = geo === 'idle' && fix === null;
 
   /**
    * Milestones are personal and local: no leaderboard, nothing to compare against
@@ -310,6 +319,7 @@ export function useSession({
   return {
     status,
     spectator,
+    locating,
     parked,
     upgrading: wantedVersion !== null && wantedVersion > PROTOCOL_VERSION,
     milestone,

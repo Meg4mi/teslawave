@@ -122,6 +122,9 @@ export const EN = {
     paused: 'TeslaWave is paused. Back shortly.',
     budget: (time: string): string =>
       `TeslaWave is over its free capacity for today. Back at ${time}.`,
+    /** Three different reasons the map has nobody on it yet, said as three different lines. */
+    locating: 'Waiting for your location…',
+    connecting: 'Connecting…',
     reconnecting: 'Reconnecting…',
     recentre: 'Back to my car',
     nearby: 'nearby',

@@ -7,6 +7,7 @@ import { createRenderer, type Renderer } from '../overlay/renderer';
 import { buildStyle } from './style';
 import { addActivityLayer } from './activity';
 import { affineProjector } from './projector';
+import { createCamera } from './camera';
 import { MAPLIBRE_WORKER_URL } from './maplibre-worker-url';
 import { useCopy } from '../i18n';
 import { LocateIcon, MinusIcon, PlusIcon } from '../ui/icons';
@@ -53,19 +54,14 @@ const HIT_RADIUS_PX = 40;
 const CAMERA_MS = 33;
 const CAMERA_SLOW_MS = 66;
 const OVERLAY_SLOW_MS = 32;
-/** Roughly a tenth of a metre, and a fifth of a degree: below this nothing visibly moves. */
-const CAMERA_EPSILON_DEG = 1e-6;
-const CAMERA_EPSILON_DEG_BEARING = 0.2;
-/**
- * How long the camera stays out of the way after the driver touches the map.
- *
- * It used to follow unconditionally, up to thirty times a second, which meant a pinch was
- * fighting a jumpTo the whole time it lasted — the gesture computes its deltas against a
+/*
+ * The camera used to follow unconditionally, up to thirty times a second, which meant a pinch
+ * was fighting a jumpTo the whole time it lasted — the gesture computes its deltas against a
  * transform that had already been moved out from under it, so zooming felt like it was
  * slipping. Now a gesture wins outright, and the map comes back to you when you stop. The
- * zoom you chose is kept: only the centre and bearing resume.
+ * zoom you chose is kept: only the centre and bearing resume. When it holds, when it resumes
+ * and what it remembers while it does live in map/camera.ts.
  */
-const CAMERA_HOLD_MS = 6_000;
 /** Below this a touch is a tap, not a drag. */
 const DRAG_SLOP_PX = 10;
 /**
@@ -101,10 +97,10 @@ export function LiveMap({
   const mapRef = useRef<MlMap | null>(null);
   const carsRef = useRef<RenderCar[]>([]);
   // Props read inside the animation loop, which must not restart when they change.
-  const live = useRef({ northUp, selectedId, nearbyId, self });
+  const live = useRef({ northUp, selectedId, nearbyId, self, origin });
   useEffect(() => {
-    live.current = { northUp, selectedId, nearbyId, self };
-  }, [northUp, selectedId, nearbyId, self]);
+    live.current = { northUp, selectedId, nearbyId, self, origin };
+  }, [northUp, selectedId, nearbyId, self, origin]);
 
   // Only until the driver's own position takes over.
   useEffect(() => {
@@ -149,14 +145,27 @@ export function LiveMap({
     onReady(renderer);
 
     const recentreButton = recentre.current;
-    let cameraHeldUntil = 0;
+    const camera = createCamera();
     const holdCamera = (): void => {
-      cameraHeldUntil = performance.now() + CAMERA_HOLD_MS;
+      camera.hold(performance.now());
       if (recentreButton) recentreButton.hidden = false;
     };
+    /**
+     * Pick the driver back up. The jump happens here rather than being left to the next
+     * camera tick, and it falls back to the rough origin when there is no fix yet: a button
+     * that says "Back to my car" has to move the map every time it is pressed, including on
+     * the phone that is still waiting for its first position.
+     */
     const follow = (): void => {
-      cameraHeldUntil = 0;
+      camera.release();
       if (recentreButton) recentreButton.hidden = true;
+      const placement = getSelfPlacement();
+      const to = placement ?? live.current.origin;
+      if (!to) return;
+      map.jumpTo({
+        center: [to.lng, to.lat],
+        bearing: live.current.northUp ? 0 : (placement?.heading ?? map.getBearing()),
+      });
     };
     recentreButton?.addEventListener('click', follow);
     /*
@@ -188,7 +197,7 @@ export function LiveMap({
     const onPointerDown = (event: PointerEvent): void => {
       down.set(event.pointerId, { x: event.clientX, y: event.clientY });
       touching = down.size;
-      cameraHeldUntil = performance.now() + CAMERA_HOLD_MS;
+      camera.hold(performance.now());
       if (down.size > 1) {
         gestured = true;
         holdCamera();
@@ -282,8 +291,6 @@ export function LiveMap({
     let fastFrames = 0;
     let halfRate = false;
     let lastFrame = performance.now();
-    let cameraAt = 0;
-    let lastCentre: { lng: number; lat: number; bearing: number } | null = null;
     let overlayAt = 0;
     let raf = 0;
 
@@ -319,26 +326,17 @@ export function LiveMap({
        * redraws even when the camera has not moved. A car standing at a light stops
        * repainting the map altogether.
        */
-      if (now >= cameraHeldUntil && recentreButton && !recentreButton.hidden)
+      if (!camera.held(now) && recentreButton && !recentreButton.hidden)
         recentreButton.hidden = true;
 
-      if (
-        placement &&
-        now >= cameraHeldUntil &&
-        now - cameraAt >= (halfRate ? CAMERA_SLOW_MS : CAMERA_MS)
-      ) {
-        const bearing = north ? 0 : placement.heading;
-        const moved =
-          !lastCentre ||
-          Math.abs(lastCentre.lat - placement.lat) > CAMERA_EPSILON_DEG ||
-          Math.abs(lastCentre.lng - placement.lng) > CAMERA_EPSILON_DEG ||
-          Math.abs(lastCentre.bearing - bearing) > CAMERA_EPSILON_DEG_BEARING;
-        if (moved) {
-          map.jumpTo({ center: [placement.lng, placement.lat], bearing });
-          lastCentre = { lat: placement.lat, lng: placement.lng, bearing };
-        }
-        cameraAt = now;
-      }
+      const target = camera.step(
+        now,
+        placement
+          ? { lat: placement.lat, lng: placement.lng, bearing: north ? 0 : placement.heading }
+          : null,
+        halfRate ? CAMERA_SLOW_MS : CAMERA_MS,
+      );
+      if (target) map.jumpTo({ center: [target.lng, target.lat], bearing: target.bearing });
 
       // Two clock reads and one array push a frame: cheap enough to keep on always, so the
       // performance beacon has the same numbers the e2e gate has (ADR-0027).
