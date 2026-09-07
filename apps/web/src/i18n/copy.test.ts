@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   BRAND,
@@ -158,5 +160,35 @@ describe('French', () => {
     expect(FR.agoLabel(now - 5_000, now)).toBe('à l’instant');
     expect(FR.agoLabel(now - 120_000, now)).toBe('il y a 2 min');
     expect(FR.agoLabel(now - 7_200_000, now)).toBe('il y a 2 h');
+  });
+});
+
+/**
+ * The README promises that a rebrand is a one-file change (ADR-0001). It was not: eight
+ * catalogue strings, the share card's filename and the map style's name each spelled the brand
+ * out, so a rename would have left the app half renamed and every one of them would still have
+ * compiled and still have passed every test above.
+ *
+ * This reads the sources rather than the catalogue, because a template literal has already
+ * become the brand's name by the time a test can see its value.
+ */
+describe('the brand is spelled in exactly one place', () => {
+  // vitest runs from apps/web, and import.meta.url is not a file URL under jsdom.
+  const ROOT = process.cwd();
+  const SOURCES = [
+    'src/i18n/copy.en.ts',
+    'src/i18n/copy.fr.ts',
+    'src/map/style.ts',
+    'src/screens/ShareSheet.tsx',
+    'index.html',
+  ];
+
+  it.each(SOURCES)('%s names the brand through BRAND, never as a literal', (file) => {
+    const source = readFileSync(join(ROOT, file), 'utf8');
+    // The package scope is not the brand: `@teslawave/protocol` survives a rename untouched.
+    const literals = source
+      .split('\n')
+      .filter((line) => /TeslaWave/i.test(line.replace(/@teslawave\//g, '')));
+    expect(literals, `${file} should read the name from brand.json`).toEqual([]);
   });
 });

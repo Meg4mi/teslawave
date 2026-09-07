@@ -134,9 +134,9 @@ export const FR: Copy = {
     hidden: 'Vous êtes invisible. Personne ne vous voit ni ne peut vous saluer.',
     parked:
       'À l’arrêt depuis un moment, vous êtes donc masqué. Vous réapparaissez sur la carte dès que vous roulez.',
-    paused: 'TeslaWave est en pause. De retour très vite.',
+    paused: `${BRAND.name} est en pause. De retour très vite.`,
     budget: (time: string): string =>
-      `TeslaWave a dépassé sa capacité gratuite pour aujourd’hui. De retour à ${time}.`,
+      `${BRAND.name} a dépassé sa capacité gratuite pour aujourd’hui. De retour à ${time}.`,
     locating: 'En attente de votre position…',
     connecting: 'Connexion…',
     reconnecting: 'Reconnexion…',
@@ -163,7 +163,7 @@ export const FR: Copy = {
     title: 'Comment saluer',
     lead: 'C’est le salut Tesla, sur votre écran. Rien à apprendre.',
     steps: [
-      'Roulez. Les autres conducteurs sur TeslaWave apparaissent autour de vous sur la carte.',
+      `Roulez. Les autres conducteurs sur ${BRAND.name} apparaissent autour de vous sur la carte.`,
       'Quand l’un d’eux passe à moins de 300 m environ, un grand bouton Saluer apparaît en bas de l’écran.',
       'Touchez-le. Votre salut traverse et se pose sur leur voiture. Sur leur écran, il déferle sur toute la carte, avec votre voiture et un carillon, et un bouton Saluer en retour pendant quelques secondes.',
       'Saluez en retour dans ces quelques secondes et vous obtenez tous les deux un « Salut rendu ». Un salut reçu a le même effet sur votre écran : difficile à manquer, même sans le son.',
@@ -222,7 +222,7 @@ export const FR: Copy = {
     save: 'Enregistrer l’image',
     note: 'Votre voiture et votre compte. Aucune carte, aucun trajet, aucun lieu où vous êtes passé.',
     unavailable:
-      'Cet écran ne peut pas enregistrer d’images. Ouvrez TeslaWave sur votre téléphone pour l’envoyer.',
+      `Cet écran ne peut pas enregistrer d’images. Ouvrez ${BRAND.name} sur votre téléphone pour l’envoyer.`,
   },
 
   pairing: {
@@ -230,11 +230,11 @@ export const FR: Copy = {
     showAction: 'Utiliser sur ma voiture',
     showHint: 'Pour ne pas tout refaire sur l’écran de la voiture.',
     showBody:
-      'Sur l’écran de votre voiture, ouvrez teslawave.app et touchez « J’ai déjà tout réglé sur mon téléphone ». Saisissez ensuite ce code. Votre voiture garde le même nom, la même voiture et le même nombre de saluts.',
+      `Sur l’écran de votre voiture, ouvrez ${BRAND.domain} et touchez « J’ai déjà tout réglé sur mon téléphone ». Saisissez ensuite ce code. Votre voiture garde le même nom, la même voiture et le même nombre de saluts.`,
     expiresIn: (mmss: string): string => `Expire dans ${mmss}`,
     enterTitle: 'Saisissez le code de votre téléphone',
     enterBody:
-      'Sur votre téléphone, ouvrez teslawave.app, touchez « Utiliser sur ma voiture », et saisissez ici les six caractères affichés.',
+      `Sur votre téléphone, ouvrez ${BRAND.domain}, touchez « Utiliser sur ma voiture », et saisissez ici les six caractères affichés.`,
     claim: 'Continuer',
     claiming: 'Vérification…',
     failed: 'Ce code n’est plus valide. Créez-en un nouveau sur votre téléphone.',

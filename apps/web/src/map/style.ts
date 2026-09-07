@@ -1,4 +1,5 @@
 import type { StyleSpecification } from 'maplibre-gl';
+import { BRAND } from '@teslawave/protocol';
 
 /**
  * A near-monochrome instrument panel. The cars are the only colour on screen (brief 4.2).
@@ -34,7 +35,7 @@ const LABEL_HALO = '#080b0f';
 export function buildStyle(): StyleSpecification {
   return {
     version: 8,
-    name: 'TeslaWave Night',
+    name: `${BRAND.name} Night`,
     glyphs: OPENFREEMAP_GLYPHS,
     sources: {
       openmaptiles: { type: 'vector', url: OPENFREEMAP_TILES },

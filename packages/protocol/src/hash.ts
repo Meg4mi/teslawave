@@ -119,6 +119,10 @@ export const ID_LEN = 32;
 /**
  * The public id for a secret. Domain-separated so the same secret used anywhere else would
  * hash to something unrelated.
+ *
+ * The `teslawave-id:` prefix is a salt, not the brand, and it must survive a rename: changing
+ * it rehashes every driver into a stranger and orphans the wave counts stored against their
+ * old id (ADR-0025). It is the one place the word is deliberately spelled out.
  */
 export const idFromSecret = (secret: string): string =>
   sha256Hex(`teslawave-id:${secret}`).slice(0, ID_LEN);

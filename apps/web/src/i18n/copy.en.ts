@@ -128,9 +128,9 @@ export const EN = {
     spectatorRetry: 'Turn it on',
     hidden: 'You are invisible. Nobody can see you or wave at you.',
     parked: 'Parked for a while, so you are hidden. You are back on the map when you move.',
-    paused: 'TeslaWave is paused. Back shortly.',
+    paused: `${BRAND.name} is paused. Back shortly.`,
     budget: (time: string): string =>
-      `TeslaWave is over its free capacity for today. Back at ${time}.`,
+      `${BRAND.name} is over its free capacity for today. Back at ${time}.`,
     /** Three different reasons the map has nobody on it yet, said as three different lines. */
     locating: 'Waiting for your location…',
     connecting: 'Connecting…',
@@ -158,7 +158,7 @@ export const EN = {
     title: 'How waving works',
     lead: 'It is the Tesla wave, on your screen. Nothing to learn.',
     steps: [
-      'Drive. Other drivers running TeslaWave appear around you on the map.',
+      `Drive. Other drivers running ${BRAND.name} appear around you on the map.`,
       'When one comes within about 300 m, a big Wave button appears at the bottom of the screen.',
       'Tap it. Your wave flies over and lands on their car. On their screen it washes across the whole map, with your car and a chime, and a warm Wave back button for a few seconds.',
       'Wave back within those seconds and you both get a "Waved back". A wave you receive looks the same on your screen: hard to miss, even with the sound off.',
@@ -222,7 +222,7 @@ export const EN = {
     save: 'Save image',
     /* Says what is in the image, because what people worry about is a place being in it. */
     note: 'Your car and your count. No map, no route, nowhere you have been.',
-    unavailable: 'This screen cannot save images. Open TeslaWave on your phone to send it.',
+    unavailable: `This screen cannot save images. Open ${BRAND.name} on your phone to send it.`,
   },
 
   pairing: {
@@ -230,11 +230,11 @@ export const EN = {
     showAction: 'Use this on my car',
     showHint: 'So you do not have to set it all up again on the car screen.',
     showBody:
-      'On your car screen, open teslawave.app and tap "I already set this up on my phone". Then type this code. Your car keeps the same name, car and wave count.',
+      `On your car screen, open ${BRAND.domain} and tap "I already set this up on my phone". Then type this code. Your car keeps the same name, car and wave count.`,
     expiresIn: (mmss: string): string => `Expires in ${mmss}`,
     enterTitle: 'Type the code from your phone',
     enterBody:
-      'On your phone, open teslawave.app, tap "Use this on my car", and type the six characters it shows you here.',
+      `On your phone, open ${BRAND.domain}, tap "Use this on my car", and type the six characters it shows you here.`,
     claim: 'Continue',
     claiming: 'Checking…',
     failed: 'That code is not valid any more. Make a new one on your phone.',
