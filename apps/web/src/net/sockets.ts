@@ -4,6 +4,7 @@ import {
   NEIGHBOUR_RADIUS_M,
   PARKED_HIDE_MS,
   POS_INTERVAL_STATIONARY_MS,
+  PROTOCOL_VERSION,
   STATIONARY_SPEED_KMH,
   cellsWithin,
   groupByHub,
@@ -173,6 +174,7 @@ export function createNet(handlers: {
       model: profile.model,
       colour: profile.colour,
       cells: hub.cells,
+      v: PROTOCOL_VERSION,
       ...(profile.nick === undefined ? {} : { nick: profile.nick }),
       ...(profile.spectator ? { spectator: true } : {}),
     };

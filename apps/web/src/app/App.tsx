@@ -256,6 +256,7 @@ export function App(): ReactNode {
       {status === 'budget' ? <Notice>{copy.map.budget(nextResetLabel())}</Notice> : null}
       {status === 'paused' ? <Notice>{copy.map.paused}</Notice> : null}
       {!tiles ? <Notice>{copy.map.tilesOffline}</Notice> : null}
+      {session.upgrading ? <Notice>{copy.map.upgrading}</Notice> : null}
 
       {/* Labelled, not cryptic: on a touch screen there is no hover, so a tooltip would
           never appear. Each control says what it does and what state it is in. */}

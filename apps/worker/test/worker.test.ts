@@ -109,6 +109,48 @@ describe('/ws', () => {
     b.close();
   });
 
+  /*
+   * The recall path, over a real socket. A car pinned to a tab for weeks is the client this
+   * is for, so the thing worth asserting is not that it is told — it is that being told costs
+   * it nothing: the welcome still arrives, the socket stays open, and it can still be seen
+   * and wave (ADR-0029).
+   */
+  it('tells a client with no version to upgrade, and keeps carrying it', async () => {
+    const old = await connect(HUB);
+    // No `v` at all: every build deployed before ADR-0029 looks exactly like this on the
+    // wire, so it is sent as a raw string rather than built from the typed helper.
+    old.send(
+      JSON.stringify({
+        t: 'hello',
+        secret: secretOf('legacy-a'),
+        model: '3',
+        colour: 'red',
+        cells: [CELL],
+      }),
+    );
+
+    const welcome = await old.next((m) => m.t === 'welcome');
+    expect(welcome.t).toBe('welcome');
+    const upgrade = await old.next((m) => m.t === 'upgrade');
+    expect(upgrade).toMatchObject({ t: 'upgrade' });
+
+    // Still a driver: it reports, and a current client in the same cell sees it.
+    const current = await connect(HUB);
+    current.send(helloMsg('legacy-b', [CELL]));
+    await current.next((m) => m.t === 'welcome');
+    old.send(posMsg(GENEVA.lat, GENEVA.lng));
+    await wait(SERVER_TICK_MS + 200);
+    current.send(posMsg(GENEVA.lat, GENEVA.lng));
+    const diff = await current.next(
+      (m) => m.t === 'diff' && m.upd.some((c) => c.id === idOf('legacy-a')),
+    );
+    expect(diff.t).toBe('diff');
+
+    expect(current.received.some((m) => m.t === 'upgrade')).toBe(false);
+    old.close();
+    current.close();
+  });
+
   it('is silenced by the kill switch', async () => {
     const res = await SELF.fetch(`https://teslawave.test/ws?hub=${HUB}`, {
       headers: { Upgrade: 'websocket' },
@@ -270,5 +312,53 @@ describe('/api', () => {
     expect(await stats.json()).toHaveProperty('total');
     const missing = await SELF.fetch('https://teslawave.test/api/nope');
     expect(missing.status).toBe(404);
+  });
+
+  /*
+   * Creating a code writes a D1 row. Claiming was limited and creating was not, so the whole
+   * app's daily write budget sat behind an unauthenticated POST.
+   */
+  it('rate-limits pairing codes, per address', async () => {
+    const make = (ip: string): Promise<Response> =>
+      SELF.fetch('https://teslawave.test/api/pair', {
+        method: 'POST',
+        headers: { 'cf-connecting-ip': ip },
+        body: JSON.stringify({ secret: secretOf('flood'), model: '3', colour: 'red' }),
+      });
+
+    const statuses: number[] = [];
+    for (let i = 0; i < 8; i++) statuses.push((await make('203.0.113.7')).status);
+    expect(statuses[0]).toBe(200);
+    expect(statuses.at(-1)).toBe(429);
+    // Soft by design (ADR-0003's reasoning: one isolate, no storage), so the only promise
+    // worth asserting is that it stops well short of eight writes.
+    expect(statuses.filter((s) => s === 200).length).toBeLessThan(8);
+
+    // One noisy address must never lock out the driver in the next car.
+    expect((await make('203.0.113.8')).status).toBe(200);
+  });
+});
+
+/*
+ * The Content-Security-Policy lives in apps/web/public/_headers, because the documents it
+ * governs are served by the asset layer and never reach this Worker (see src/headers.ts).
+ * It is tested where it actually applies, against the real app: apps/web/e2e/csp.spec.ts.
+ * What is left for the Worker's own responses is asserted here.
+ */
+describe('security headers', () => {
+  it('marks its responses nosniff and leaks no referer', async () => {
+    for (const path of ['/api/stats', '/api/whereami', '/api/nope']) {
+      const res = await SELF.fetch(`https://teslawave.test${path}`);
+      expect(res.headers.get('x-content-type-options'), path).toBe('nosniff');
+      expect(res.headers.get('referrer-policy'), path).toBe('no-referrer');
+    }
+  });
+
+  it('sends HSTS over https and never over plain http', async () => {
+    const secure = await SELF.fetch('https://teslawave.test/api/stats');
+    expect(secure.headers.get('strict-transport-security')).toContain('max-age=');
+    // Pinning a developer's browser to https on localhost for a year is a bad afternoon.
+    const plain = await SELF.fetch('http://teslawave.test/api/stats');
+    expect(plain.headers.get('strict-transport-security')).toBeNull();
   });
 });

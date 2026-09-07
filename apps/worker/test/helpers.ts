@@ -1,5 +1,11 @@
 import { SELF } from 'cloudflare:test';
-import { idFromSecret, parseServerMsg, type ClientMsg, type ServerMsg } from '@teslawave/protocol';
+import {
+  PROTOCOL_VERSION,
+  idFromSecret,
+  parseServerMsg,
+  type ClientMsg,
+  type ServerMsg,
+} from '@teslawave/protocol';
 
 export type Client = {
   send: (msg: ClientMsg | string) => void;
@@ -79,7 +85,15 @@ export const helloMsg = (
   name: string,
   cells: string[],
   extra: Partial<Extract<ClientMsg, { t: 'hello' }>> = {},
-): ClientMsg => ({ t: 'hello', secret: secretOf(name), model: '3', colour: 'red', cells, ...extra });
+): ClientMsg => ({
+  t: 'hello',
+  secret: secretOf(name),
+  model: '3',
+  colour: 'red',
+  cells,
+  v: PROTOCOL_VERSION,
+  ...extra,
+});
 
 export const posMsg = (lat: number, lng: number, speed = 50): ClientMsg => ({
   t: 'pos',

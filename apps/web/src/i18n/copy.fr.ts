@@ -129,6 +129,7 @@ export const FR: Copy = {
     zoomOut: 'Zoom arrière',
     tilesOffline:
       'Les tuiles de carte ne se chargent pas. Les voitures et les saluts fonctionnent toujours.',
+    upgrading: 'Une nouvelle version est prête. Elle se charge au prochain arrêt.',
   },
 
   garage: {

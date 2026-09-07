@@ -85,3 +85,16 @@ export const CLOSE_BAD_HELLO = 4001;
 export const CLOSE_PROTOCOL = 4008;
 export const CLOSE_CAPACITY = 4029;
 export const CLOSE_WRONG_HUB = 4030;
+
+/**
+ * The wire format's version. The client sends it in `hello`; a hub that speaks a newer one
+ * answers with `upgrade`, and the client reloads at the next standstill (ADR-0029).
+ *
+ * Bump it whenever a change would make an old client and a new hub disagree — a new field
+ * either side relies on, a changed meaning, a removed message. Adding a field that an old
+ * client can ignore and a new hub can do without is not a bump.
+ */
+export const PROTOCOL_VERSION = 1;
+
+/** A hello with no version is from before ADR-0029, which is every client already deployed. */
+export const LEGACY_PROTOCOL_VERSION = 0;

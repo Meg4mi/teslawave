@@ -4,8 +4,10 @@ import {
   CLOSE_CAPACITY,
   CLOSE_PROTOCOL,
   CLOSE_WRONG_HUB,
+  LEGACY_PROTOCOL_VERSION,
   MAX_SOCKETS_PER_CELL,
   PRESENCE_EXPIRY_MS,
+  PROTOCOL_VERSION,
   SERVER_TICK_MS,
   decodeBounds,
   destination,
@@ -67,7 +69,15 @@ const hello = (key: string, name: string, cells: string[] = [CELL], extra: Parti
   return onMessage(
     state,
     key,
-    { t: 'hello', secret: secretOf(name), model: '3', colour: 'red', cells, ...extra } as ClientMsg,
+    {
+      t: 'hello',
+      secret: secretOf(name),
+      model: '3',
+      colour: 'red',
+      cells,
+      v: PROTOCOL_VERSION,
+      ...extra,
+    } as ClientMsg,
     now,
   );
 };
@@ -528,5 +538,40 @@ describe('daily harvest', () => {
     // Counted from today: not forgotten until the TTL has passed from now.
     expect(harvest(woken, now + USER_WAVES_TTL_MS - DAY).deleteKeys).toEqual([]);
     expect(harvest(woken, now + USER_WAVES_TTL_MS + DAY).deleteKeys).toHaveLength(2 * (MAX_PERSIST_KEYS + 10));
+  });
+});
+
+describe('the version handshake', () => {
+  const upgrades = (effects: Effect[], to: string): Extract<ServerMsg, { t: 'upgrade' }>[] =>
+    sends(effects, to).filter((m): m is Extract<ServerMsg, { t: 'upgrade' }> => m.t === 'upgrade');
+
+  it('says nothing to a client that speaks the current version', () => {
+    expect(upgrades(hello('a', 'car-a'), 'a')).toEqual([]);
+  });
+
+  it('tells an older client to upgrade, without closing it', () => {
+    const out = hello('a', 'car-a', [CELL], { v: LEGACY_PROTOCOL_VERSION } as Partial<ClientMsg>);
+    expect(upgrades(out, 'a')).toEqual([{ t: 'upgrade', v: PROTOCOL_VERSION }]);
+    // The point of not closing: the driver keeps the map until they are standing still.
+    expect(closes(out)).toEqual([]);
+    expect(sends(out, 'a').some((m) => m.t === 'welcome')).toBe(true);
+  });
+
+  it('still carries an old client: it can see, be seen and wave', () => {
+    hello('a', 'car-a', [CELL], { v: LEGACY_PROTOCOL_VERSION } as Partial<ClientMsg>);
+    hello('b', 'car-b');
+    pos('a', GENEVA.lat, GENEVA.lng);
+    pos('b', GENEVA.lat, GENEVA.lng);
+    now += SERVER_TICK_MS;
+    expect(diffsFor(flushIfDue(state, now), 'b')[0]?.upd.map((c) => c.id)).toContain(ID('car-a'));
+
+    const waved = sends(onMessage(state, 'a', { t: 'wave', to: ID('car-b') }, now), 'a');
+    expect(waved).toContainEqual({ t: 'waved', to: ID('car-b'), ok: true });
+  });
+
+  it('leaves a client from the future alone: it is the hub that is behind', () => {
+    const out = hello('a', 'car-a', [CELL], { v: PROTOCOL_VERSION + 5 } as Partial<ClientMsg>);
+    expect(upgrades(out, 'a')).toEqual([]);
+    expect(closes(out)).toEqual([]);
   });
 });

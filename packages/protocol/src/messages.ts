@@ -1,4 +1,9 @@
-import { CELL_ID_RE, MAX_CELLS_PER_CLIENT, NICK_MAX_LEN } from './constants.js';
+import {
+  CELL_ID_RE,
+  LEGACY_PROTOCOL_VERSION,
+  MAX_CELLS_PER_CLIENT,
+  NICK_MAX_LEN,
+} from './constants.js';
 import { isSecret } from './hash.js';
 import { isColourId, isModel, type CarColourId, type TeslaModel } from './models.js';
 
@@ -35,6 +40,12 @@ export type ClientMsg =
       nick?: string;
       cells: string[];
       spectator?: boolean;
+      /**
+       * The wire format this client was built against. Absent means a build from before
+       * ADR-0029, which the guard reads as LEGACY_PROTOCOL_VERSION rather than rejecting:
+       * a car pinned to an old tab has to keep working long enough to be told to reload.
+       */
+      v: number;
     }
   | { t: 'pos'; lat: number; lng: number; heading: number; speed: number; ts: number }
   | { t: 'sub'; cells: string[] }
@@ -57,6 +68,11 @@ export type ServerMsg =
     }
   | { t: 'wave'; from: CarPublic; ts: number }
   | { t: 'waved'; to: string; ok: boolean; reason?: WaveFailReason }
+  /**
+   * This client is older than the hub. Not a close and not an error: the driver keeps the
+   * map, and the client reloads itself the next time the car is standing still (ADR-0029).
+   */
+  | { t: 'upgrade'; v: number }
   | { t: 'error'; code: 'cell' | 'cap' | 'rate' | 'bad'; msg?: string };
 
 const isObj = (v: unknown): v is Record<string, unknown> =>
@@ -111,12 +127,16 @@ export function parseClientMsg(raw: unknown): ClientMsg | null {
       )
         return null;
       const nick = cleanNick(value['nick']);
+      // A missing or nonsense version is a client from before ADR-0029, not a bad message:
+      // it gets told to upgrade rather than closed on.
+      const v = value['v'];
       return {
         t: 'hello',
         secret: value['secret'],
         model: value['model'],
         colour: value['colour'],
         cells,
+        v: isFiniteNum(v) && v >= 0 && v < 1_000 ? Math.floor(v) : LEGACY_PROTOCOL_VERSION,
         ...(nick === undefined ? {} : { nick }),
         ...(value['spectator'] === true ? { spectator: true } : {}),
       };
@@ -233,6 +253,10 @@ export function parseServerMsg(raw: unknown): ServerMsg | null {
       const reason = value['reason'];
       const valid = reason === 'range' || reason === 'offline' || reason === 'rate' || reason === 'hidden';
       return { t: 'waved', to: value['to'], ok: value['ok'], ...(valid ? { reason } : {}) };
+    }
+    case 'upgrade': {
+      const v = value['v'];
+      return isFiniteNum(v) && v >= 0 ? { t: 'upgrade', v: Math.floor(v) } : null;
     }
     case 'error': {
       const code = value['code'];

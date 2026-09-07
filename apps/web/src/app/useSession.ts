@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react';
 import {
+  PROTOCOL_VERSION,
   WAVE_BACK_WINDOW_MS,
   WAVE_PROMPT_TTL_MS,
   hubOf,
@@ -7,6 +8,7 @@ import {
   type TeslaModel,
 } from '@teslawave/protocol';
 import { createNet, type Net, type NetStatus } from '../net/sockets';
+import { readMark, shouldReload, writeMark } from '../net/upgrade';
 import { startBeacon } from '../perf/beacon';
 import { usePosition } from '../geo/usePosition';
 import {
@@ -37,6 +39,8 @@ export type Session = {
   spectator: boolean;
   /** Parked for PARKED_HIDE_MS: hidden by the clock until the car moves (ADR-0026). */
   parked: boolean;
+  /** The hub speaks a newer wire format: this build reloads at the next standstill (ADR-0029). */
+  upgrading: boolean;
   /** A wave count just crossed: the number to celebrate, for a few seconds. */
   milestone: number | null;
   /** The card a received wave raises. */
@@ -78,6 +82,8 @@ export function useSession({
 
   const [status, setStatus] = useState<NetStatus>('idle');
   const [parked, setParked] = useState(false);
+  /** The wire version the hub wants, once it has told us. Null until then, which is usual. */
+  const [wantedVersion, setWantedVersion] = useState<number | null>(null);
   const [milestone, setMilestone] = useState<number | null>(null);
   const [waveCard, setWaveCard] = useState<WaveCardContent | null>(null);
   const [flashId, setFlashId] = useState<number | null>(null);
@@ -103,6 +109,8 @@ export function useSession({
   const onServerMsg = useCallback(
     (msg: ServerMsg): void => {
       applyServerMsg(msg);
+      // Not acted on here: the reload waits for the car to stop (ADR-0029).
+      if (msg.t === 'upgrade') setWantedVersion(msg.v);
       if (msg.t === 'wave') {
         const sentAt = sentWaves.current.get(msg.from.id);
         const isWaveBack = sentAt !== undefined && Date.now() - sentAt < WAVE_BACK_WINDOW_MS;
@@ -229,6 +237,23 @@ export function useSession({
     return () => clearInterval(beat);
   }, [identity]);
 
+  /*
+   * The hub speaks a newer wire format than this build. Replace the build — but only once the
+   * car is standing still, because a reload blanks the map for a second or two and a driver
+   * doing 120 km/h must not be handed that (ADR-0029).
+   *
+   * A spectator, or a tab that has no fix at all, counts as stopped: there is no drive to
+   * interrupt. The session mark makes this at most one reload per version per tab, so an edge
+   * still serving the old bundle cannot put the car in a reload loop for the rest of the drive.
+   */
+  useEffect(() => {
+    if (wantedVersion === null) return;
+    const state = { wanted: wantedVersion, reloadedFor: readMark() };
+    if (!shouldReload(state, fix?.speed ?? 0)) return;
+    writeMark(wantedVersion);
+    location.reload();
+  }, [wantedVersion, fix]);
+
   useEffect(() => {
     netRef.current?.setHidden(!prefs.sharing);
   }, [prefs.sharing]);
@@ -279,6 +304,7 @@ export function useSession({
     status,
     spectator,
     parked,
+    upgrading: wantedVersion !== null && wantedVersion > PROTOCOL_VERSION,
     milestone,
     waveCard,
     dismissWaveCard,

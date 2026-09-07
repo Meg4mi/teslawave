@@ -8,6 +8,7 @@ import {
   MAX_SOCKETS_PER_HUB,
   MAX_SPEED_KMH,
   PRESENCE_EXPIRY_MS,
+  PROTOCOL_VERSION,
   RATE_POS_MS,
   RATE_VIOLATIONS_TO_CLOSE,
   RATE_WAVE_MS,
@@ -239,6 +240,18 @@ function onHello(state: HubState, s: Socket, msg: Extract<ClientMsg, { t: 'hello
       to: s.key,
       msg: { t: 'diff', cell, upd: [], gone: [], ...cellStats(state, cell, now) },
     });
+  /*
+   * An older client is told, not cut off. It keeps its map, its socket and its waves, and
+   * reloads itself the next time the car is standing still (ADR-0029). Closing the socket
+   * instead would take the map away from someone doing 120 km/h, and a client that cannot
+   * be told anything is a client that can only be fixed by asking its owner to clear site
+   * data on a car screen — which is exactly what ADR-0010 refused to risk.
+   *
+   * A client from the future is left alone: it is the hub that is behind, and a deploy fixes
+   * that without anyone reloading anything.
+   */
+  if (msg.v < PROTOCOL_VERSION)
+    effects.push({ k: 'send', to: s.key, msg: { t: 'upgrade', v: PROTOCOL_VERSION } });
   return effects;
 }
 

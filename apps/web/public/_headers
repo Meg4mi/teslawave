@@ -1,0 +1,43 @@
+# The security headers for everything the browser runs.
+#
+# This file, not the Worker, because of the cost model. Static asset requests are free and
+# outside the 100k/day quota only while they are served by the asset layer: `run_worker_first`
+# is deliberately scoped to `/ws` and `/api/*` (wrangler.jsonc), so a request for the HTML or
+# the bundle never reaches our code and never could set a header from there. Widening
+# `run_worker_first` to cover assets would put every page load, every script and every icon
+# into the Worker's request budget — thousands a day, for a header. Cloudflare applies this
+# file at the asset layer instead, for nothing.
+#
+# Why it matters: a driver's whole identity is one secret in localStorage (ADR-0025). There is
+# no password and no session, but that secret *is* the driver, so anything that can run script
+# on this origin can become them. A Content-Security-Policy is the control that stops that.
+#
+# Editing this is not a formality. A directive that forgets an origin does not throw and does
+# not fail a build: it produces a map with no cars on it, and the first report comes from a
+# driver. `apps/web/e2e/csp.spec.ts` runs the real app behind this policy and fails on the
+# browser's own violation events, which is the only check that means anything here.
+
+/*
+  Content-Security-Policy: default-src 'self'; script-src 'self' https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https://tiles.openfreemap.org https://cloudflareinsights.com; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: no-referrer
+  Cross-Origin-Opener-Policy: same-origin
+  Strict-Transport-Security: max-age=31536000; includeSubDomains
+
+# Notes on the directives that are not obvious:
+#
+#   script-src   No 'unsafe-inline' and no 'unsafe-eval', which is the whole point. Vite emits
+#                modules and the analytics tag is an external file with a data attribute, so
+#                the app has no inline script to accommodate. Keep it that way.
+#   style-src    'unsafe-inline' is needed: MapLibre writes inline styles onto the elements it
+#                positions and React writes them from the `style` prop. Neither can be nonced,
+#                and a style injection cannot read localStorage.
+#   connect-src  'self' covers the WebSocket: CSP matches wss:// against an https:// origin of
+#                the same host, which is what e2e proves on the browser the car runs. The tile
+#                host is named because tiles and glyphs are fetched, not linked.
+#   worker-src   MapLibre's tile-parsing worker is served from our own origin (see
+#                vite-maplibre-worker.ts). blob: stays allowed because MapLibre falls back to a
+#                blob worker when a module worker will not construct, and that fallback being
+#                blocked looks exactly like a map that renders nothing.
+#   img-src      data: and blob: for the car sprites baked to bitmaps and the share card.
+#   HSTS         Ignored by browsers over plain http, so it is safe for the local dev server.

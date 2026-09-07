@@ -114,6 +114,8 @@ export const EN = {
     zoomIn: 'Zoom in',
     zoomOut: 'Zoom out',
     tilesOffline: 'Map tiles are not loading. Cars and waves still work.',
+    /* Says what will happen and when. Nothing to tap: a driver has better things to do. */
+    upgrading: 'A new version is ready. It loads the next time you stop.',
   },
 
   garage: {

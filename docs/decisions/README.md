@@ -34,3 +34,5 @@ Format: Context / Decision / Rejected alternatives / Consequences (`0000-templat
 | [0026](0026-a-parked-car-is-hidden.md) | A car parked for ten minutes is hidden until it moves |
 | [0027](0027-performance-beacon.md) | An opt-in, anonymous performance beacon from real screens |
 | [0028](0028-other-cars-follow-the-bend.md) | Other cars follow the bend: a curve between samples, a turn beyond them |
+| [0029](0029-protocol-version-and-remote-reload.md) | The wire format has a version, and an old build replaces itself at a standstill |
+| [0030](0030-security-headers-at-the-asset-layer.md) | The security policy is served by the asset layer, not by the Worker |

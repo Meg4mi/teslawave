@@ -9,6 +9,7 @@ import {
   CELL_PRECISION,
   CAR_COLOURS,
   NEIGHBOUR_RADIUS_M,
+  PROTOCOL_VERSION,
   TESLA_MODELS,
   WAVE_PROMPT_RANGE_M,
   cellsWithin,
@@ -104,6 +105,7 @@ function connect(driver: Driver): void {
       colour: driver.colour,
       nick: driver.nick,
       cells,
+      v: PROTOCOL_VERSION,
     });
   });
 
