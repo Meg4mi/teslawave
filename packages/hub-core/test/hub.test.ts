@@ -42,6 +42,8 @@ const CELL = encode(GENEVA.lat, GENEVA.lng, CELL_PRECISION);
 const HUB = hubOf(CELL);
 const NEIGHBOUR_POINT = destination(GENEVA.lat, GENEVA.lng, 0, 25_000);
 const NEIGHBOUR_CELL = encode(NEIGHBOUR_POINT.lat, NEIGHBOUR_POINT.lng, CELL_PRECISION);
+/** The cell immediately over CELL's northern edge, which is what a crossing actually enters. */
+const ACROSS_EDGE = encode(decodeBounds(CELL).maxLat + 0.01, GENEVA.lng, CELL_PRECISION);
 
 let state: HubState;
 let now: number;
@@ -151,6 +153,42 @@ describe('presence and diffs', () => {
     const left = diffs.find((d) => d.cell === CELL);
     expect(left?.gone).toEqual([ID('car-a')]);
     expect(state.presence.get(ID('car-a'))?.cell).not.toBe(CELL);
+  });
+
+  /*
+   * A departure means "gone from your map", not "gone from this cell". The distinction only
+   * shows up for a subscriber who holds both sides of a border, and it is what made cars
+   * blink out at every crossing: the two diffs are separate frames, and which one arrives
+   * first depends on nothing more principled than which cell was marked dirty first.
+   */
+  it('does not report a crossing car as gone to someone who holds both cells', () => {
+    const edge = decodeBounds(CELL).maxLat;
+    hello('watcher', 'car-w', [CELL, ACROSS_EDGE]);
+    hello('a', 'car-a', [CELL, ACROSS_EDGE]);
+    pos('a', edge - 0.001, GENEVA.lng);
+    now += SERVER_TICK_MS;
+    flushIfDue(state, now);
+
+    now += 10_000;
+    pos('a', edge + 0.001, GENEVA.lng);
+    const diffs = diffsFor(flushIfDue(state, now), 'watcher');
+    expect(diffs.flatMap((d) => d.gone)).toEqual([]);
+    // And they are told where it went, so nothing is lost by staying quiet about the old cell.
+    expect(diffs.flatMap((d) => d.upd.map((c) => c.id))).toContain(ID('car-a'));
+  });
+
+  it('still reports it gone to someone who holds only the cell it left', () => {
+    const edge = decodeBounds(CELL).maxLat;
+    hello('watcher', 'car-w', [CELL]);
+    hello('a', 'car-a', [CELL, ACROSS_EDGE]);
+    pos('a', edge - 0.001, GENEVA.lng);
+    now += SERVER_TICK_MS;
+    flushIfDue(state, now);
+
+    now += 10_000;
+    pos('a', edge + 0.001, GENEVA.lng);
+    const diffs = diffsFor(flushIfDue(state, now), 'watcher');
+    expect(diffs.flatMap((d) => d.gone)).toEqual([ID('car-a')]);
   });
 
   it('only shows drivers in cells you subscribed to', () => {

@@ -431,15 +431,36 @@ export function flushIfDue(state: HubState, now: number, force = false): Effect[
 
   for (const cell of cells) {
     const subscribers = state.socketsByCell.get(cell);
-    const gone = [...(state.gone.get(cell) ?? [])];
+    if (!subscribers) continue;
+    const left = [...(state.gone.get(cell) ?? [])];
     const upd: CarState[] = [];
     for (const id of state.dirty.get(cell) ?? []) {
       const car = state.presence.get(id);
       if (car && car.cell === cell) upd.push(car);
     }
-    if (subscribers && (upd.length > 0 || gone.length > 0)) {
-      const msg = { t: 'diff' as const, cell, upd, gone, ...cellStats(state, cell, now) };
-      for (const key of subscribers) effects.push({ k: 'send', to: key, msg });
+    if (upd.length === 0 && left.length === 0) continue;
+    const stats = cellStats(state, cell, now);
+    for (const key of subscribers) {
+      /*
+       * A departure is per subscriber, not per cell: it means "gone from your map", not
+       * "gone from this cell". A driver crossing a border is announced as gone from the old
+       * cell and updated in the new one, in two separate frames — and to anyone who
+       * subscribes to both, the departure is noise that arrives before or after the update
+       * depending on which cell happened to be marked dirty first. Sending it to them at all
+       * is what made cars blink out at every border: they delete on the gone and re-add on
+       * the update, with the render loop free to draw in between.
+       *
+       * So a car that is still in this hub, in a cell this subscriber also holds, is not
+       * reported gone to them. To anyone who does not hold that cell it really has left, and
+       * they are told.
+       */
+      const gone = left.filter((id) => {
+        const car = state.presence.get(id);
+        if (!car) return true;
+        return !state.sockets.get(key)?.cells.includes(car.cell);
+      });
+      if (upd.length === 0 && gone.length === 0) continue;
+      effects.push({ k: 'send', to: key, msg: { t: 'diff', cell, upd, gone, ...stats } });
     }
   }
   state.dirty.clear();

@@ -36,3 +36,4 @@ Format: Context / Decision / Rejected alternatives / Consequences (`0000-templat
 | [0028](0028-other-cars-follow-the-bend.md) | Other cars follow the bend: a curve between samples, a turn beyond them |
 | [0029](0029-protocol-version-and-remote-reload.md) | The wire format has a version, and an old build replaces itself at a standstill |
 | [0030](0030-security-headers-at-the-asset-layer.md) | The security policy is served by the asset layer, not by the Worker |
+| [0031](0031-the-two-halves-are-tested-against-each-other.md) | The hub and the client are tested against each other, and a departure is per subscriber |
