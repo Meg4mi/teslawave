@@ -29,6 +29,25 @@ anywhere (ADR-0024).
 Positions are never written to storage of any kind. That is enforced by a test, not by
 intent: the hub's storage effects are asserted to contain only counter keys.
 
+## What is published
+
+Two endpoints answer questions about a region without anyone connecting. Neither reads
+anything that is not already listed above, and neither can say anything about a person
+(ADR-0032).
+
+| Endpoint | Answers | From |
+|---|---|---|
+| `/api/pulse?lat=&lng=` | How many drivers are online near a point, and how many waves in their cells today | The hub's in-memory counts. Two numbers; no ids, no positions. Cached per map cell, so the answer is about a 39 x 20 km box and never about a request |
+| `/api/activity` | Waves per map cell over the retained week | The `daily_stats` rows already written by the nightly job. No ids, no times, no positions |
+
+Both exist so a driver can see whether anyone is out there before deciding to be seen. The
+finest thing either can say is "somebody waved somewhere in this 39 x 20 km box, some time
+this week".
+
+The share card ("Around you" -> "Share your card") is drawn in your browser and sent nowhere.
+It carries your car, your wave count and the domain: no map, no route, no place, no time, and
+nothing about the drivers you waved at.
+
 ## Third parties
 
 - **OpenFreeMap** serves the map tiles and therefore sees which tiles a browser requests.

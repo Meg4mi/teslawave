@@ -542,6 +542,28 @@ export function harvest(state: HubState, now: number): Harvest {
   return out;
 }
 
+/**
+ * How many drivers are in these cells, and how many waves they have exchanged today.
+ *
+ * Counts only. There is nothing here that could locate a person: the same numbers the HUD
+ * already shows a connected driver, answered for someone who has not connected yet, so the
+ * first screen can say whether there is anyone out there before they decide to join
+ * (ADR-0032). A cell this hub does not own is simply absent from the answer.
+ */
+export function cellCounts(
+  state: HubState,
+  cells: readonly string[],
+  now: number,
+): Array<{ cell: string; online: number; wavesToday: number }> {
+  const out: Array<{ cell: string; online: number; wavesToday: number }> = [];
+  for (const cell of new Set(cells)) {
+    if (hubOf(cell) !== state.hub) continue;
+    const { online, wavesToday } = cellStats(state, cell, now);
+    out.push({ cell, online, wavesToday });
+  }
+  return out;
+}
+
 /** Test and observability helper. Never returns positions. */
 export const hubStats = (state: HubState): {
   hub: string;

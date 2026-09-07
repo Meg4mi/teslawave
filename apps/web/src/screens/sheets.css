@@ -292,3 +292,17 @@
     font-size: 26px;
   }
 }
+
+/*
+ * The share card, at whatever width the sheet gives it. Fixed aspect, so the sheet does not
+ * change height while the drawing lands.
+ */
+.share__card {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 1080 / 566;
+  border-radius: var(--r-md);
+  border: 1px solid var(--line);
+  background: var(--bg);
+}

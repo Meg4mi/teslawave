@@ -86,6 +86,14 @@ export const EN = {
     havePairingCodeHint: 'Bring your name and wave count across with a short code.',
     howItWorks: 'How waving works',
     privacy: `Your position is shared only while you are visible, never stored, and hidden once you have been parked ${n(PARKED_HIDE_MS / 60_000)} minutes.`,
+    /**
+     * Shown before Go, and only when there is somebody. A landing page saying "0 drivers
+     * online" is worse than one that says nothing, so there is no zero case here on purpose.
+     */
+    liveNow: (drivers: number, waves: number): string =>
+      waves > 0
+        ? `${n(drivers)} ${drivers === 1 ? 'driver' : 'drivers'} out there now · ${n(waves)} ${waves === 1 ? 'wave' : 'waves'} today`
+        : `${n(drivers)} ${drivers === 1 ? 'driver' : 'drivers'} out there right now`,
   },
 
   map: {
@@ -180,6 +188,18 @@ export const EN = {
     waves: 'Waves today',
     mine: 'Your waves',
     note: 'Counted across the map cells you are in, never a database of people.',
+    share: 'Share your card',
+  },
+
+  share: {
+    title: 'Your card',
+    headline: (waves: number): string => `${n(waves)} ${waves === 1 ? 'wave' : 'waves'}`,
+    sub: 'exchanged with other Teslas on the road',
+    action: 'Share',
+    save: 'Save image',
+    /* Says what is in the image, because what people worry about is a place being in it. */
+    note: 'Your car and your count. No map, no route, nowhere you have been.',
+    unavailable: 'This screen cannot save images. Open TeslaWave on your phone to send it.',
   },
 
   pairing: {

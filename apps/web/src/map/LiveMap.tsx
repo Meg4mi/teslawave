@@ -5,6 +5,7 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import { getSelfPlacement, tickWorld, type RenderCar } from '../sim/world';
 import { createRenderer, type Renderer } from '../overlay/renderer';
 import { buildStyle } from './style';
+import { addActivityLayer } from './activity';
 import { affineProjector } from './projector';
 import { MAPLIBRE_WORKER_URL } from './maplibre-worker-url';
 import { useCopy } from '../i18n';
@@ -237,6 +238,12 @@ export function LiveMap({
      * broken". Underground car parks, flaky LTE and a tile host having a bad day all look
      * the same from here, so after a grace period we say so rather than showing a void.
      */
+    // Where the road has been alive this week, under the roads and only when zoomed out, so
+    // a quiet map reads as a place rather than a void (ADR-0032). Fails quietly by design.
+    map.once('load', () => {
+      void addActivityLayer(map);
+    });
+
     let tilesReported = false;
     const reportTiles = (loaded: boolean): void => {
       if (tilesReported && loaded) return;

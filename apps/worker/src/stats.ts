@@ -68,6 +68,41 @@ export async function readStats(env: Env): Promise<Response> {
   });
 }
 
+/** At most this many cells in one answer: the whole launch geography is a handful. */
+const MAX_ACTIVITY_CELLS = 300;
+
+/**
+ * Where the road has been alive lately, as waves per map cell over the retained week.
+ *
+ * This is the only thing the app knows that can make a quiet map look like a place rather
+ * than a void, and it costs nothing new: the numbers are already in D1, already aggregated
+ * per cell per day by the nightly harvest, and already free of anything that could locate a
+ * person — a cell is 39 x 20 km and the rows carry no ids and no times (ADR-0032).
+ *
+ * Cached hard. It changes once a day, when the cron runs.
+ */
+export async function readActivity(env: Env): Promise<Response> {
+  let cells: Array<{ cell: string; waves: number }> = [];
+  try {
+    const rows = await env.DB.prepare(
+      'SELECT cell, SUM(waves) AS waves FROM daily_stats GROUP BY cell ' +
+        'ORDER BY waves DESC LIMIT ?',
+    )
+      .bind(MAX_ACTIVITY_CELLS)
+      .all<{ cell: string; waves: number }>();
+    cells = rows.results;
+  } catch {
+    // Not migrated, or D1 having a moment. An empty answer draws nothing, which is exactly
+    // what the map did before this existed.
+  }
+  return new Response(JSON.stringify({ cells }), {
+    headers: {
+      'content-type': 'application/json',
+      'cache-control': 'public, max-age=600',
+    },
+  });
+}
+
 /** What a hub handed over at harvest, upserted so a re-run can never double a day. */
 export async function recordCellDay(
   env: Env,

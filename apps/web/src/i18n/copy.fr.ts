@@ -101,6 +101,10 @@ export const FR: Copy = {
     havePairingCodeHint: 'Reprenez votre nom et vos saluts avec un code court.',
     howItWorks: 'Comment saluer',
     privacy: `Votre position n’est partagée que lorsque vous êtes visible, jamais conservée, et masquée après ${n(PARKED_HIDE_MS / 60_000)} minutes à l’arrêt.`,
+    liveNow: (drivers: number, waves: number): string =>
+      waves > 0
+        ? `${n(drivers)} ${drivers === 1 ? 'conducteur' : 'conducteurs'} sur la route en ce moment · ${n(waves)} ${waves === 1 ? 'salut' : 'saluts'} aujourd’hui`
+        : `${n(drivers)} ${drivers === 1 ? 'conducteur' : 'conducteurs'} sur la route en ce moment`,
   },
 
   map: {
@@ -190,6 +194,17 @@ export const FR: Copy = {
     waves: 'Saluts aujourd’hui',
     mine: 'Vos saluts',
     note: 'Comptés sur les zones de carte où vous êtes, jamais dans un fichier de personnes.',
+    share: 'Partager ma carte',
+  },
+
+  share: {
+    title: 'Votre carte',
+    headline: (waves: number): string => `${n(waves)} ${waves === 1 ? 'salut' : 'saluts'}`,
+    sub: 'échangés avec d’autres Tesla sur la route',
+    action: 'Partager',
+    save: 'Enregistrer l’image',
+    note: 'Votre voiture et votre compte. Aucune carte, aucun trajet, aucun lieu où vous êtes passé.',
+    unavailable: 'Cet écran ne peut pas enregistrer d’images. Ouvrez TeslaWave sur votre téléphone pour l’envoyer.',
   },
 
   pairing: {

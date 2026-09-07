@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 import { isColourId, isModel, isSecret } from '@teslawave/protocol';
 import { LiveMap } from '../map/LiveMap';
 import { nextResetLabel } from '../net/budget';
+import { usePulse } from '../net/usePulse';
 import { getCar, getSummary, subscribeSummary } from '../sim/world';
 import { identityFrom, newSecret, useIdentity } from '../identity/store';
 import { unlockAudio } from '../ui/sound';
@@ -23,6 +24,7 @@ import { WaveButton, type WaveTarget } from '../screens/WaveButton';
 import { WaveCard } from '../screens/WaveCard';
 import { CarCard } from '../screens/CarCard';
 import { PulseSheet } from '../screens/PulseSheet';
+import { ShareSheet } from '../screens/ShareSheet';
 import { SettingsSheet } from '../screens/SettingsSheet';
 import { EnterCodeSheet, ShowPairingSheet } from '../screens/Pairing';
 import { GarageSheet, type CarEdit } from '../screens/GarageSheet';
@@ -34,7 +36,15 @@ import { isE2E } from '../config/env';
 import './app.css';
 import '../screens/sheets.css';
 
-type SheetName = 'settings' | 'pulse' | 'pair-show' | 'pair-enter' | 'how-to' | 'garage' | null;
+type SheetName =
+  | 'settings'
+  | 'pulse'
+  | 'pair-show'
+  | 'pair-enter'
+  | 'how-to'
+  | 'garage'
+  | 'share'
+  | null;
 
 const BOOT_KEY = 'tw.booted';
 
@@ -62,6 +72,10 @@ export function App(): ReactNode {
     toastId.current += 1;
     setToast({ id: toastId.current, text, ...(icon ? { icon } : {}), warm });
   }, []);
+
+  // Asked once, from the rough position the request itself carries, and only while the first
+  // screen is up: after Go the HUD has the real numbers off the socket.
+  const pulse = usePulse(identity ? null : origin);
 
   const session = useSession({ identity, prefs, claimMilestone, rendererRef, showToast });
   const { status, spectator, parked, wave: sendWave } = session;
@@ -221,6 +235,7 @@ export function App(): ReactNode {
           onGo={start}
           onHaveCode={() => setSheet('pair-enter')}
           onHowItWorks={() => setSheet('how-to')}
+          pulse={pulse}
         />
         {sheet === 'how-to' ? <HowToWave onClose={() => setSheet(null)} /> : null}
         {sheet === 'pair-enter' ? (
@@ -314,7 +329,20 @@ export function App(): ReactNode {
           onClose={() => setSelectedId(null)}
         />
       ) : null}
-      {sheet === 'pulse' ? <PulseSheet summary={summary} onClose={() => setSheet(null)} /> : null}
+      {sheet === 'pulse' ? (
+        <PulseSheet
+          summary={summary}
+          onShare={() => setSheet('share')}
+          onClose={() => setSheet(null)}
+        />
+      ) : null}
+      {sheet === 'share' ? (
+        <ShareSheet
+          car={identity}
+          waves={summary.selfWaves}
+          onClose={() => setSheet('pulse')}
+        />
+      ) : null}
       {sheet === 'settings' ? (
         <SettingsSheet
           identity={identity}

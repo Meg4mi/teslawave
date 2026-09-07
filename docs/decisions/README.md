@@ -37,3 +37,4 @@ Format: Context / Decision / Rejected alternatives / Consequences (`0000-templat
 | [0029](0029-protocol-version-and-remote-reload.md) | The wire format has a version, and an old build replaces itself at a standstill |
 | [0030](0030-security-headers-at-the-asset-layer.md) | The security policy is served by the asset layer, not by the Worker |
 | [0031](0031-the-two-halves-are-tested-against-each-other.md) | The hub and the client are tested against each other, and a departure is per subscriber |
+| [0032](0032-an-empty-map-is-the-product-risk.md) | Three answers to an empty map, none of which needs a new kind of data |

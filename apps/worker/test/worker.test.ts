@@ -318,6 +318,60 @@ describe('/api', () => {
    * Creating a code writes a D1 row. Claiming was limited and creating was not, so the whole
    * app's daily write budget sat behind an unauthenticated POST.
    */
+  /*
+   * Counts for someone who has not joined yet, so the first screen is not a dead map. The
+   * privacy claim and the cost claim are both asserted here: no positions in the answer, and
+   * one Durable Object lookup per cell rather than per visitor (ADR-0032).
+   */
+  it('reports how many drivers are out there, without saying where any of them is', async () => {
+    const a = await connect(HUB);
+    a.send(helloMsg('pulse-a', [CELL]));
+    await a.next((m) => m.t === 'welcome');
+    a.send(posMsg(GENEVA.lat, GENEVA.lng));
+    await wait(SERVER_TICK_MS + 200);
+
+    const res = await SELF.fetch(
+      `https://teslawave.test/api/pulse?lat=${GENEVA.lat}&lng=${GENEVA.lng}`,
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { online: number; wavesToday: number };
+    expect(body.online).toBeGreaterThan(0);
+    expect(typeof body.wavesToday).toBe('number');
+    // The shape is the privacy guarantee: two numbers, and nowhere for a position to hide.
+    expect(Object.keys(body).sort()).toEqual(['online', 'wavesToday']);
+    expect(JSON.stringify(body)).not.toContain(String(GENEVA.lat).slice(0, 5));
+
+    // Cached per cell, which is what stops a shared link from spending the day's Durable
+    // Object budget one page load at a time.
+    expect(res.headers.get('cache-control')).toMatch(/max-age=[1-9]/);
+    a.close();
+  });
+
+  it('serves the week of per-cell activity, and nothing that locates anyone', async () => {
+    await env.DB.prepare(
+      'INSERT OR REPLACE INTO daily_stats (day, cell, waves) VALUES (?, ?, ?)',
+    )
+      .bind('2026-09-06', CELL, 7)
+      .run();
+    const res = await SELF.fetch('https://teslawave.test/api/activity');
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { cells: Array<{ cell: string; waves: number }> };
+    // Summed over the retained week, so this row also carries whatever today's harvest put
+    // there: the assertion is that our day is in the total, not that it is the total.
+    expect(body.cells.find((c) => c.cell === CELL)?.waves ?? 0).toBeGreaterThanOrEqual(7);
+    // A cell is 39 x 20 km and the rows carry no ids and no times: that is the whole claim.
+    for (const row of body.cells) expect(Object.keys(row).sort()).toEqual(['cell', 'waves']);
+    // It changes once a day, when the cron runs.
+    expect(res.headers.get('cache-control')).toContain('max-age=');
+  });
+
+  it('refuses a pulse request without a sane position', async () => {
+    for (const query of ['', '?lat=46.2', '?lat=abc&lng=6.1', '?lat=999&lng=6.1']) {
+      const res = await SELF.fetch(`https://teslawave.test/api/pulse${query}`);
+      expect(res.status, query).toBe(400);
+    }
+  });
+
   it('rate-limits pairing codes, per address', async () => {
     const make = (ip: string): Promise<Response> =>
       SELF.fetch('https://teslawave.test/api/pair', {
