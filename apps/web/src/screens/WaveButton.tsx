@@ -13,6 +13,8 @@ export type WaveTarget = {
   id: string;
   model: TeslaModel;
   colour: string;
+  /** What their driver called the car. Their name is what the card just said, so say it here. */
+  nick?: string;
   /** They waved first: the button comes back warm, and the verb is "Wave back". */
   back?: boolean;
   /**
@@ -75,9 +77,16 @@ export function WaveButton({
   if (!target || phase === 'done') return null;
   // The visible label is split across two lines; assistive tech gets the whole sentence.
   const verb = target.back ? copy.wave.backVerb : copy.wave.verb;
-  const label = target.back
-    ? `${verb} ${copy.wave.promptTarget(target.model, target.colour)}`
-    : copy.wave.prompt(target.model, target.colour);
+  /*
+   * A named car is named here too. It is the same car the received-wave card has just called
+   * by name, and reading "Ghost waved at you" over "Wave back at the white Model 3" is reading
+   * about two cars. The drawing beside the words is still the paint and the model.
+   */
+  const who = target.nick
+    ? copy.wave.promptTargetNamed(target.nick)
+    : copy.wave.promptTarget(target.model, target.colour);
+  const label =
+    target.nick || target.back ? `${verb} ${who}` : copy.wave.prompt(target.model, target.colour);
   const className = [
     'wave',
     target.back ? 'wave--back' : '',
@@ -109,7 +118,7 @@ export function WaveButton({
           buried the one word that matters. */}
       <span className="wave__text">
         <span className="wave__verb">{verb}</span>
-        <span className="wave__target">{copy.wave.promptTarget(target.model, target.colour)}</span>
+        <span className="wave__target">{who}</span>
         {/* The window, as a bar that runs out. Its length is the protocol's, not the CSS's. */}
         <span className="wave__track" aria-hidden>
           <span

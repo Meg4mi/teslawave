@@ -166,6 +166,8 @@ export const EN = {
     backVerb: 'Wave back',
     promptTarget: (model: TeslaModel, colour: string): string =>
       `at the ${describe(model, colour)}`,
+    /** A car with a name is called by it: no article, because a name is not a description. */
+    promptTargetNamed: (nick: string): string => `at ${nick}`,
     prompt: (model: TeslaModel, colour: string): string => `Wave at the ${describe(model, colour)}`,
     received: (model: TeslaModel, colour: string): string =>
       `A ${describe(model, colour)} waved at you`,

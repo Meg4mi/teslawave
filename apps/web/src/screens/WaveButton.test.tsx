@@ -112,4 +112,27 @@ describe('WaveButton', () => {
     show(null);
     expect(button()).toBeNull();
   });
+
+  /*
+   * The card their wave raises calls them by name, so the button that answers it has to as
+   * well: "Ghost waved at you" over "Wave back at the white Model Y" reads as two cars.
+   */
+  it('calls a named car by its name, with no article in front of it', () => {
+    act(() =>
+      root.render(
+        <WaveButton
+          target={{ ...target('a'), nick: 'Ghost', back: true }}
+          onWave={() => undefined}
+        />,
+      ),
+    );
+    expect(button()?.querySelector('.wave__target')?.textContent).toBe('at Ghost');
+    expect(button()?.getAttribute('aria-label')).toBe('Wave back at Ghost');
+  });
+
+  it('describes a car with no name exactly as it always did', () => {
+    show('a');
+    expect(button()?.querySelector('.wave__target')?.textContent).toBe('at the blue Model Y');
+    expect(button()?.getAttribute('aria-label')).toBe('Wave at the blue Model Y');
+  });
 });

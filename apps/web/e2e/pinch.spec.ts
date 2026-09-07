@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { GENEVA, onboard, simUrl } from './helpers';
+import { dragBy, GENEVA, onboard, simUrl } from './helpers';
 
 /**
  * A real two-finger pinch, dispatched through CDP. Playwright's mouse cannot express one, so
@@ -196,14 +196,12 @@ test('the camera comes back to a car that is standing still', async ({ page }) =
 
   const size = page.viewportSize() ?? { width: 1_920, height: 1_200 };
   const drag = async (): Promise<void> => {
-    const from = { x: size.width / 2, y: size.height / 2 };
-    await page.mouse.move(from.x, from.y);
-    await page.mouse.down();
-    for (let i = 1; i <= 8; i++) await page.mouse.move(from.x - i * 20, from.y - i * 12);
-    await page.mouse.up();
+    // A finger, not a mouse: the car screen is touch-only, and so is the phone this was
+    // reported from.
+    await dragBy(page, { x: size.width / 2, y: size.height / 2 }, -size.width * 0.3, -120);
     const home = await page.evaluate(() => window.__tw.self());
     const away = await page.evaluate(() => window.__twMap?.getCenter());
-    expect(Math.abs((away?.lat ?? 0) - (home?.lat ?? 0))).toBeGreaterThan(1e-4);
+    expect(Math.abs((away?.lng ?? 0) - (home?.lng ?? 0))).toBeGreaterThan(1e-4);
   };
   const offBy = async (): Promise<number> => {
     const centre = await page.evaluate(() => window.__twMap?.getCenter());

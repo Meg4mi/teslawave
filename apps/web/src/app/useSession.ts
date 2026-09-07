@@ -31,7 +31,13 @@ import type { Renderer } from '../overlay/renderer';
 import type { WaveCardContent } from '../screens/WaveCard';
 
 /** The car that waved at you last, unprompted, while it is still around to wave back at. */
-export type WaveBack = { id: string; model: TeslaModel; colour: string; at: number };
+export type WaveBack = {
+  id: string;
+  model: TeslaModel;
+  colour: string;
+  nick?: string;
+  at: number;
+};
 
 export type Session = {
   status: NetStatus;
@@ -128,13 +134,25 @@ export function useSession({
         bumpSelfWaves();
         celebrate();
         const at = Date.now();
-        setWaveCard({ id: at, model: msg.from.model, colour: msg.from.colour, back: isWaveBack });
+        setWaveCard({
+          id: at,
+          model: msg.from.model,
+          colour: msg.from.colour,
+          back: isWaveBack,
+          ...(msg.from.nick === undefined ? {} : { nick: msg.from.nick }),
+        });
         setFlashId(at);
         // A nod you did not start is one you can return. One you did start is already done.
         setBackFrom(
           isWaveBack
             ? null
-            : { id: msg.from.id, model: msg.from.model, colour: msg.from.colour, at },
+            : {
+                id: msg.from.id,
+                model: msg.from.model,
+                colour: msg.from.colour,
+                at,
+                ...(msg.from.nick === undefined ? {} : { nick: msg.from.nick }),
+              },
         );
       }
       if (msg.t === 'waved') {

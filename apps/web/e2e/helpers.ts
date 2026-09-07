@@ -60,8 +60,10 @@ export async function open(page: Page, url: string): Promise<void> {
  * Onboard once: pick the defaults and tap Go. `exact` matters: Playwright matches accessible
  * names by substring by default, and the map controls include "Go invisible".
  */
-export async function onboard(page: Page, url: string): Promise<void> {
+export async function onboard(page: Page, url: string, nick?: string): Promise<void> {
   await open(page, url);
+  // The name is optional in the app and optional here: most drivers never type one.
+  if (nick !== undefined) await page.getByRole('textbox').fill(nick);
   await page.getByRole('button', { name: 'Go', exact: true }).click();
   await page.waitForFunction(() => typeof window.__tw !== 'undefined');
 }

@@ -106,7 +106,13 @@ export function KitchenSink(): ReactNode {
     return () => clearTimeout(timer);
   }, [flashId]);
 
-  const fire = (kind: 'sent' | 'received' | 'back' | 'milestone' | 'sonar'): void => {
+  /**
+   * The longest name a driver can type (NICK_MAX_LEN), so the named card is judged at its
+   * widest rather than at a comfortable one.
+   */
+  const NAMED = 'Wintermute Volta';
+
+  const fire = (kind: 'sent' | 'received' | 'back' | 'named' | 'milestone' | 'sonar'): void => {
     unlockAudio();
     const renderer = rendererRef.current;
     if (kind === 'sonar') return renderer?.playSonar();
@@ -116,12 +122,18 @@ export function KitchenSink(): ReactNode {
       setWaves((n) => n + 1);
       return;
     }
-    if (kind === 'received' || kind === 'back') {
+    if (kind === 'received' || kind === 'back' || kind === 'named') {
       renderer?.addWave({ kind: 'received', fromId: 'demo-Y', toId: null });
       play('received');
       setWaves((n) => n + 1);
       const at = Date.now();
-      setCard({ id: at, model: 'Y', colour: 'deepblue', back: kind === 'back' });
+      setCard({
+        id: at,
+        model: 'Y',
+        colour: 'deepblue',
+        back: kind === 'back',
+        ...(kind === 'named' ? { nick: NAMED } : {}),
+      });
       setFlashId(at);
       setBack(kind === 'back' ? null : at);
       return;
@@ -151,6 +163,7 @@ export function KitchenSink(): ReactNode {
           <Button onClick={() => fire('sent')}>Wave sent</Button>
           <Button onClick={() => fire('received')}>Wave received</Button>
           <Button onClick={() => fire('back')}>Waved back</Button>
+          <Button onClick={() => fire('named')}>Wave from a named car</Button>
           <Button onClick={() => fire('milestone')}>Milestone</Button>
           <Button onClick={() => setNearby((v) => !v)}>
             {nearby ? 'Hide wave button' : 'Show wave button'}
