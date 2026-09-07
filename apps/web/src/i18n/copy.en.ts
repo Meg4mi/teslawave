@@ -59,6 +59,12 @@ export const EN = {
   brand: BRAND.name,
   disclaimer: BRAND.disclaimer,
 
+  /** The tab title and the description a search result shows. English is the brand's own. */
+  seo: {
+    title: BRAND.title,
+    description: BRAND.description,
+  },
+
   language: {
     title: 'Language',
     hint: 'Picked from your car to start with.',
@@ -195,6 +201,9 @@ export const EN = {
     title: 'Your card',
     headline: (waves: number): string => `${n(waves)} ${waves === 1 ? 'wave' : 'waves'}`,
     sub: 'exchanged with other Teslas on the road',
+    /** The words that go with the picture in a share sheet, address included. */
+    message: (waves: number): string =>
+      `${n(waves)} ${waves === 1 ? 'wave' : 'waves'} exchanged with other Teslas on the road. See who is around you: ${BRAND.domain}`,
     action: 'Share',
     save: 'Save image',
     /* Says what is in the image, because what people worry about is a place being in it. */

@@ -21,7 +21,8 @@
     "perf": "node scripts/perf-report.mjs",
     "check:size": "node scripts/check-size.mjs",
     "check:css": "node scripts/check-css.mjs",
-    "deploy": "pnpm build && pnpm --filter @teslawave/worker deploy"
+    "deploy": "pnpm build && pnpm --filter @teslawave/worker deploy",
+    "gen:social": "pnpm --filter @teslawave/web social"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.0",

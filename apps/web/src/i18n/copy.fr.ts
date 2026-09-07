@@ -76,6 +76,12 @@ export const FR: Copy = {
   disclaimer:
     'Projet indépendant. Sans affiliation avec Tesla, Inc., ni approbation ou parrainage de sa part. TESLA est une marque de Tesla, Inc.',
 
+  seo: {
+    title: 'Saluez les autres Tesla sur la route — carte en direct depuis l’écran de votre Tesla',
+    description:
+      'Une carte en direct des Tesla autour de vous, sur l’écran de votre voiture. Quand l’une s’approche, saluez-la. Gratuit, sans compte, rien à installer, et votre position n’est jamais conservée.',
+  },
+
   language: {
     title: 'Langue',
     hint: 'Choisie d’après votre voiture au départ.',
@@ -122,7 +128,8 @@ export const FR: Copy = {
     spectator: 'La localisation est désactivée. Vous voyez les autres, ils ne vous voient pas.',
     spectatorRetry: 'L’activer',
     hidden: 'Vous êtes invisible. Personne ne vous voit ni ne peut vous saluer.',
-    parked: 'À l’arrêt depuis un moment, vous êtes donc masqué. Vous réapparaissez sur la carte dès que vous roulez.',
+    parked:
+      'À l’arrêt depuis un moment, vous êtes donc masqué. Vous réapparaissez sur la carte dès que vous roulez.',
     paused: 'TeslaWave est en pause. De retour très vite.',
     budget: (time: string): string =>
       `TeslaWave a dépassé sa capacité gratuite pour aujourd’hui. De retour à ${time}.`,
@@ -201,10 +208,13 @@ export const FR: Copy = {
     title: 'Votre carte',
     headline: (waves: number): string => `${n(waves)} ${waves === 1 ? 'salut' : 'saluts'}`,
     sub: 'échangés avec d’autres Tesla sur la route',
+    message: (waves: number): string =>
+      `${n(waves)} ${waves === 1 ? 'salut échangé' : 'saluts échangés'} avec d’autres Tesla sur la route. Voyez qui roule autour de vous : ${BRAND.domain}`,
     action: 'Partager',
     save: 'Enregistrer l’image',
     note: 'Votre voiture et votre compte. Aucune carte, aucun trajet, aucun lieu où vous êtes passé.',
-    unavailable: 'Cet écran ne peut pas enregistrer d’images. Ouvrez TeslaWave sur votre téléphone pour l’envoyer.',
+    unavailable:
+      'Cet écran ne peut pas enregistrer d’images. Ouvrez TeslaWave sur votre téléphone pour l’envoyer.',
   },
 
   pairing: {

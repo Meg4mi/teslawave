@@ -9,7 +9,12 @@ export const BRAND: {
   readonly name: string;
   readonly domain: string;
   readonly url: string;
+  /** The three words on the first screen and on the social image. */
+  readonly tagline: string;
+  /** The page title: a search phrase, not the brand (brief 4.1). */
   readonly title: string;
   readonly description: string;
+  /** What the social image shows, for anyone who cannot see it. */
+  readonly imageAlt: string;
   readonly disclaimer: string;
 } = brand;
