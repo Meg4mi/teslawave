@@ -108,6 +108,16 @@ describe('model art', () => {
         for (const y of spec.doorCuts) expect(Math.abs(y)).toBeLessThan(spec.lengthMm / 2 - 500);
       });
 
+      it('runs a painted rail down each side of the glass, inside the frame', () => {
+        expect(spec.rail.start[0]).toBeGreaterThan(spec.widthMm * 0.2);
+        expect(endOf(spec.rail)[0]).toBeGreaterThan(100);
+        expect(extentX(spec.rail)).toBeLessThan(extentX(spec.frame));
+        const frame = extentY(spec.frame);
+        const rail = extentY(spec.rail);
+        expect(rail.front).toBeGreaterThan(frame.front);
+        expect(rail.rear).toBeLessThan(frame.rear);
+      });
+
       it('parks its wipers on the windscreen, driver on the left', () => {
         // Authored whole, not mirrored: a left-hand-drive car's wipers are not symmetric.
         expect(spec.wipers.length).toBeGreaterThan(0);
@@ -162,6 +172,18 @@ describe('model art', () => {
     expect(bonnet('S')).toBeGreaterThan(bonnet('3'));
     expect(bonnet('X')).toBeLessThan(bonnet('3'));
     expect(bonnet('X')).toBeLessThan(bonnet('Y'));
+  });
+
+  it('paints part of the roof on the Y and the X, and keeps every painted panel in the frame', () => {
+    expect(art('Y').roofPaint?.length).toBe(1);
+    expect(art('X').roofPaint?.length).toBe(3);
+    for (const model of ['3', 'S', 'CT'] as const) expect(art(model).roofPaint).toBeUndefined();
+    for (const model of TESLA_MODELS)
+      for (const panel of art(model).roofPaint ?? []) {
+        const frame = extentY(art(model).frame);
+        expect(extentY(panel).front).toBeGreaterThan(frame.front);
+        expect(extentY(panel).rear).toBeLessThan(frame.rear);
+      }
   });
 
   it('gives the Model X falcon-wing roof glass and nothing else', () => {
