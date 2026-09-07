@@ -57,6 +57,7 @@ export function KitchenSink(): ReactNode {
         waves: i,
         since: now,
         cell: 'u0hq',
+        hub: 'u0',
         track,
         trail: Array.from({ length: 20 }, (_, k) => ({
           lat: lat - k * 0.00012,

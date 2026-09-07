@@ -8,7 +8,10 @@ import {
   haversineM,
   pushSample,
   sample,
+  wireToSample,
+  type CarMeta,
   type CarState,
+  type CarWire,
   type EntityTrack,
   type Placement,
   type ServerMsg,
@@ -29,6 +32,12 @@ export type WorldCar = {
   waves: number;
   since: number;
   cell: string;
+  /**
+   * Which hub told us about this car. A wave goes only to the hub that owns the target, and
+   * on the compact wire the car's cell is only re-stated when it changes — so the connection
+   * a car arrived on is the more reliable answer, and it is the one we already have.
+   */
+  hub: string;
   track: EntityTrack;
   trail: TrailPoint[];
   /** Set when the car first appears, so the renderer can play the entry ring once. */
@@ -90,6 +99,8 @@ export const serverNow = (): number => Date.now() + clockOffset;
 export function resetWorld(id: string): void {
   cars.clear();
   cellStats.clear();
+  handles.clear();
+  pendingMeta.clear();
   subscribed = new Set();
   selfId = id;
   selfWaves = 0;
@@ -135,7 +146,7 @@ export function setSelfReported(position: { lat: number; lng: number } | null): 
 
 export const getSelfPlacement = (): Placement | null => selfPlacement;
 
-const upsert = (state: CarState, appearedAt: number): void => {
+const upsert = (state: CarState, hub: string, appearedAt: number): void => {
   if (state.id === selfId) {
     selfWaves = state.waves;
     return;
@@ -149,6 +160,7 @@ const upsert = (state: CarState, appearedAt: number): void => {
       waves: state.waves,
       since: state.since,
       cell: state.cell,
+      hub,
       track: createTrack(),
       trail: [],
       appearedAt,
@@ -161,6 +173,7 @@ const upsert = (state: CarState, appearedAt: number): void => {
   car.colour = state.colour;
   car.waves = state.waves;
   car.cell = state.cell;
+  car.hub = hub;
   car.lastServerTs = state.ts;
   if (state.nick === undefined) delete car.nick;
   else car.nick = state.nick;
@@ -173,7 +186,83 @@ const upsert = (state: CarState, appearedAt: number): void => {
   }, serverNow());
 };
 
-export function applyServerMsg(msg: ServerMsg): void {
+/**
+ * Which driver each handle stands for, per hub.
+ *
+ * A handle is a compression, not an identity (ADR-0033): it is only meaningful on the
+ * connection that issued it, so two hubs can and will use the same small integers for
+ * different drivers. Keyed by hub for exactly that reason.
+ *
+ * Learned from the `meta` of the diff that first mentions a car and forgotten when the hub
+ * says it is gone, or when the connection to that hub goes away.
+ */
+const handles = new Map<string, Map<number, string>>();
+
+const handleMap = (hub: string): Map<number, string> => {
+  let map = handles.get(hub);
+  if (!map) {
+    map = new Map();
+    handles.set(hub, map);
+  }
+  return map;
+};
+
+/**
+ * What a handle means, and — for a car we already hold — the static facts that just changed.
+ * A car we do not hold yet is created by the tuple that follows in the same message, which
+ * is the only place a position exists to create it with.
+ */
+const applyMeta = (meta: CarMeta, hub: string): void => {
+  handleMap(hub).set(meta.h, meta.id);
+  const existing = cars.get(meta.id);
+  if (!existing) return;
+  existing.model = meta.model;
+  existing.colour = meta.colour;
+  existing.since = meta.since;
+  existing.cell = meta.cell;
+  existing.hub = hub;
+  if (meta.nick === undefined) delete existing.nick;
+  else existing.nick = meta.nick;
+};
+
+/** One car's motion, by handle. Nothing here can create a car we were never told about. */
+const applyWire = (wire: CarWire, hub: string, msgNow: number, appearedAt: number): void => {
+  const map = handleMap(hub);
+  const id = map.get(wire[0]);
+  // A tuple for a handle we were never given a meta for is not something to guess at: it
+  // happens when a message is dropped, and the hub re-describes the car on the next tick.
+  if (id === undefined || id === selfId) return;
+  const sample = wireToSample(wire, msgNow);
+  const meta = pendingMeta.get(wire[0]);
+  let car = cars.get(id);
+  if (!car) {
+    if (!meta) return;
+    car = {
+      id,
+      model: meta.model,
+      colour: meta.colour,
+      waves: wire[5],
+      since: meta.since,
+      cell: meta.cell,
+      hub,
+      track: createTrack(),
+      trail: [],
+      appearedAt,
+      lastServerTs: sample.ts,
+      ...(meta.nick === undefined ? {} : { nick: meta.nick }),
+    };
+    cars.set(id, car);
+  }
+  car.waves = wire[5];
+  car.hub = hub;
+  car.lastServerTs = sample.ts;
+  pushSample(car.track, sample, serverNow());
+};
+
+/** The metas in the message currently being applied, so a tuple can build a car from one. */
+const pendingMeta = new Map<number, CarMeta>();
+
+export function applyServerMsg(msg: ServerMsg, hub: string): void {
   // Animation timings live on the monotonic timeline; sample timestamps live on the server's.
   // Mixing the two freezes every car, so they are never interchanged.
   const now = performance.now();
@@ -197,11 +286,35 @@ export function applyServerMsg(msg: ServerMsg): void {
       for (const car of cars.values())
         if (msg.cells.includes(car.cell) && !present.has(car.id) && car.lastServerTs > deadline)
           car.lastServerTs = deadline;
-      for (const car of msg.snapshot) upsert(car, now);
+      // A welcome resets what the handles on this connection mean: the hub may have restarted
+      // since, and its counter starts again from one.
+      handles.delete(hub);
+      for (const car of msg.snapshot) upsert(car, hub, now);
+      break;
+    }
+    case 'diff2': {
+      pendingMeta.clear();
+      for (const meta of msg.meta) pendingMeta.set(meta.h, meta);
+      for (const meta of msg.meta) applyMeta(meta, hub);
+      for (const wire of msg.upd) applyWire(wire, hub, msg.now, now);
+      pendingMeta.clear();
+      // A departure is already per subscriber on this wire: the hub sends it only when the
+      // car has actually left this driver's map, so there is nothing here to second-guess.
+      const map = handleMap(hub);
+      for (const h of msg.gone) {
+        const id = map.get(h);
+        map.delete(h);
+        if (id !== undefined) cars.delete(id);
+      }
+      cellStats.set(msg.cell, {
+        online: msg.online,
+        wavesToday: msg.wavesToday,
+        lastWaveTs: msg.lastWaveTs,
+      });
       break;
     }
     case 'diff': {
-      for (const car of msg.upd) upsert(car, now);
+      for (const car of msg.upd) upsert(car, hub, now);
       // "Gone" is per cell. A car crossing a cell border is announced gone from the old cell
       // and updated in the new one, and the hub sends the update first — so a gone that names
       // a cell the car is no longer in is old news, not a departure. Deleting on it blanked
@@ -219,10 +332,11 @@ export function applyServerMsg(msg: ServerMsg): void {
   }
 }
 
-/** A hub socket went away: forget the cells it was feeding us. */
-export function dropCells(cells: readonly string[]): void {
+/** A hub socket went away: forget the cells it was feeding us, and what its handles meant. */
+export function dropCells(cells: readonly string[], hub?: string): void {
   for (const cell of cells) cellStats.delete(cell);
   for (const [id, car] of cars) if (cells.includes(car.cell)) cars.delete(id);
+  if (hub !== undefined) handles.delete(hub);
 }
 
 export function bumpSelfWaves(): void {

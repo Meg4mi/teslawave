@@ -6,6 +6,7 @@ import {
   POS_INTERVAL_STATIONARY_MS,
   PROTOCOL_VERSION,
   STATIONARY_SPEED_KMH,
+  WIRE_COORD_SCALE,
   cellsWithin,
   groupByHub,
   parseServerMsg,
@@ -91,9 +92,10 @@ export async function probeAvailability(): Promise<NetStatus | null> {
 }
 
 export function createNet(handlers: {
-  onMessage: (msg: ServerMsg) => void;
+  /** The hub matters: a handle on the compact wire means nothing anywhere else (ADR-0033). */
+  onMessage: (msg: ServerMsg, hub: string) => void;
   onStatus: (status: NetStatus) => void;
-  onCellsDropped: (cells: string[]) => void;
+  onCellsDropped: (cells: string[], hub: string) => void;
   /** The full set of cells we are subscribed to right now, whenever it changes. */
   onCells: (cells: string[]) => void;
   /** The car has sat still for PARKED_HIDE_MS and is hidden, or has moved and is back. */
@@ -168,6 +170,20 @@ export function createNet(handlers: {
 
   const helloFor = (hub: Hub): ClientMsg | null => {
     if (!profile) return null;
+    /*
+     * Where we are, so the hub's very first answer is the cars near us rather than every car
+     * in a 27 km cell (ADR-0033). Not a position report: it is only an interest origin, it
+     * never enters presence and it is never broadcast — `pos`, which follows immediately, is
+     * what does that. An invisible driver or a spectator sends neither, and is served their
+     * whole cell as they were before.
+     */
+    const at =
+      lastFuzzed && !invisible() && !profile.spectator
+        ? ([
+            Math.round(lastFuzzed.lat * WIRE_COORD_SCALE),
+            Math.round(lastFuzzed.lng * WIRE_COORD_SCALE),
+          ] as const)
+        : null;
     return {
       t: 'hello',
       secret: profile.secret,
@@ -177,6 +193,7 @@ export function createNet(handlers: {
       v: PROTOCOL_VERSION,
       ...(profile.nick === undefined ? {} : { nick: profile.nick }),
       ...(profile.spectator ? { spectator: true } : {}),
+      ...(at === null ? {} : { at }),
     };
   };
 
@@ -316,7 +333,7 @@ export function createNet(handlers: {
       hub.lastInbound = Date.now();
       if (typeof event.data !== 'string' || event.data === 'pong') return;
       const msg = parseServerMsg(event.data);
-      if (msg) handlers.onMessage(msg);
+      if (msg) handlers.onMessage(msg, hub.hub);
     };
 
     ws.onerror = () => {
@@ -340,7 +357,7 @@ export function createNet(handlers: {
       if (!wantedIds.has(id)) {
         teardown(hub);
         hubs.delete(id);
-        handlers.onCellsDropped(hub.cells);
+        handlers.onCellsDropped(hub.cells, id);
       }
 
     for (const [id, hubCells] of wanted) {
@@ -368,7 +385,7 @@ export function createNet(handlers: {
         existing.cells = hubCells;
         if (existing.helloSent) sendTo(existing, { t: 'sub', cells: hubCells });
         else sendTo(existing, helloFor(existing) ?? { t: 'sub', cells: hubCells });
-        if (dropped.length > 0) handlers.onCellsDropped(dropped);
+        if (dropped.length > 0) handlers.onCellsDropped(dropped, id);
       }
     }
 

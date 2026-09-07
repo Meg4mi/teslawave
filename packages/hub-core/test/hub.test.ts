@@ -4,17 +4,21 @@ import {
   CLOSE_CAPACITY,
   CLOSE_PROTOCOL,
   CLOSE_WRONG_HUB,
+  INTEREST_RADIUS_M,
   LEGACY_PROTOCOL_VERSION,
   MAX_SOCKETS_PER_CELL,
   PRESENCE_EXPIRY_MS,
   PROTOCOL_VERSION,
   SERVER_TICK_MS,
+  WIRE_COORD_SCALE,
   decodeBounds,
   destination,
   encode,
+  haversineM,
   hubOf,
   idFromSecret,
   type CarState,
+  type CarWire,
   type ClientMsg,
   type ServerMsg,
 } from '@teslawave/protocol';
@@ -54,8 +58,13 @@ type CloseEffect = Extract<Effect, { k: 'close' }>;
 const sendEffects = (effects: Effect[], to?: string): SendEffect[] =>
   effects.filter((e): e is SendEffect => e.k === 'send' && (to === undefined || e.to === to));
 
-const sends = (effects: Effect[], to?: string): ServerMsg[] =>
-  sendEffects(effects, to).map((e) => e.msg);
+const sends = (effects: Effect[], to?: string): ServerMsg[] => {
+  // Every accessor goes through here, so this is the one place that has to notice a handle
+  // being introduced. A handle is only ever explained once, in the meta of the diff that
+  // first mentions it, so a reader that misses that message can never name the car again.
+  learn(effects);
+  return sendEffects(effects, to).map((e) => e.msg);
+};
 
 const closes = (effects: Effect[]): Array<{ to: string; code: number }> =>
   effects
@@ -68,7 +77,7 @@ const ID = (name: string): string => idFromSecret(secretOf(name));
 
 const hello = (key: string, name: string, cells: string[] = [CELL], extra: Partial<ClientMsg> = {}) => {
   openSocket(state, key);
-  return onMessage(
+  return learned(onMessage(
     state,
     key,
     {
@@ -81,18 +90,95 @@ const hello = (key: string, name: string, cells: string[] = [CELL], extra: Parti
       ...extra,
     } as ClientMsg,
     now,
-  );
+  ));
 };
 
 const pos = (key: string, lat: number, lng: number, speed = 50, heading = 90): Effect[] =>
-  onMessage(state, key, { t: 'pos', lat, lng, heading, speed, ts: now }, now);
+  learned(onMessage(state, key, { t: 'pos', lat, lng, heading, speed, ts: now }, now));
+
+/**
+ * A flush, with the handles it introduces remembered.
+ *
+ * Every flush has to go through here, including the ones whose result a test throws away: a
+ * handle is explained exactly once, in the diff that first mentions it, so a reader that
+ * misses that message can never name the car again.
+ */
+const flush = (force = false): Effect[] => learned(flushIfDue(state, now, force));
 
 const diffsFor = (effects: Effect[], to: string): Extract<ServerMsg, { t: 'diff' }>[] =>
   sends(effects, to).filter((m): m is Extract<ServerMsg, { t: 'diff' }> => m.t === 'diff');
 
+const diff2sFor = (effects: Effect[], to: string): Extract<ServerMsg, { t: 'diff2' }>[] =>
+  sends(effects, to).filter((m): m is Extract<ServerMsg, { t: 'diff2' }> => m.t === 'diff2');
+
+/*
+ * The wire below is v2, which refers to cars by handle. These read either shape back into
+ * driver ids so the behavioural assertions say what they mean — "this driver appeared", not
+ * "handle 7 appeared" — and so the same test covers both encoders.
+ *
+ * Handles are learned from the `meta` the hub sends when a car comes into range; the map is
+ * accumulated across a whole run because that is exactly the contract: described once, then
+ * referred to by number for as long as the connection holds it.
+ */
+const handleNames = new Map<number, string>();
+
+function learn(effects: Effect[]): void {
+  for (const e of effects)
+    if (e.k === 'send' && e.msg.t === 'diff2')
+      for (const m of e.msg.meta) handleNames.set(m.h, m.id);
+}
+
+const learned = (effects: Effect[]): Effect[] => {
+  learn(effects);
+  return effects;
+};
+
+/** Every car id the hub told `to` about in these effects, on either wire. */
+const updIds = (effects: Effect[], to: string): string[] => {
+  const out: string[] = [];
+  for (const msg of sends(effects, to)) {
+    if (msg.t === 'diff') out.push(...msg.upd.map((c) => c.id));
+    if (msg.t === 'diff2')
+      for (const car of msg.upd) {
+        const id = handleNames.get(car[0]);
+        if (id) out.push(id);
+      }
+  }
+  return out;
+};
+
+/** Every car id the hub told `to` was gone, on either wire. */
+const goneIds = (effects: Effect[], to: string): string[] => {
+  const out: string[] = [];
+  for (const msg of sends(effects, to)) {
+    if (msg.t === 'diff') out.push(...msg.gone);
+    if (msg.t === 'diff2')
+      for (const h of msg.gone) {
+        const id = handleNames.get(h);
+        if (id) out.push(id);
+      }
+  }
+  return out;
+};
+
+/** The counters, whichever shape carried them. */
+const statsFor = (
+  effects: Effect[],
+  to: string,
+): Array<{ cell: string; online: number; wavesToday: number; lastWaveTs: number | null }> =>
+  sends(effects, to)
+    .filter((m): m is Extract<ServerMsg, { t: 'diff' | 'diff2' }> => m.t === 'diff' || m.t === 'diff2')
+    .map((m) => ({
+      cell: m.cell,
+      online: m.online,
+      wavesToday: m.wavesToday,
+      lastWaveTs: m.lastWaveTs,
+    }));
+
 beforeEach(() => {
   now = 1_700_000_000_000;
   state = createHub(HUB, now);
+  handleNames.clear();
 });
 
 describe('presence and diffs', () => {
@@ -101,28 +187,29 @@ describe('presence and diffs', () => {
     hello('b', 'car-b');
     pos('a', GENEVA.lat, GENEVA.lng);
     now += SERVER_TICK_MS;
-    const out = flushIfDue(state, now);
-    const diff = diffsFor(out, 'b')[0];
-    expect(diff?.upd.map((c) => c.id)).toEqual([ID('car-a')]);
-    expect(diff?.online).toBe(1);
+    const out = flush();
+    expect(updIds(out, 'b')).toEqual([ID('car-a')]);
+    expect(statsFor(out, 'b')[0]?.online).toBe(1);
   });
 
-  it('gives a late joiner a snapshot in its welcome', () => {
+  it('gives a late joiner what is already on the road, before the first tick', () => {
     hello('a', 'car-a');
     pos('a', GENEVA.lat, GENEVA.lng);
     const out = hello('b', 'car-b');
-    const welcome = sends(out, 'b').find((m) => m.t === 'welcome');
-    expect(welcome?.t === 'welcome' && welcome.snapshot.map((c) => c.id)).toEqual([ID('car-a')]);
+    // A compact client is told in the opening diffs rather than in the welcome, so that a
+    // car is described once and then referred to by handle. Either way it arrives at once.
+    expect(updIds(out, 'b')).toEqual([ID('car-a')]);
   });
 
   it('never sends a driver its own position back', () => {
     hello('a', 'car-a');
     pos('a', GENEVA.lat, GENEVA.lng);
     now += SERVER_TICK_MS;
-    const diff = diffsFor(flushIfDue(state, now), 'a')[0];
-    expect(diff).toBeDefined();
-    // The car is in its own cell diff (the client filters itself out) but the count is right.
-    expect(diff?.online).toBe(1);
+    const out = flush();
+    // Not in its own update at all now: the compact wire is built per subscriber, so there is
+    // no shared message a driver has to filter itself out of.
+    expect(updIds(out, 'a')).toEqual([]);
+    expect(statsFor(out, 'a')[0]?.online).toBe(1);
   });
 
   it('holds diffs back to one per cell per tick', () => {
@@ -130,12 +217,12 @@ describe('presence and diffs', () => {
     hello('b', 'car-b');
     pos('a', GENEVA.lat, GENEVA.lng);
     now += SERVER_TICK_MS;
-    expect(diffsFor(flushIfDue(state, now), 'b')).toHaveLength(1);
+    expect(statsFor(flush(), 'b')).toHaveLength(1);
     now += 500;
     pos('a', GENEVA.lat + 0.001, GENEVA.lng);
-    expect(flushIfDue(state, now)).toHaveLength(0);
+    expect(flush()).toHaveLength(0);
     now += SERVER_TICK_MS;
-    expect(diffsFor(flushIfDue(state, now), 'b')).toHaveLength(1);
+    expect(statsFor(flush(), 'b')).toHaveLength(1);
   });
 
   it('announces a driver crossing a cell boundary as gone in the cell it left', () => {
@@ -145,13 +232,11 @@ describe('presence and diffs', () => {
     hello('b', 'car-b');
     pos('a', edge - 0.001, GENEVA.lng);
     now += SERVER_TICK_MS;
-    flushIfDue(state, now);
+    flush();
 
     now += 10_000; // ~72 km/h over 200 m, a plausible crossing
     pos('a', edge + 0.001, GENEVA.lng);
-    const diffs = diffsFor(flushIfDue(state, now), 'b');
-    const left = diffs.find((d) => d.cell === CELL);
-    expect(left?.gone).toEqual([ID('car-a')]);
+    expect(goneIds(flush(), 'b')).toEqual([ID('car-a')]);
     expect(state.presence.get(ID('car-a'))?.cell).not.toBe(CELL);
   });
 
@@ -167,14 +252,14 @@ describe('presence and diffs', () => {
     hello('a', 'car-a', [CELL, ACROSS_EDGE]);
     pos('a', edge - 0.001, GENEVA.lng);
     now += SERVER_TICK_MS;
-    flushIfDue(state, now);
+    flush();
 
     now += 10_000;
     pos('a', edge + 0.001, GENEVA.lng);
-    const diffs = diffsFor(flushIfDue(state, now), 'watcher');
-    expect(diffs.flatMap((d) => d.gone)).toEqual([]);
+    const out = flush();
+    expect(goneIds(out, 'watcher')).toEqual([]);
     // And they are told where it went, so nothing is lost by staying quiet about the old cell.
-    expect(diffs.flatMap((d) => d.upd.map((c) => c.id))).toContain(ID('car-a'));
+    expect(updIds(out, 'watcher')).toContain(ID('car-a'));
   });
 
   it('still reports it gone to someone who holds only the cell it left', () => {
@@ -183,23 +268,25 @@ describe('presence and diffs', () => {
     hello('a', 'car-a', [CELL, ACROSS_EDGE]);
     pos('a', edge - 0.001, GENEVA.lng);
     now += SERVER_TICK_MS;
-    flushIfDue(state, now);
+    flush();
 
     now += 10_000;
     pos('a', edge + 0.001, GENEVA.lng);
-    const diffs = diffsFor(flushIfDue(state, now), 'watcher');
-    expect(diffs.flatMap((d) => d.gone)).toEqual([ID('car-a')]);
+    expect(goneIds(flush(), 'watcher')).toEqual([ID('car-a')]);
   });
 
   it('only shows drivers in cells you subscribed to', () => {
+    // A kilometre either side of a cell border: close enough that interest is not what
+    // decides this, so the assertion is about the subscription and nothing else.
+    const edge = decodeBounds(CELL).maxLat;
     hello('a', 'car-a', [CELL]);
-    hello('b', 'car-b', [NEIGHBOUR_CELL, CELL]);
-    pos('a', GENEVA.lat, GENEVA.lng);
-    pos('b', NEIGHBOUR_POINT.lat, NEIGHBOUR_POINT.lng);
+    hello('b', 'car-b', [ACROSS_EDGE, CELL]);
+    pos('a', edge - 0.01, GENEVA.lng);
+    pos('b', edge + 0.01, GENEVA.lng);
     now += SERVER_TICK_MS;
-    const out = flushIfDue(state, now);
-    expect(diffsFor(out, 'b').flatMap((d) => d.upd.map((c) => c.id))).toContain(ID('car-a'));
-    expect(diffsFor(out, 'a').flatMap((d) => d.upd.map((c) => c.id))).not.toContain(ID('car-b'));
+    const out = flush();
+    expect(updIds(out, 'b')).toContain(ID('car-a'));
+    expect(updIds(out, 'a')).not.toContain(ID('car-b'));
   });
 
   it('sends a snapshot for a newly subscribed cell', () => {
@@ -207,8 +294,7 @@ describe('presence and diffs', () => {
     pos('a', NEIGHBOUR_POINT.lat, NEIGHBOUR_POINT.lng);
     hello('b', 'car-b', [CELL]);
     const out = onMessage(state, 'b', { t: 'sub', cells: [CELL, NEIGHBOUR_CELL] }, now);
-    const diff = diffsFor(out, 'b').find((d) => d.cell === NEIGHBOUR_CELL);
-    expect(diff?.upd.map((c) => c.id)).toEqual([ID('car-a')]);
+    expect(updIds(out, 'b')).toEqual([ID('car-a')]);
   });
 
   it('evicts a driver that stops sending after PRESENCE_EXPIRY_MS', () => {
@@ -216,10 +302,9 @@ describe('presence and diffs', () => {
     hello('b', 'car-b');
     pos('a', GENEVA.lat, GENEVA.lng);
     now += SERVER_TICK_MS;
-    flushIfDue(state, now);
+    flush();
     now += PRESENCE_EXPIRY_MS + 1_000;
-    const diff = diffsFor(flushIfDue(state, now), 'b')[0];
-    expect(diff?.gone).toEqual([ID('car-a')]);
+    expect(goneIds(flush(), 'b')).toEqual([ID('car-a')]);
     expect(state.presence.size).toBe(0);
   });
 
@@ -374,9 +459,9 @@ describe('waves', () => {
     twoCars();
     onMessage(state, 'a', { t: 'wave', to: ID('car-b') }, now);
     now += SERVER_TICK_MS;
-    const diff = diffsFor(flushIfDue(state, now), 'b')[0];
-    expect(diff?.wavesToday).toBe(1);
-    expect(diff?.lastWaveTs).not.toBeNull();
+    const stats = statsFor(flush(), 'b')[0];
+    expect(stats?.wavesToday).toBe(1);
+    expect(stats?.lastWaveTs).not.toBeNull();
   });
 });
 
@@ -386,10 +471,10 @@ describe('invisible mode', () => {
     hello('b', 'car-b');
     pos('a', GENEVA.lat, GENEVA.lng);
     now += SERVER_TICK_MS;
-    flushIfDue(state, now);
+    flush();
     onMessage(state, 'a', { t: 'hide' }, now);
     now += SERVER_TICK_MS;
-    expect(diffsFor(flushIfDue(state, now), 'b')[0]?.gone).toEqual([ID('car-a')]);
+    expect(goneIds(flush(), 'b')).toEqual([ID('car-a')]);
     pos('a', GENEVA.lat, GENEVA.lng);
     expect(state.presence.has(ID('car-a'))).toBe(false);
     onMessage(state, 'a', { t: 'show' }, now);
@@ -415,10 +500,10 @@ describe('cost invariants', () => {
     onMessage(state, 'a', { t: 'wave', to: ID('car-b') }, now);
 
     now += SERVER_TICK_MS;
-    expect(flushIfDue(state, now).filter((e) => e.k === 'persist')).toHaveLength(0);
+    expect(flush().filter((e) => e.k === 'persist')).toHaveLength(0);
 
     now += COUNTER_WRITE_MS;
-    const persists = flushIfDue(state, now).filter((e) => e.k === 'persist');
+    const persists = flush().filter((e) => e.k === 'persist');
     expect(persists).toHaveLength(1);
     const entries = persists[0]!.k === 'persist' ? persists[0]!.entries : [];
     expect(entries.length).toBeGreaterThan(0);
@@ -448,7 +533,7 @@ describe('cost invariants', () => {
       for (let i = 0; i < drivers; i++) {
         const base = i % 2 === 0 ? GENEVA : NEIGHBOUR_POINT;
         pos(`k${i}`, base.lat + i * 1e-4, base.lng + round * 1e-4);
-        ticks += flushIfDue(state, now).length;
+        ticks += flush().length;
       }
       now += SERVER_TICK_MS + 1;
     }
@@ -477,6 +562,7 @@ describe('hibernation', () => {
       spectator: profile.spectator,
       hidden: profile.hidden,
       since: profile.since,
+      v: profile.v,
     });
 
     expect(hubStats(woken).sockets).toBe(1);
@@ -499,7 +585,7 @@ describe('counter writes stay inside the row-write budget', () => {
     }
     onMessage(state, 'k0', { t: 'wave', to: ID('id1') }, now);
     now += COUNTER_WRITE_MS + SERVER_TICK_MS;
-    const persists = flushIfDue(state, now).filter((e) => e.k === 'persist');
+    const persists = flush().filter((e) => e.k === 'persist');
     const entries = persists[0]?.k === 'persist' ? persists[0].entries : [];
     // Two user counters with their timestamps, and one cell-day counter. Not one row per
     // connected driver.
@@ -513,7 +599,7 @@ describe('counter writes stay inside the row-write budget', () => {
       pos(`k${i}`, GENEVA.lat + i * 1e-5, GENEVA.lng);
     }
     now += COUNTER_WRITE_MS + SERVER_TICK_MS;
-    expect(flushIfDue(state, now).filter((e) => e.k === 'persist')).toHaveLength(0);
+    expect(flush().filter((e) => e.k === 'persist')).toHaveLength(0);
   });
 });
 
@@ -601,7 +687,11 @@ describe('the version handshake', () => {
     pos('a', GENEVA.lat, GENEVA.lng);
     pos('b', GENEVA.lat, GENEVA.lng);
     now += SERVER_TICK_MS;
-    expect(diffsFor(flushIfDue(state, now), 'b')[0]?.upd.map((c) => c.id)).toContain(ID('car-a'));
+    const out = flush();
+    expect(updIds(out, 'b')).toContain(ID('car-a'));
+    // And it is still spoken to in the shape it understands, not the one it cannot parse.
+    expect(diffsFor(out, 'a')).not.toHaveLength(0);
+    expect(diff2sFor(out, 'a')).toHaveLength(0);
 
     const waved = sends(onMessage(state, 'a', { t: 'wave', to: ID('car-b') }, now), 'a');
     expect(waved).toContainEqual({ t: 'waved', to: ID('car-b'), ok: true });
@@ -611,5 +701,220 @@ describe('the version handshake', () => {
     const out = hello('a', 'car-a', [CELL], { v: PROTOCOL_VERSION + 5 } as Partial<ClientMsg>);
     expect(upgrades(out, 'a')).toEqual([]);
     expect(closes(out)).toEqual([]);
+  });
+});
+
+/*
+ * The reason for the version bump. At twenty cars the old wire was fine; at five hundred it
+ * was 102 kB per subscriber every two seconds and fifty megabytes a tick out of one object,
+ * which is a cliff a dense city walks off long before the socket cap is reached (ADR-0033).
+ */
+describe('the compact wire', () => {
+  const wireOfCar = (effects: Effect[], to: string, name: string): CarWire | undefined => {
+    for (const msg of sends(effects, to))
+      if (msg.t === 'diff2')
+        for (const car of msg.upd) if (handleNames.get(car[0]) === ID(name)) return car;
+    return undefined;
+  };
+
+  it('describes a car once, then refers to it by handle', () => {
+    hello('a', 'car-a');
+    hello('watcher', 'car-w');
+    pos('watcher', GENEVA.lat, GENEVA.lng);
+    pos('a', GENEVA.lat, GENEVA.lng);
+    now += SERVER_TICK_MS;
+
+    const first = diff2sFor(flush(), 'watcher');
+    expect(first.flatMap((d) => d.meta).map((m) => m.id)).toEqual([ID('car-a')]);
+    const handle = first.flatMap((d) => d.meta)[0]?.h;
+    expect(handle).toBeGreaterThan(0);
+
+    now += SERVER_TICK_MS;
+    pos('a', GENEVA.lat + 0.001, GENEVA.lng);
+    const second = diff2sFor(flush(), 'watcher');
+    // Nothing about the car changed, only where it is. Saying its model, colour, name, id
+    // and join time again every two seconds is most of what the old wire cost.
+    expect(second.flatMap((d) => d.meta)).toEqual([]);
+    expect(second.flatMap((d) => d.upd).map((c) => c[0])).toEqual([handle]);
+  });
+
+  it('describes it again, and only then, when the driver edits their car', () => {
+    hello('a', 'car-a');
+    hello('watcher', 'car-w');
+    pos('watcher', GENEVA.lat, GENEVA.lng);
+    pos('a', GENEVA.lat, GENEVA.lng);
+    now += SERVER_TICK_MS;
+    flush();
+
+    // A garage edit goes down the open socket as a fresh hello (ADR-0019's amendment).
+    hello('a', 'car-a', [CELL], { colour: 'ultrared' } as Partial<ClientMsg>);
+    now += SERVER_TICK_MS;
+    pos('a', GENEVA.lat + 0.001, GENEVA.lng);
+    const meta = diff2sFor(flush(), 'watcher').flatMap((d) => d.meta);
+    expect(meta.map((m) => m.colour)).toEqual(['ultrared']);
+  });
+
+  it('costs a fraction of what the whole car state did', () => {
+    hello('watcher', 'car-w');
+    pos('watcher', GENEVA.lat, GENEVA.lng);
+    for (let i = 0; i < 20; i++) {
+      hello(`k${i}`, `near${i}`);
+      const at = destination(GENEVA.lat, GENEVA.lng, i * 18, 500 + i * 100);
+      pos(`k${i}`, at.lat, at.lng);
+    }
+    now += SERVER_TICK_MS;
+    flush();
+
+    // A steady-state tick: everyone is known, everyone has moved.
+    now += SERVER_TICK_MS;
+    for (let i = 0; i < 20; i++) {
+      const at = destination(GENEVA.lat, GENEVA.lng, i * 18, 520 + i * 100);
+      pos(`k${i}`, at.lat, at.lng);
+    }
+    const steady = diff2sFor(flush(), 'watcher');
+    const bytes = steady.reduce((n, d) => n + JSON.stringify(d).length, 0);
+    expect(steady.flatMap((d) => d.upd)).toHaveLength(20);
+    expect(steady.flatMap((d) => d.meta)).toEqual([]);
+    // The old wire was about 210 bytes a car, so twenty of them was over four kilobytes.
+    expect(bytes).toBeLessThan(1_200);
+  });
+
+  it('rounds a position to about a metre, and no further', () => {
+    hello('a', 'car-a');
+    hello('watcher', 'car-w');
+    pos('watcher', GENEVA.lat, GENEVA.lng);
+    pos('a', GENEVA.lat, GENEVA.lng);
+    now += SERVER_TICK_MS;
+    const car = wireOfCar(flush(), 'watcher', 'car-a');
+    expect(car).toBeDefined();
+    const lat = (car?.[1] ?? 0) / WIRE_COORD_SCALE;
+    const lng = (car?.[2] ?? 0) / WIRE_COORD_SCALE;
+    // Quantisation for bytes, an order of magnitude under a good GPS fix. This is not the
+    // 50-100 m fuzz ADR-0024 removed: there is no offset and no direction to it.
+    expect(haversineM(GENEVA.lat, GENEVA.lng, lat, lng)).toBeLessThan(2);
+  });
+});
+
+describe('interest', () => {
+  /*
+   * A cell is about 27 x 19.5 km at this latitude, not the 39 km the equator would give, and
+   * Geneva sits 13 km from its western edge. So a line of cars has to start at that edge to
+   * stay inside one cell — which is the whole point: everything below must be interest doing
+   * the filtering, never the cell subscription passing the test for the wrong reason.
+   */
+  const BOUNDS = decodeBounds(CELL);
+  const WEST = { lat: (BOUNDS.minLat + BOUNDS.maxLat) / 2, lng: BOUNDS.minLng + 0.005 };
+
+  /** `count` drivers strung out east of the cell's western edge, one every `spacingM`. */
+  const line = (count: number, spacingM: number): void => {
+    for (let i = 0; i < count; i++) {
+      const at = destination(WEST.lat, WEST.lng, 90, (i + 1) * spacingM);
+      hello(`k${i}`, `line${i}`, [encode(at.lat, at.lng, CELL_PRECISION)]);
+      pos(`k${i}`, at.lat, at.lng);
+    }
+  };
+
+  it('sends a driver only the cars near them, not the whole cell', () => {
+    hello('watcher', 'car-w');
+    pos('watcher', WEST.lat, WEST.lng);
+    line(18, 1_000); // 1 km to 18 km east, all of it inside the one cell
+    now += SERVER_TICK_MS;
+
+    const seen = updIds(flush(), 'watcher');
+    expect(seen.length).toBeGreaterThan(0);
+    for (const id of seen) {
+      const car = state.presence.get(id);
+      expect(car).toBeDefined();
+      expect(haversineM(WEST.lat, WEST.lng, car!.lat, car!.lng)).toBeLessThanOrEqual(
+        INTEREST_RADIUS_M,
+      );
+    }
+    // And the far one really is in the same cell.
+    const far = state.presence.get(ID('line17'));
+    expect(far?.cell).toBe(CELL);
+    expect(seen).not.toContain(ID('line17'));
+  });
+
+  it('takes a car off your map once you have driven away from it', () => {
+    hello('watcher', 'car-w');
+    hello('a', 'car-a');
+    pos('watcher', GENEVA.lat, GENEVA.lng);
+    pos('a', GENEVA.lat, GENEVA.lng);
+    now += SERVER_TICK_MS;
+    expect(updIds(flush(), 'watcher')).toContain(ID('car-a'));
+
+    /*
+     * The stationary car does not move and nothing about it changes. It is the watcher
+     * driving away that puts it out of range, which is why interest has to be recomputed for
+     * cars that are not in the tick's dirty set.
+     *
+     * Driven, not teleported: a jump would be refused as an impossible speed, and the
+     * stationary car has to keep reporting or it would expire and the test would pass for
+     * the wrong reason.
+     */
+    // 130 m every two seconds is 234 km/h: fast, and under the speed the hub refuses as
+    // impossible. Reaching the drop radius takes about a hundred ticks at that.
+    const gone: string[] = [];
+    for (let i = 1; i <= 150 && gone.length === 0; i++) {
+      now += SERVER_TICK_MS;
+      const at = destination(GENEVA.lat, GENEVA.lng, 90, i * 130);
+      pos('watcher', at.lat, at.lng, 234);
+      pos('a', GENEVA.lat, GENEVA.lng, 0);
+      gone.push(...goneIds(flush(), 'watcher'));
+    }
+    expect(gone).toContain(ID('car-a'));
+    expect(state.presence.has(ID('car-a'))).toBe(true);
+  });
+
+  it('does not flicker a car sitting on the edge of range', () => {
+    hello('watcher', 'car-w');
+    hello('a', 'car-a');
+    pos('watcher', GENEVA.lat, GENEVA.lng);
+    // Just inside, then a nudge either side of the line, as a real drive does constantly.
+    const edge = destination(GENEVA.lat, GENEVA.lng, 90, INTEREST_RADIUS_M - 100);
+    pos('a', edge.lat, edge.lng);
+    now += SERVER_TICK_MS;
+    expect(updIds(flush(), 'watcher')).toContain(ID('car-a'));
+
+    const goneEvents: string[] = [];
+    for (let i = 0; i < 6; i++) {
+      now += SERVER_TICK_MS;
+      const wobble = destination(GENEVA.lat, GENEVA.lng, 90, INTEREST_RADIUS_M + (i % 2 ? 200 : -200));
+      pos('a', wobble.lat, wobble.lng);
+      pos('watcher', GENEVA.lat, GENEVA.lng);
+      goneEvents.push(...goneIds(flush(), 'watcher'));
+    }
+    // One threshold would have announced and withdrawn it every other tick.
+    expect(goneEvents).toEqual([]);
+  });
+
+  it('serves a spectator their whole cell, because they have no position to measure from', () => {
+    hello('watcher', 'car-w', [CELL], { spectator: true } as Partial<ClientMsg>);
+    // 18 km east of the western edge: well beyond interest, well inside the cell.
+    line(18, 1_000);
+    now += SERVER_TICK_MS;
+    // Someone who cannot be seen sends no positions, so there is nothing to centre their
+    // interest on. They get what everyone got before this decision, which is what they had.
+    expect(updIds(flush(), 'watcher')).toContain(ID('line17'));
+  });
+
+  it('scales with the cars near you, not with the cars in the cell', () => {
+    hello('watcher', 'car-w');
+    pos('watcher', GENEVA.lat, GENEVA.lng);
+    // Two hundred drivers spread over the whole 39 km cell.
+    for (let i = 0; i < 200; i++) {
+      const at = destination(GENEVA.lat, GENEVA.lng, (i * 37) % 360, 200 + (i % 100) * 190);
+      hello(`k${i}`, `crowd${i}`, [encode(at.lat, at.lng, CELL_PRECISION)]);
+      pos(`k${i}`, at.lat, at.lng);
+    }
+    now += SERVER_TICK_MS;
+    const out = flush();
+    const seen = updIds(out, 'watcher');
+    const bytes = diff2sFor(out, 'watcher').reduce((n, d) => n + JSON.stringify(d).length, 0);
+
+    expect(state.presence.size).toBe(201);
+    expect(seen.length).toBeLessThan(200);
+    // The number that matters: the old wire would have put 200 x 210 bytes on this socket.
+    expect(bytes).toBeLessThan(42_000 / 2);
   });
 });

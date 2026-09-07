@@ -44,8 +44,10 @@ describe('/ws', () => {
 
     const b = await connect(HUB);
     b.send(helloMsg('worker-b', [CELL]));
-    const welcome = await b.next((m) => m.t === 'welcome');
-    expect(welcome.t === 'welcome' && welcome.snapshot.map((c) => c.id)).toContain(idOf('worker-a'));
+    await b.next((m) => m.t === 'welcome');
+    // Told at once, in the opening diffs rather than in the welcome: a compact client is
+    // given each car's description once and then referred to it by handle (ADR-0033).
+    await b.waitForCar(idOf('worker-a'));
     a.close();
     b.close();
   });
@@ -62,8 +64,9 @@ describe('/ws', () => {
     await wait(SERVER_TICK_MS + 200);
     a.send(posMsg(GENEVA.lat + 0.0005, GENEVA.lng));
 
-    const diff = await b.next((m) => m.t === 'diff' && m.upd.some((c) => c.id === idOf('diff-a')));
-    expect(diff.t === 'diff' && diff.online).toBeGreaterThan(0);
+    await b.waitForCar(idOf('diff-a'));
+    const counts = b.received.filter((m) => m.t === 'diff' || m.t === 'diff2');
+    expect(counts.some((m) => (m.t === 'diff' || m.t === 'diff2') && m.online > 0)).toBe(true);
     a.close();
     b.close();
   });
@@ -141,11 +144,13 @@ describe('/ws', () => {
     old.send(posMsg(GENEVA.lat, GENEVA.lng));
     await wait(SERVER_TICK_MS + 200);
     current.send(posMsg(GENEVA.lat, GENEVA.lng));
-    const diff = await current.next(
-      (m) => m.t === 'diff' && m.upd.some((c) => c.id === idOf('legacy-a')),
-    );
-    expect(diff.t).toBe('diff');
+    await current.waitForCar(idOf('legacy-a'));
 
+    // And each is spoken to in the shape it understands: the old one in whole car states, the
+    // current one by handle. That is what makes the reload something a driver can wait for.
+    expect(old.received.some((m) => m.t === 'diff')).toBe(true);
+    expect(old.received.some((m) => m.t === 'diff2')).toBe(false);
+    expect(current.received.some((m) => m.t === 'diff2')).toBe(true);
     expect(current.received.some((m) => m.t === 'upgrade')).toBe(false);
     old.close();
     current.close();

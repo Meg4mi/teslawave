@@ -13,8 +13,14 @@ The design goal is that there is nothing to leak. No account, no email, no trip 
 | A random secret | Generated in the browser (`crypto.randomUUID`), stored in `localStorage`. The hub hashes it into the id other drivers see; the secret itself is never shown or stored server-side, so an id read off the wire cannot be used to pose as its driver (ADR-0025). |
 
 Positions are exact. What protects a driver is not blur but scope: a position is shown only
-to drivers in the same map area, only while it is under 60 s old, and it is never written
-anywhere (ADR-0024).
+to drivers within 12 km, only while it is under 60 s old, and it is never written anywhere
+(ADR-0024, ADR-0033). It used to be shown to everyone in the same 27 x 20 km map cell; the
+narrower scope came out of making the app affordable in a city, and is a privacy improvement
+by consequence rather than by design.
+
+On the wire a position is rounded to about 1.1 m, an order of magnitude finer than a GPS fix.
+That is to save bytes, not to obscure anything: there is no offset and no direction to it, and
+a wave is still validated against the exact position the device reported.
 
 ## What is kept, and for how long
 

@@ -5,9 +5,11 @@ import {
   PRESENCE_EXPIRY_MS,
   PROTOCOL_VERSION,
   SERVER_TICK_MS,
+  INTEREST_RADIUS_M,
   decodeBounds,
   destination,
   encode,
+  haversineM,
   hubOf,
   idFromSecret,
   type ClientMsg,
@@ -92,7 +94,7 @@ function createRig(ourCells: string[] = [CELL]) {
   /** Hand the client everything the hub addressed to it, through the real message handler. */
   const deliver = (): void => {
     for (const msg of inbox.splice(0)) {
-      applyServerMsg(msg);
+      applyServerMsg(msg, HUB);
       afterEachMessage?.(msg);
     }
   };
@@ -243,7 +245,11 @@ describe('the hub and the client, against each other', () => {
     // After every frame the socket delivers, because that is when the map can be drawn.
     rig.onEachMessage((msg) => {
       if (!onMap(idOf('car-b')))
-        gaps.push(msg.t === 'diff' ? `after a diff for ${msg.cell}` : `after a ${msg.t}`);
+        gaps.push(
+          msg.t === 'diff' || msg.t === 'diff2'
+            ? `after a ${msg.t} for ${msg.cell}`
+            : `after a ${msg.t}`,
+        );
     });
     run(rig, 40, [b], () => {
       rig.pos(US, GENEVA.lat, GENEVA.lng, 0);
@@ -380,6 +386,11 @@ describe('the hub and the client, against each other', () => {
     };
 
     const failures: string[] = [];
+    let beyondInterest = false;
+    let sawCompactWire = false;
+    rig.onEachMessage((msg) => {
+      if (msg.t === 'diff2') sawCompactWire = true;
+    });
     for (let step = 0; step < 150; step++) {
       // Someone drops or comes back, now and then.
       if (step > 5 && rand() < 0.06) {
@@ -416,10 +427,21 @@ describe('the hub and the client, against each other', () => {
       for (const m of movers) {
         const id = idOf(m.name);
         const since = rig.now - m.lastReportAt;
-        // A driver reporting steadily is on the map. This is the border-blink invariant,
-        // and the hibernation-wipe one, stated once for every driver on every tick.
-        if (m.reporting && since <= SERVER_TICK_MS * 2 && !onMap(id))
-          failures.push(`step ${step}: ${m.name} vanished while still reporting`);
+        const away = haversineM(GENEVA.lat, GENEVA.lng, m.lat, m.lng);
+        if (away > INTEREST_RADIUS_M) beyondInterest = true;
+        /*
+         * A driver reporting steadily, and near enough to be on our map, is on our map. This
+         * is the border-blink invariant and the hibernation-wipe one, stated once for every
+         * driver on every tick.
+         *
+         * "Near enough" is the part ADR-0033 added, and it is stated as a fact about
+         * distance rather than left implicit in the fixture: a car beyond the drop radius is
+         * *supposed* to be absent, and a rig that did not say so would either fail for the
+         * right reason with a confusing message, or drift into never testing the invariant
+         * at all as the numbers change.
+         */
+        if (m.reporting && since <= SERVER_TICK_MS * 2 && away < INTEREST_RADIUS_M && !onMap(id))
+          failures.push(`step ${step}: ${m.name} vanished while still reporting, ${Math.round(away)} m away`);
         // And a driver who stopped is gone, on the client's own clock. No ghosts.
         if (since > PRESENCE_EXPIRY_MS + SERVER_TICK_MS * 2 && onMap(id))
           failures.push(`step ${step}: ${m.name} is a ghost, ${since} ms since its last report`);
@@ -429,5 +451,9 @@ describe('the hub and the client, against each other', () => {
     expect(failures, failures.slice(0, 10).join('\n')).toEqual([]);
     // The drive has to have actually crossed a border for the first invariant to mean much.
     expect(movers.some((m) => m.lat > NORTH_EDGE)).toBe(true);
+    // And it has to have been the compact wire all along, or none of this tested it.
+    expect(sawCompactWire).toBe(true);
+    // Everyone stayed inside interest, so the invariant above was never skipped.
+    expect(beyondInterest).toBe(false);
   });
 });

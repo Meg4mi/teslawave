@@ -16,6 +16,7 @@
     "test": "pnpm -r test",
     "test:e2e": "pnpm --filter @teslawave/web test:e2e",
     "sim": "pnpm --filter @teslawave/worker sim",
+    "bench": "pnpm --filter @teslawave/worker bench",
     "usage": "node scripts/usage-report.mjs",
     "perf": "node scripts/perf-report.mjs",
     "check:size": "node scripts/check-size.mjs",

@@ -50,7 +50,31 @@ export const MAX_MSG_BYTES = 1_024;
 /** Anything faster than this between two updates is a spoof or a bug. */
 export const MAX_SPEED_KMH = 250;
 
-export const MAX_SOCKETS_PER_CELL = 500;
+/*
+ * Measured, not guessed: `pnpm bench` drives one tick with every driver in one cell inside
+ * interest range of every other, which is a city centre at rush hour. Serialising included,
+ * because the Durable Object pays it once per socket.
+ *
+ * | drivers | old wire            | compact wire (ADR-0033) |
+ * |---------|---------------------|-------------------------|
+ * | 500     | 167 ms, 75 kB each  | 29 ms, 11.3 kB each     |
+ * | 1,000   | 844 ms, 149 kB each | 117 ms, 22.3 kB each    |
+ * | 2,000   | 2,954 ms, 297 kB    | 460 ms, 45 kB each      |
+ *
+ * The cell cap used to be 500, and it was a fan-out limit dressed up as a capacity limit: at
+ * 500 the hub spent a sixth of every tick in one thread and put 75 kB on every socket every
+ * two seconds, which an Intel Atom cannot parse and still hold 25 fps. The usable number was
+ * a fraction of the stated one.
+ *
+ * 1,000 is where the compact wire stops being comfortable: 117 ms of a 2,000 ms tick, and
+ * 22 kB a socket. 2,000 is not — half the tick, and twice the JSON a car can afford. So the
+ * cap is 1,000 and it is a number the app can actually reach.
+ *
+ * Past that the lever is not this constant, it is HUB_PRECISION: 3 gives 32,768 possible
+ * objects instead of 1,024, which divides a city between several of them. The per-tick cost
+ * is per object, so that is the change that buys another order of magnitude.
+ */
+export const MAX_SOCKETS_PER_CELL = 1_000;
 export const MAX_SOCKETS_PER_HUB = 2_000;
 
 /**
@@ -94,7 +118,34 @@ export const CLOSE_WRONG_HUB = 4030;
  * either side relies on, a changed meaning, a removed message. Adding a field that an old
  * client can ignore and a new hub can do without is not a bump.
  */
-export const PROTOCOL_VERSION = 1;
+export const PROTOCOL_VERSION = 2;
 
 /** A hello with no version is from before ADR-0029, which is every client already deployed. */
 export const LEGACY_PROTOCOL_VERSION = 0;
+
+/** The first version with interest filtering and the compact diff (ADR-0033). */
+export const COMPACT_WIRE_VERSION = 2;
+
+/**
+ * A driver is sent only the cars within this of them.
+ *
+ * Nothing above it can be seen or waved at: the wave prompt is 300 m and the HUD's furthest
+ * claim is "within 10 km", so this is that plus margin. Before it existed, every subscriber
+ * in a cell got every car in that cell — 39 x 20 km of them — which is fine at twenty cars
+ * and 102 kB per subscriber every two seconds at five hundred (ADR-0033).
+ */
+export const INTEREST_RADIUS_M = 12_000;
+
+/**
+ * A car already on your map is kept until it is this much further out, so one sitting near
+ * the edge does not flicker on and off as the distance jitters across the line.
+ */
+export const INTEREST_DROP_RADIUS_M = 13_500;
+
+/**
+ * Coordinates on the compact wire are integers at this scale: 1e5 of a degree is about 1.1 m,
+ * an order of magnitude under a good GPS fix. This is quantisation to save bytes, not the
+ * fuzzing ADR-0024 removed — there is no offset and no direction to it, and a wave is still
+ * validated against the exact position the client sent.
+ */
+export const WIRE_COORD_SCALE = 100_000;

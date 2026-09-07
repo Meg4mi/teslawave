@@ -107,8 +107,8 @@ export function useSession({
 
   // --- The wave, in both directions -------------------------------------------------
   const onServerMsg = useCallback(
-    (msg: ServerMsg): void => {
-      applyServerMsg(msg);
+    (msg: ServerMsg, hub: string): void => {
+      applyServerMsg(msg, hub);
       // Not acted on here: the reload waits for the car to stop (ADR-0029).
       if (msg.t === 'upgrade') setWantedVersion(msg.v);
       if (msg.t === 'wave') {
@@ -151,10 +151,17 @@ export function useSession({
 
   const wave = useCallback(
     (id: string): void => {
-      // To the hub that owns the target's cell and no other (ADR-0007, amended): the others
-      // would refuse it, and once they each accepted it, which counted and chimed it twice.
-      const cell = getCar(id)?.cell;
-      const sent = netRef.current?.send({ t: 'wave', to: id }, cell ? hubOf(cell) : undefined);
+      /*
+       * To the hub that owns the target and no other (ADR-0007, amended): the others would
+       * refuse it, and once they each accepted it, which counted and chimed it twice.
+       *
+       * The hub the car arrived on, rather than the one its cell implies: on the compact wire
+       * a car's cell is only restated when it changes, so the connection it came in on is the
+       * answer that is always current (ADR-0033).
+       */
+      const target = getCar(id);
+      const hub = target?.hub ?? (target?.cell ? hubOf(target.cell) : undefined);
+      const sent = netRef.current?.send({ t: 'wave', to: id }, hub);
       if (!sent) {
         showToast(copy.wave.offline);
         return;

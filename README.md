@@ -31,6 +31,13 @@ and at most once per version per tab. A Tesla is pinned to a tab for weeks, so t
 only way a build in the field can ever be replaced (ADR-0029). Bump the version when a change
 would make an old client and a new hub disagree.
 
+A driver is sent the cars within 12 km of them, not every car in the cell, and each one is
+described once and then referred to by a small handle: six numbers a tick instead of 210
+bytes. That is what makes a dense city possible — the old wire put 75 kB on every socket every
+two seconds at 500 drivers, which an Intel Atom cannot parse (ADR-0033). Both wires are spoken
+at once, so a client that has not reloaded yet keeps working. `pnpm bench` prints the table the
+socket caps are set from; re-run it after touching `flushIfDue`.
+
 Before joining, `/api/pulse` says how many drivers are around and `/api/activity` tints the
 map cells that have seen waves this week. Both are counts from data the app already stores,
 both are cached per cell rather than per visitor, and neither can say anything about a person
@@ -82,6 +89,7 @@ pnpm test        # protocol, hub-core, worker (real WebSockets), web
 pnpm test:e2e    # Playwright: car screen at both densities, and a phone
 pnpm check:css   # no blur, no animated shadows, no hardcoded screen size
 pnpm check:size  # under 400 kB gzipped, excluding MapLibre
+pnpm bench       # what one broadcast tick costs, on both wires, at several densities
 ```
 
 The browser security policy lives in `apps/web/public/_headers`, not in the Worker: assets are
