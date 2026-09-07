@@ -255,7 +255,7 @@ export function buildCarScene(model: TeslaModel, colourId: string): Scene {
   for (const y of art.doorCuts)
     ops.push({
       kind: 'stroke',
-      d: `M${halfWidthOf(art.frame) - 120} ${y}L${bodyHalf + 20} ${y}`,
+      d: `M${halfWidthOf(art.frame) - 30} ${y}L${bodyHalf + 20} ${y}`,
       paint: seam,
       width: 16,
       mirror: true,
@@ -293,15 +293,21 @@ export function buildCarScene(model: TeslaModel, colourId: string): Scene {
   // each side between the glass and the side glass seen edge-on, drawn under the panels so
   // half its width shows. Without it the greenhouse is a black slab wider than the roof,
   // which no car has.
+  const roofPaint = mix(base, '#000000', light ? 0.3 : 0.4);
   ops.push({
     kind: 'stroke',
     d: pathData(art.rail),
-    paint: mix(base, '#000000', light ? 0.3 : 0.4),
+    paint: roofPaint,
     width: 90,
     mirror: true,
     clip: 'frame',
     cap: 'round',
   });
+
+  // Roof that is painted, not glass: the Y's strip behind its roof panel, the X's beam and
+  // spine. Body colour, a shade down for the angle it sits at.
+  for (const panel of art.roofPaint ?? [])
+    ops.push({ kind: 'fill', d: mirroredPathData(panel), paint: roofPaint, clip: 'frame' });
 
   // 7. Glass. The windscreen is the most raked and reflects the most sky; the roof is darkest.
   ops.push({

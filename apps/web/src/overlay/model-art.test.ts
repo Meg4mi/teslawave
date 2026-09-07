@@ -174,6 +174,18 @@ describe('model art', () => {
     expect(bonnet('X')).toBeLessThan(bonnet('Y'));
   });
 
+  it('paints part of the roof on the Y and the X, and keeps every painted panel in the frame', () => {
+    expect(art('Y').roofPaint?.length).toBe(1);
+    expect(art('X').roofPaint?.length).toBe(3);
+    for (const model of ['3', 'S', 'CT'] as const) expect(art(model).roofPaint).toBeUndefined();
+    for (const model of TESLA_MODELS)
+      for (const panel of art(model).roofPaint ?? []) {
+        const frame = extentY(art(model).frame);
+        expect(extentY(panel).front).toBeGreaterThan(frame.front);
+        expect(extentY(panel).rear).toBeLessThan(frame.rear);
+      }
+  });
+
   it('gives the Model X falcon-wing roof glass and nothing else', () => {
     for (const model of TESLA_MODELS)
       expect(art(model).falconGlass === undefined).toBe(model !== 'X');
