@@ -99,6 +99,11 @@ export function Onboarding({
           </div>
 
           <p className="onboarding__privacy">{copy.onboarding.privacy}</p>
+          <p className="onboarding__privacy">{copy.onboarding.safety}</p>
+          <p className="onboarding__privacy onboarding__legal">
+            <a href="/privacy">{copy.onboarding.legal}</a>
+            <a href="/terms">{copy.onboarding.legalTerms}</a>
+          </p>
           <Disclaimer inline />
         </section>
       </div>

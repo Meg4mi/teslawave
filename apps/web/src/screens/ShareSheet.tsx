@@ -4,6 +4,9 @@ import { Button, Sheet, SheetActions } from '../ui/primitives';
 import { useCopy } from '../i18n';
 import { cardBlob, drawShareCard, shareAbility, type ShareAbility } from '../share/card';
 
+/** What the driver's phone calls the card once it is saved. The brand, not a literal. */
+const CARD_FILENAME = `${BRAND.name.toLowerCase()}.png`;
+
 /**
  * The card, on screen, with whatever this browser can do with it.
  *
@@ -43,7 +46,7 @@ export function ShareSheet({
       domain: BRAND.domain,
       disclaimer: copy.disclaimer,
     });
-    setAbility(shareAbility(new File([], 'teslawave.png', { type: 'image/png' })));
+    setAbility(shareAbility(new File([], CARD_FILENAME, { type: 'image/png' })));
   }, [car.model, car.colour, waves, copy]);
 
   const act = async (): Promise<void> => {
@@ -56,7 +59,7 @@ export function ShareSheet({
         setNote(copy.share.unavailable);
         return;
       }
-      const file = new File([blob], 'teslawave.png', { type: 'image/png' });
+      const file = new File([blob], CARD_FILENAME, { type: 'image/png' });
       if (ability === 'share') {
         // The picture is what travels; the address is how anyone who sees it gets here.
         await navigator.share({
@@ -69,7 +72,7 @@ export function ShareSheet({
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = 'teslawave.png';
+      link.download = CARD_FILENAME;
       link.click();
       // Let the click be handled before the URL stops meaning anything.
       window.setTimeout(() => URL.revokeObjectURL(url), 10_000);

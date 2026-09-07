@@ -44,6 +44,19 @@ export function Privacy(): ReactNode {
 
         <p className="onboarding__sub">{copy.privacy.invisible}</p>
 
+        <h2>{copy.privacy.rightsTitle}</h2>
+        <ul className="privacy__list">
+          {copy.privacy.rights.map((item) => (
+            <li key={item}>{item}</li>
+          ))}
+        </ul>
+
+        <h2>{copy.privacy.controllerTitle}</h2>
+        <p className="onboarding__sub">{copy.privacy.controller(BRAND.name, BRAND.contact)}</p>
+
+        <p>
+          <a href="/terms">{copy.privacy.termsLink}</a>
+        </p>
         <p>
           <a href="/">{copy.privacy.back}</a>
         </p>

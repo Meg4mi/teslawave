@@ -9,6 +9,11 @@ export const BRAND: {
   readonly name: string;
   readonly domain: string;
   readonly url: string;
+  /**
+   * Where a driver, or a data protection authority, writes. On the brand's own domain rather
+   * than a personal mailbox: it is printed on a public page, and it has to outlive an inbox.
+   */
+  readonly contact: string;
   /** The three words on the first screen and on the social image. */
   readonly tagline: string;
   /** The page title: a search phrase, not the brand (brief 4.1). */

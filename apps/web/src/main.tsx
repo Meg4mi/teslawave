@@ -11,6 +11,7 @@ import {
 import './ui/tokens.css';
 import { App } from './app/App';
 import { Privacy } from './screens/Privacy';
+import { Terms } from './screens/Terms';
 
 const rootRoute = createRootRoute({ component: () => <Outlet /> });
 
@@ -33,6 +34,7 @@ function NotFound(): ReactNode {
 const routes: AnyRoute[] = [
   createRoute({ getParentRoute: () => rootRoute, path: '/', component: App }),
   createRoute({ getParentRoute: () => rootRoute, path: '/privacy', component: Privacy }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/terms', component: Terms }),
 ];
 
 if (import.meta.env.DEV) {

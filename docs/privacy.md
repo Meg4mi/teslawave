@@ -62,6 +62,21 @@ nothing about the drivers you waved at.
 - Nothing else. No advertising, no tracking pixels, no cookie banner, because there are no
   cookies.
 
+## Who runs this
+
+TeslaWave is an independent project rather than a company, run by the person who built it.
+For anything on this page, anything about your data, or anything else here, write to
+**contact@teslawave.app** — the address in `brand.json`, which is also what `/privacy` and
+`/terms` print.
+
+Sharing a position is done on consent: it starts when a driver taps "Go" and stops on the next
+tap. There is no account to see, export or delete, so clearing site data is the erasure, and
+it is complete. A driver who thinks their data has been handled badly can complain to their
+local data protection authority without our agreement.
+
+The legal name of the controller is deliberately not stated here yet; ADR-0037 says why, and
+what would change it.
+
 ## Controls
 
 - Sharing is off until you tap "Go".

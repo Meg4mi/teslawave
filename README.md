@@ -92,6 +92,21 @@ pnpm gen:social        # writes public/og.png and the PNG icons; CHROMIUM_PATH=.
 ```
 
 Re-run it when the card drawing, the tagline or the icon changes, and commit the result.
+
+The demo clip is generated the same way, by the app crossing itself:
+
+```bash
+pnpm gen:demo          # two phones side by side -> public/demo/demo.mp4
+pnpm gen:demo -- --car # the 1920x1200 car screen instead
+```
+
+Two browser contexts, the real client, the real hub, the real protocol over a real socket:
+only the GPS is simulated. It exists because a filmed clip needs two drivers who both have
+this and who cross paths, which is the thing the app does not have yet — and because the car
+drawings changed in five of the last sixteen commits, and nobody re-shoots a road for a
+sprite change (ADR-0038). It needs a machine that can reach the tile host, and says so when
+it cannot. It is a screen recording, and every post that carries it should say so.
+
 Where and how to put the link in front of drivers is in [docs/distribution.md](docs/distribution.md).
 
 ## Checks
@@ -218,6 +233,8 @@ from Workers Builds on non-production branches, or `wrangler versions upload`.
 
 - [docs/decisions](docs/decisions) — one file per non-obvious decision, written as it was made
 - [docs/privacy.md](docs/privacy.md) — what leaves the car, what is kept, and for how long
+- `/privacy` and `/terms` — the same two promises inside the app, in every language, from
+  the catalogue rather than from a file a driver would never find (ADR-0037)
 - [docs/distribution.md](docs/distribution.md) — where drivers are, and the order to reach them in
 - [docs/tesla-notes.md](docs/tesla-notes.md) — findings from real cars, the only real data
 - [docs/design-qa.md](docs/design-qa.md) — the checklist a release walks before it ships
