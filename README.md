@@ -218,6 +218,8 @@ from Workers Builds on non-production branches, or `wrangler versions upload`.
 
 - [docs/decisions](docs/decisions) — one file per non-obvious decision, written as it was made
 - [docs/privacy.md](docs/privacy.md) — what leaves the car, what is kept, and for how long
+- `/privacy` and `/terms` — the same two promises inside the app, in every language, from
+  the catalogue rather than from a file a driver would never find (ADR-0037)
 - [docs/distribution.md](docs/distribution.md) — where drivers are, and the order to reach them in
 - [docs/tesla-notes.md](docs/tesla-notes.md) — findings from real cars, the only real data
 - [docs/design-qa.md](docs/design-qa.md) — the checklist a release walks before it ships

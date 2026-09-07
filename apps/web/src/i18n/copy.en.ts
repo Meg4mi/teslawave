@@ -93,6 +93,15 @@ export const EN = {
     howItWorks: 'How waving works',
     privacy: `Your position is shared only while you are visible, never stored, and hidden once you have been parked ${n(PARKED_HIDE_MS / 60_000)} minutes.`,
     /**
+     * Said before Go, because that is where the driver agrees to be seen and the only moment
+     * the car is certainly stopped. Not a warning banner: the same voice as everything else,
+     * and it defers to local law rather than inventing a rule this project cannot know.
+     */
+    safety:
+      'The road comes first. A wave is worth a glance and no more, and where the law says a screen is not touched while moving, it is not.',
+    legal: 'Privacy',
+    legalTerms: 'Terms',
+    /**
      * Shown before Go, and only when there is somebody. A landing page saying "0 drivers
      * online" is worse than one that says nothing, so there is no zero case here on purpose.
      */
@@ -302,6 +311,63 @@ export const EN = {
     ],
     invisible:
       'Turn on invisible mode any time and you disappear from every other screen within two seconds.',
+    /**
+     * Who the controller is and how to reach them: the one thing a privacy page cannot leave
+     * out, and the one thing this page had no words for until there was somewhere to write.
+     */
+    controllerTitle: 'Who runs this, and how to reach them',
+    controller: (brand: string, address: string): string =>
+      `${brand} is an independent project rather than a company, run by the person who built it. Write to ${address} about this page, about your data, or about anything else here.`,
+    rightsTitle: 'Your side of it',
+    rights: [
+      'Your position is shared because you tapped Go, and one tap stops it. Nothing about you leaves the car before that.',
+      'There is no account to ask for, export or delete. Clearing this site in your browser removes your identity and your wave count, and nothing that points back to you is left behind.',
+      'If you think your data has been handled badly, your local data protection authority will hear it, and you do not need us to agree first.',
+    ],
+    termsLink: 'The terms this is offered under',
+    back: 'Back to the map',
+  },
+
+  /**
+   * The terms exist for one reason: this is an app a person looks at while driving a car. The
+   * driving section is first because it is the only section that can prevent harm; the rest is
+   * the ordinary shape of a free thing offered with no promises.
+   */
+  terms: {
+    title: 'Terms',
+    lead: (brand: string): string =>
+      `${brand} is free, asks for no account, and is offered exactly as it is. Using it means agreeing to a short list of things.`,
+    drivingTitle: 'Driving',
+    driving: [
+      'You are driving. Nothing on this screen is an instruction, a route, or a reason to take your eyes off the road.',
+      'A wave is worth a glance and no more. Where local law says a screen is not touched while moving, that law wins over anything written here.',
+      'Do not use it to follow, chase, intercept or approach another driver. The map shows people who chose to be seen for a moment, and it is not an invitation to be found.',
+      'It is meant for people old enough to hold a licence where they drive.',
+    ],
+    serviceTitle: 'What is offered',
+    service: [
+      'Free, with no account and nothing to install, so there is nothing to pay and nothing to cancel.',
+      'It runs on a free tier and can be slow, wrong, or switched off without notice. Positions come from phones and cars rather than from us, and they can be late, drifting, or missing.',
+      'It is offered as it is, with no warranty of any kind, and no promise that it will be available, accurate, or fit for anything in particular.',
+    ],
+    liabilityTitle: 'Liability',
+    liability: [
+      'As far as the law allows, the people who make and run it are not liable for any loss, injury or damage that comes of using it, on the road or anywhere else.',
+      'Nothing here removes a liability the law does not allow to be removed. Where a rule where you live gives you more than this page does, you keep it.',
+    ],
+    independenceTitle: 'Independence',
+    independence: [
+      'An independent project, made by drivers. Not affiliated with, endorsed or sponsored by Tesla, Inc., and TESLA is a trademark of Tesla, Inc.',
+      'Nothing here comes from a Tesla account, a VIN, or the Fleet API. The model and colour on your car are the ones you picked by hand.',
+    ],
+    changesTitle: 'Changes',
+    changes: [
+      'This page can change. The version you are reading is the one that applies, and the app reloads itself onto a new one only when your car is standing still.',
+      'It can also stop: a free thing with no revenue is a free thing that can end, and if it does, there is no account left holding anything of yours.',
+    ],
+    contactTitle: 'Contact',
+    contact: (address: string): string => `Write to ${address}.`,
+    privacyLink: 'What leaves your car, and what is kept',
     back: 'Back to the map',
   },
 

@@ -107,6 +107,10 @@ export const FR: Copy = {
     havePairingCodeHint: 'Reprenez votre nom et vos saluts avec un code court.',
     howItWorks: 'Comment saluer',
     privacy: `Votre position n’est partagée que lorsque vous êtes visible, jamais conservée, et masquée après ${n(PARKED_HIDE_MS / 60_000)} minutes à l’arrêt.`,
+    safety:
+      'La route d’abord. Un salut vaut un coup d’œil, pas plus, et là où la loi interdit de toucher l’écran en roulant, on n’y touche pas.',
+    legal: 'Confidentialité',
+    legalTerms: 'Conditions',
     liveNow: (drivers: number, waves: number): string =>
       waves > 0
         ? `${n(drivers)} ${drivers === 1 ? 'conducteur' : 'conducteurs'} sur la route en ce moment · ${n(waves)} ${waves === 1 ? 'salut' : 'saluts'} aujourd’hui`
@@ -307,6 +311,54 @@ export const FR: Copy = {
     ],
     invisible:
       'Activez le mode invisible à tout moment et vous disparaissez de tous les autres écrans en deux secondes.',
+    controllerTitle: 'Qui gère tout cela, et comment nous écrire',
+    controller: (brand: string, address: string): string =>
+      `${brand} est un projet indépendant plutôt qu’une société, mené par la personne qui l’a construit. Écrivez à ${address} au sujet de cette page, de vos données, ou de tout le reste.`,
+    rightsTitle: 'Ce qui vous revient',
+    rights: [
+      'Votre position n’est partagée que parce que vous avez appuyé sur Démarrer, et un seul geste l’arrête. Rien ne quitte la voiture avant.',
+      'Il n’y a pas de compte à demander, à exporter ou à supprimer. Effacer ce site dans votre navigateur retire votre identité et vos saluts, et rien qui mène à vous ne reste derrière.',
+      'Si vous estimez que vos données ont été mal traitées, votre autorité de protection des données vous écoutera, sans que nous ayons à en convenir.',
+    ],
+    termsLink: 'Les conditions dans lesquelles tout cela est proposé',
+    back: 'Retour à la carte',
+  },
+
+  terms: {
+    title: 'Conditions',
+    lead: (brand: string): string =>
+      `${brand} est gratuit, ne demande aucun compte, et est proposé exactement tel quel. L’utiliser, c’est accepter une courte liste de choses.`,
+    drivingTitle: 'Au volant',
+    driving: [
+      'Vous conduisez. Rien sur cet écran n’est une consigne, un itinéraire, ni une raison de quitter la route des yeux.',
+      'Un salut vaut un coup d’œil, pas plus. Là où la loi du lieu où vous roulez interdit de toucher un écran en mouvement, cette loi l’emporte sur tout ce qui est écrit ici.',
+      'Ne vous en servez pas pour suivre, poursuivre, intercepter ou aborder un autre conducteur. La carte montre des gens qui ont choisi d’être vus un instant, ce n’est pas une invitation à être retrouvés.',
+      'Il s’adresse à des personnes en âge d’avoir un permis là où elles conduisent.',
+    ],
+    serviceTitle: 'Ce qui est proposé',
+    service: [
+      'Gratuit, sans compte et sans rien à installer : il n’y a rien à payer et rien à résilier.',
+      'Tout tourne sur une offre gratuite et peut donc être lent, faux, ou coupé sans préavis. Les positions viennent des téléphones et des voitures, pas de nous, et peuvent arriver en retard, dériver, ou manquer.',
+      'C’est proposé tel quel, sans garantie d’aucune sorte, et sans promesse de disponibilité, d’exactitude ou d’adéquation à quoi que ce soit.',
+    ],
+    liabilityTitle: 'Responsabilité',
+    liability: [
+      'Dans toute la mesure permise par la loi, les personnes qui font et font tourner ce service ne sont pas responsables des pertes, blessures ou dommages liés à son usage, sur la route ou ailleurs.',
+      'Rien ici ne retire une responsabilité que la loi interdit de retirer. Là où une règle de chez vous vous donne plus que cette page, vous la gardez.',
+    ],
+    independenceTitle: 'Indépendance',
+    independence: [
+      'Un projet indépendant, fait par des conducteurs. Sans affiliation, aval ni parrainage de Tesla, Inc., et TESLA est une marque de Tesla, Inc.',
+      'Rien ici ne provient d’un compte Tesla, d’un VIN ou de la Fleet API. Le modèle et la couleur de votre voiture sont ceux que vous avez choisis à la main.',
+    ],
+    changesTitle: 'Changements',
+    changes: [
+      'Cette page peut changer. La version que vous lisez est celle qui s’applique, et l’application ne bascule sur une nouvelle que lorsque votre voiture est à l’arrêt.',
+      'Tout cela peut aussi s’arrêter : une chose gratuite et sans revenus est une chose qui peut finir, et si elle finit, aucun compte ne retient quoi que ce soit de vous.',
+    ],
+    contactTitle: 'Contact',
+    contact: (address: string): string => `Écrivez à ${address}.`,
+    privacyLink: 'Ce qui quitte votre voiture, et ce qui est conservé',
     back: 'Retour à la carte',
   },
 

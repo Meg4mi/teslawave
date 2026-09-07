@@ -345,7 +345,18 @@
   max-width: 44ch;
 }
 
-/* --- A document page (privacy) in the same materials ----------------------------------- */
+/* Privacy and Terms, small and side by side under the promise they qualify. */
+.onboarding__legal {
+  display: flex;
+  gap: var(--sp-4);
+}
+
+.onboarding__legal a {
+  color: var(--fg-dim);
+  text-underline-offset: 4px;
+}
+
+/* --- A document page (privacy, terms) in the same materials ----------------------------- */
 .doc {
   position: absolute;
   inset: 0;
