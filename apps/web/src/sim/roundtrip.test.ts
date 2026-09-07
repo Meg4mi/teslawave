@@ -154,7 +154,7 @@ function createRig(ourCells: string[] = [CELL]) {
 
     /** The socket drops. The hub forgets the connection; the client keeps its world. */
     drop(key: string): void {
-      apply(onClose(hub, key));
+      apply(onClose(hub, key, now));
       profiles.delete(key);
     },
 

@@ -16,6 +16,7 @@ import {
   RATE_VIOLATIONS_TO_CLOSE,
   RATE_WAVE_MS,
   SERVER_TICK_MS,
+  WAVE_HOLD_MS,
   WAVE_VALIDATE_RANGE_M,
   WIRE_COORD_SCALE,
   encode,
@@ -28,6 +29,7 @@ import {
   type CarWire,
   type ClientMsg,
   type ServerMsg,
+  type WaveFailReason,
 } from '@teslawave/protocol';
 import type { Counters, Effect, HubState, Socket, SocketKey, SocketProfile } from './types.js';
 
@@ -61,6 +63,7 @@ export function createHub(hub: string, now: number, counters?: Partial<Counters>
     dirty: new Map(),
     gone: new Map(),
     lastFlushAt: now,
+    held: [],
     counters: {
       wavesByUser: counters?.wavesByUser ?? new Map(),
       lastWaveByUser: counters?.lastWaveByUser ?? new Map(),
@@ -131,6 +134,7 @@ export function restoreSocket(state: HubState, profile: SocketProfile): void {
     ...profile,
     lastPosAt: 0,
     lastWaveAt: 0,
+    askedAt: 0,
     violations: 0,
     lastSeen: null,
     holding: new Map(),
@@ -151,6 +155,7 @@ export function openSocket(state: HubState, key: SocketKey): void {
     v: 0,
     lastPosAt: 0,
     lastWaveAt: 0,
+    askedAt: 0,
     violations: 0,
     lastSeen: null,
     holding: new Map(),
@@ -182,7 +187,7 @@ const dropPresence = (state: HubState, id: string): void => {
   if (car) markGone(state, car.cell, id);
 };
 
-export function onClose(state: HubState, key: SocketKey): Effect[] {
+export function onClose(state: HubState, key: SocketKey, now: number): Effect[] {
   const s = state.sockets.get(key);
   if (!s) return [];
   unindexCells(state, s);
@@ -190,7 +195,9 @@ export function onClose(state: HubState, key: SocketKey): Effect[] {
   state.sockets.delete(key);
   // A driver keeps both phone and car connected; only drop presence when the last one goes.
   if (s.id && !state.socketsById.has(s.id)) dropPresence(state, s.id);
-  return [];
+  // A held wave whose target has just left, or whose sender has, is settled now: the
+  // sender should not wait out the hold for an answer the hub already knows.
+  return settleWaves(state, now);
 }
 
 const violation = (s: Socket): Effect[] => {
@@ -523,24 +530,36 @@ function onSub(state: HubState, s: Socket, msg: Extract<ClientMsg, { t: 'sub' }>
   return effects;
 }
 
-function onWave(state: HubState, s: Socket, to: string, now: number): Effect[] {
-  if (!s.id) return violation(s);
+const refusal = (s: Socket, to: string, reason: WaveFailReason): Effect[] => [
+  { k: 'send', to: s.key, msg: { t: 'waved', to, ok: false, reason } },
+];
 
-  const fail = (reason: 'range' | 'offline' | 'rate' | 'hidden'): Effect[] => [
-    { k: 'send', to: s.key, msg: { t: 'waved', to, ok: false, reason } },
-  ];
+/** A connection that can be asked where it is, and would have a position worth asking for. */
+const placeable = (s: Socket | undefined): s is Socket =>
+  s !== undefined && s.id !== '' && !s.hidden && !s.spectator;
 
-  if (now - s.lastWaveAt < RATE_WAVE_MS) return fail('rate');
-  const from = state.presence.get(s.id);
-  if (!from || s.hidden || s.spectator) return fail('hidden');
-  const target = state.presence.get(to);
-  if (!target || to === s.id) return fail('offline');
+const placeableSockets = (state: HubState, id: string): Socket[] => {
+  const out: Socket[] = [];
+  for (const key of state.socketsById.get(id) ?? []) {
+    const s = state.sockets.get(key);
+    if (placeable(s)) out.push(s);
+  }
+  return out;
+};
+
+/**
+ * A wave both ends of which the hub can place: validated, counted for both, and delivered to
+ * every device of the target. The one path a wave is ever accepted on, whether it was placed
+ * on arrival or held first.
+ */
+function deliverWave(state: HubState, s: Socket, from: CarState, target: CarState, now: number): Effect[] {
+  const to = target.id;
   // A driver near a hub boundary reports to both hubs, so both hold both cars. The wave is
   // accepted by the hub that owns the target's cell and by no other: otherwise a client that
   // sent it everywhere would have it counted, chimed and carded twice.
-  if (hubOf(target.cell) !== state.hub) return fail('offline');
+  if (hubOf(target.cell) !== state.hub) return refusal(s, to, 'offline');
   if (haversineM(from.lat, from.lng, target.lat, target.lng) > WAVE_VALIDATE_RANGE_M)
-    return fail('range');
+    return refusal(s, to, 'range');
 
   s.lastWaveAt = now;
 
@@ -573,6 +592,91 @@ function onWave(state: HubState, s: Socket, to: string, now: number): Effect[] {
   return effects;
 }
 
+function onWave(state: HubState, s: Socket, to: string, now: number): Effect[] {
+  if (!s.id) return violation(s);
+
+  if (now - s.lastWaveAt < RATE_WAVE_MS) return refusal(s, to, 'rate');
+  if (s.hidden || s.spectator) return refusal(s, to, 'hidden');
+  if (to === s.id) return refusal(s, to, 'offline');
+
+  const from = state.presence.get(s.id);
+  const target = state.presence.get(to);
+  if (from && target) return deliverWave(state, s, from, target, now);
+
+  /*
+   * Somebody the hub cannot place. The usual reason is that the hub has just woken from
+   * hibernation: presence is memory only (ADR-0002), the sockets came back from their
+   * attachments with no positions, and nobody reports again until their own send interval
+   * comes round, which for a stopped car is thirty seconds away. The driver's screen still
+   * shows the car beside them, and the wave button with it. Refusing this as "hidden" told
+   * a visible driver to turn themselves back on.
+   *
+   * So the wave is held and whoever is missing is asked where they are; their answer is the
+   * next message in, and settles it. Somebody with no connection that could answer is
+   * simply off the map, now as before.
+   */
+  const ask: Socket[] = [];
+  if (!from) ask.push(s);
+  if (!target) {
+    const theirs = placeableSockets(state, to);
+    if (theirs.length === 0) return refusal(s, to, 'offline');
+    ask.push(...theirs);
+  }
+  // One at a time, held or not: a second tap while the first is waiting is the same tap.
+  if (state.held.some((w) => w.key === s.key)) return refusal(s, to, 'rate');
+
+  state.held.push({ key: s.key, from: s.id, to, at: now });
+  const effects: Effect[] = [];
+  for (const other of ask) {
+    // Several drivers waving at one car the hub cannot place ask it once between them: the
+    // answers would otherwise arrive inside the position rate limit and count as abuse.
+    if (other.askedAt !== 0 && now - other.askedAt < RATE_POS_MS) continue;
+    other.askedAt = now;
+    effects.push({ k: 'send', to: other.key, msg: { t: 'where' } });
+  }
+  return effects;
+}
+
+/**
+ * Settle every held wave the hub can now decide. Called after every message and close, so
+ * a position that arrives in answer to `where` delivers the wave that asked for it in the
+ * same turn, and a wave nobody answers is called off by the next message of any kind. There
+ * is no timer here, for the reason there is none anywhere in the hub (ADR-0002).
+ */
+function settleWaves(state: HubState, now: number): Effect[] {
+  if (state.held.length === 0) return [];
+  const effects: Effect[] = [];
+  const still: HubState['held'] = [];
+  for (const wave of state.held) {
+    const s = state.sockets.get(wave.key);
+    // The sender has gone: there is nobody to answer.
+    if (!s) continue;
+    if (s.hidden || s.spectator) {
+      effects.push(...refusal(s, wave.to, 'hidden'));
+      continue;
+    }
+    const from = state.presence.get(wave.from);
+    const target = state.presence.get(wave.to);
+    if (from && target) {
+      effects.push(...deliverWave(state, s, from, target, now));
+      continue;
+    }
+    if (!target && placeableSockets(state, wave.to).length === 0) {
+      effects.push(...refusal(s, wave.to, 'offline'));
+      continue;
+    }
+    if (now - wave.at < WAVE_HOLD_MS) {
+      still.push(wave);
+      continue;
+    }
+    // Asked, and not answered in time. The sender's own silence is the hub's problem to
+    // name honestly, not the driver's visibility.
+    effects.push(...refusal(s, wave.to, from ? 'offline' : 'nofix'));
+  }
+  state.held = still;
+  return effects;
+}
+
 export function onMessage(
   state: HubState,
   key: SocketKey,
@@ -581,6 +685,12 @@ export function onMessage(
 ): Effect[] {
   const s = state.sockets.get(key);
   if (!s) return [];
+  const effects = handle(state, s, msg, now);
+  effects.push(...settleWaves(state, now));
+  return effects;
+}
+
+function handle(state: HubState, s: Socket, msg: ClientMsg, now: number): Effect[] {
   switch (msg.t) {
     case 'hello':
       return onHello(state, s, msg, now);
@@ -917,9 +1027,11 @@ export const hubStats = (state: HubState): {
   sockets: number;
   presence: number;
   cells: number;
+  held: number;
 } => ({
   hub: state.hub,
   sockets: state.sockets.size,
   presence: state.presence.size,
   cells: state.socketsByCell.size,
+  held: state.held.length,
 });

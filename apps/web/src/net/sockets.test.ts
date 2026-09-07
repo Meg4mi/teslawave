@@ -183,6 +183,40 @@ describe('net', () => {
     expect(posTimes(ws)).toHaveLength(3);
   });
 
+  it('answers the hub asking where it is at once, and never inside the rate limit', () => {
+    net.update({ ...GENEVA, speed: 0 });
+    const ws = only();
+    ws.connect();
+    expect(posTimes(ws)).toHaveLength(1);
+    // The hub woke from hibernation with no idea where anybody is, and a wave is waiting.
+    vi.advanceTimersByTime(12_000);
+    ws.onmessage?.({ data: JSON.stringify({ t: 'where' }) });
+    expect(posTimes(ws)).toHaveLength(2);
+    // Not the app's business: nothing reached the message handler.
+    expect(messages.filter((m) => m.t === 'where')).toHaveLength(0);
+    // Two drivers waving at us in the same second is one answer, not two the hub would
+    // count as abuse.
+    vi.advanceTimersByTime(500);
+    ws.onmessage?.({ data: JSON.stringify({ t: 'where' }) });
+    expect(posTimes(ws)).toHaveLength(2);
+    // The answer counts as the report it is: the stationary cadence runs on from it, not
+    // from the report before it.
+    vi.advanceTimersByTime(POS_INTERVAL_STATIONARY_MS - 5_000);
+    expect(posTimes(ws)).toHaveLength(2);
+    vi.advanceTimersByTime(10_000);
+    expect(posTimes(ws)).toHaveLength(3);
+  });
+
+  it('does not answer where while invisible: the hub is told that instead', () => {
+    net.update({ ...GENEVA, speed: 0 });
+    const ws = only();
+    ws.connect();
+    net.setHidden(true);
+    vi.advanceTimersByTime(12_000);
+    ws.onmessage?.({ data: JSON.stringify({ t: 'where' }) });
+    expect(posTimes(ws)).toHaveLength(1);
+  });
+
   it('sends a wave to the one hub that owns the target, and everything else to all', () => {
     // A car 500 m inside the northern edge of hub u0 subscribes to cells in two hubs.
     const edge = decodeBounds('u0').maxLat;

@@ -188,6 +188,8 @@ export const EN = {
     offline: 'They just went off the map.',
     tooSoon: 'One at a time.',
     hidden: 'Turn yourself back on to wave.',
+    /** The hub had no position for you and got none when it asked. Not your doing. */
+    nofix: 'The map lost your position. Try again in a moment.',
     counter: 'waves',
     /** Within a range the protocol decides, so the number is passed in. */
     within: (label: string, metres: number): string => `${label} (within ${n(metres)} m)`,

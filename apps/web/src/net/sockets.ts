@@ -5,6 +5,7 @@ import {
   PARKED_HIDE_MS,
   POS_INTERVAL_STATIONARY_MS,
   PROTOCOL_VERSION,
+  RATE_POS_MS,
   STATIONARY_SPEED_KMH,
   WIRE_COORD_SCALE,
   cellsWithin,
@@ -243,6 +244,20 @@ export function createNet(handlers: {
     sendPos(lastFuzzed, now);
   };
 
+  /**
+   * The hub has no position for us and a wave is waiting on one: ours, or somebody else's
+   * at us. After a hibernation wake the hub knows nobody until each car reports again, and a
+   * stopped car's next report is up to thirty seconds away (ADR-0002). The last fix goes out
+   * now, outside the send policy, unless one went out inside the hub's own rate limit, in
+   * which case the hub has it or is about to and a second would count as abuse.
+   */
+  const answerWhere = (): void => {
+    if (!running || !profile || profile.spectator || invisible() || !lastFuzzed) return;
+    const now = Date.now();
+    if (now - lastSentAt < RATE_POS_MS) return;
+    sendPos(lastFuzzed, now);
+  };
+
   const teardown = (hub: Hub): void => {
     if (hub.keepalive !== null) clearInterval(hub.keepalive);
     if (hub.retry !== null) clearTimeout(hub.retry);
@@ -333,7 +348,10 @@ export function createNet(handlers: {
       hub.lastInbound = Date.now();
       if (typeof event.data !== 'string' || event.data === 'pong') return;
       const msg = parseServerMsg(event.data);
-      if (msg) handlers.onMessage(msg, hub.hub);
+      if (!msg) return;
+      // Transport's business, not the app's: the hub is asking for a position it already had.
+      if (msg.t === 'where') answerWhere();
+      else handlers.onMessage(msg, hub.hub);
     };
 
     ws.onerror = () => {

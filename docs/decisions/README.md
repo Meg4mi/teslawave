@@ -42,3 +42,6 @@ Format: Context / Decision / Rejected alternatives / Consequences (`0000-templat
 | [0034](0034-the-shell-is-the-landing-page.md) | The static shell is the landing page, and the social image is the share card |
 | [0035](0035-detail-drawn-to-the-size-it-is-seen-at.md) | Detail is drawn to the size it is seen at: the map gets the car, the hero gets the photograph |
 | [0036](0036-no-position-is-not-a-network-fault.md) | A phone with no position is not a phone with no network |
+| [0037](0037-terms-safety-and-a-controller.md) | Terms, a safety line, and somebody to write to |
+| [0038](0038-the-demo-is-generated.md) | The demo clip is generated, not filmed |
+| [0039](0039-a-wave-the-hub-cannot-place-is-held-not-refused.md) | A wave the hub cannot place is held and asked about, not refused |

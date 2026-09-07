@@ -103,7 +103,12 @@ export type ClientMsg =
   | { t: 'show' }
   | { t: 'wave'; to: string };
 
-export type WaveFailReason = 'range' | 'offline' | 'rate' | 'hidden';
+/**
+ * Why a wave did not go through. `hidden` is the driver's own doing (invisible mode, or a
+ * spectator); `nofix` is the hub's: it had no position for the sender, asked for one, and
+ * none came in time.
+ */
+export type WaveFailReason = 'range' | 'offline' | 'rate' | 'hidden' | 'nofix';
 
 export type ServerMsg =
   | { t: 'welcome'; now: number; you: CarPublic | null; cells: string[]; snapshot: CarState[] }
@@ -137,6 +142,11 @@ export type ServerMsg =
     }
   | { t: 'wave'; from: CarPublic; ts: number }
   | { t: 'waved'; to: string; ok: boolean; reason?: WaveFailReason }
+  /**
+   * The hub has no position for this connection and needs one now, because a wave is
+   * waiting on it. The client answers with its last fix at once, outside the send policy.
+   */
+  | { t: 'where' }
   /**
    * This client is older than the hub. Not a close and not an error: the driver keeps the
    * map, and the client reloads itself the next time the car is standing still (ADR-0029).
@@ -388,9 +398,16 @@ export function parseServerMsg(raw: unknown): ServerMsg | null {
     case 'waved': {
       if (!isId(value['to']) || typeof value['ok'] !== 'boolean') return null;
       const reason = value['reason'];
-      const valid = reason === 'range' || reason === 'offline' || reason === 'rate' || reason === 'hidden';
+      const valid =
+        reason === 'range' ||
+        reason === 'offline' ||
+        reason === 'rate' ||
+        reason === 'hidden' ||
+        reason === 'nofix';
       return { t: 'waved', to: value['to'], ok: value['ok'], ...(valid ? { reason } : {}) };
     }
+    case 'where':
+      return { t: 'where' };
     case 'upgrade': {
       const v = value['v'];
       return isFiniteNum(v) && v >= 0 ? { t: 'upgrade', v: Math.floor(v) } : null;

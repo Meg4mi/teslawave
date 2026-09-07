@@ -103,6 +103,8 @@ a bounded object count bounds the damage to roughly the price of the plan.
 
 - Presence lives in memory only and is rebuilt by clients within one send interval after a
   hibernation wake. That is a feature: positions cannot leak from storage that never holds them.
+  A wave inside that interval used to be refused as if the driver were hidden; ADR-0039 holds
+  it and asks instead.
 - A quiet region costs literally nothing.
 - Growth past the free tier is a decision with a known price, not a surprise.
 - A daily usage report (`scripts/usage-report.mjs`) checks actual Durable Object duration and

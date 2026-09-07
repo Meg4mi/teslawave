@@ -191,6 +191,7 @@ export const FR: Copy = {
     offline: 'Ils viennent de quitter la carte.',
     tooSoon: 'Un à la fois.',
     hidden: 'Redevenez visible pour saluer.',
+    nofix: 'La carte a perdu votre position. Réessayez dans un instant.',
     counter: 'saluts',
     within: (label: string, metres: number): string => `${label} (à moins de ${n(metres)} m)`,
   },

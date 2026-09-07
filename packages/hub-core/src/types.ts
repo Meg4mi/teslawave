@@ -26,6 +26,8 @@ export type SocketProfile = {
 export type SocketRuntime = {
   lastPosAt: number;
   lastWaveAt: number;
+  /** When this connection was last asked `where`, so a burst of waves asks it once. */
+  askedAt: number;
   violations: number;
   lastSeen: { lat: number; lng: number; ts: number } | null;
   /**
@@ -39,6 +41,18 @@ export type SocketRuntime = {
 };
 
 export type Socket = SocketProfile & SocketRuntime;
+
+/**
+ * A wave the hub could not place when it arrived: the sender, the target, or both had no
+ * presence yet. Held, in memory only, while the hub asks them where they are.
+ */
+export type HeldWave = {
+  /** The connection the wave came in on, which is where the answer goes. */
+  key: SocketKey;
+  from: string;
+  to: string;
+  at: number;
+};
 
 export type Counters = {
   /** `w:<userId>` -> lifetime waves */
@@ -84,6 +98,8 @@ export type HubState = {
   dirty: Map<string, Set<string>>;
   gone: Map<string, Set<string>>;
   lastFlushAt: number;
+  /** Waves waiting on a position. Settled by the next message, never by a timer. */
+  held: HeldWave[];
   counters: Counters;
 };
 

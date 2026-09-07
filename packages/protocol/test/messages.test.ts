@@ -103,6 +103,25 @@ describe('parseServerMsg', () => {
     if (msg?.t === 'diff') expect(msg.upd[0]?.heading).toBe(270);
   });
 
+  it('reads every refusal a wave can get, and drops one it does not know', () => {
+    for (const reason of ['range', 'offline', 'rate', 'hidden', 'nofix'])
+      expect(parseServerMsg({ t: 'waved', to: 'x', ok: false, reason })).toEqual({
+        t: 'waved',
+        to: 'x',
+        ok: false,
+        reason,
+      });
+    expect(parseServerMsg({ t: 'waved', to: 'x', ok: false, reason: 'later' })).toEqual({
+      t: 'waved',
+      to: 'x',
+      ok: false,
+    });
+  });
+
+  it('reads the hub asking where we are', () => {
+    expect(parseServerMsg('{"t":"where"}')).toEqual({ t: 'where' });
+  });
+
   it('rejects unknown message types and bad payloads', () => {
     expect(parseServerMsg({ t: 'mystery' })).toBeNull();
     expect(parseServerMsg({ t: 'wave', from: { id: 'x' }, ts: 1 })).toBeNull();
