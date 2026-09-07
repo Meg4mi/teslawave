@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { BRAND } from '@teslawave/protocol';
 import { Disclaimer } from '../ui/Disclaimer';
 import { useCopy } from '../i18n';
+import { useDocumentMeta } from '../app/meta';
 import './onboarding.css';
 
 /**
@@ -11,6 +12,7 @@ import './onboarding.css';
  */
 export function Privacy(): ReactNode {
   const copy = useCopy();
+  useDocumentMeta(`${copy.privacy.title} · ${BRAND.name}`, copy.privacy.lead(BRAND.name));
 
   return (
     <div className="doc">

@@ -35,7 +35,7 @@ export default tseslint.config(
   },
   {
     // Development tooling, not shipped code.
-    files: ['apps/worker/scripts/**/*.ts', 'scripts/**'],
+    files: ['apps/worker/scripts/**/*.ts', 'apps/web/scripts/**', 'scripts/**'],
     rules: { 'no-console': 'off', '@typescript-eslint/no-non-null-assertion': 'off' },
   },
   {

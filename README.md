@@ -73,6 +73,25 @@ a wave sent, received and returned, the milestone card, and the whole sprite mat
 the cars are one drawing (`overlay/model-art.ts`) rendered as SVG in the UI and baked to a
 bitmap for the map, and this is where a change to the drawing gets judged.
 
+## What a link looks like
+
+The landing page and the app are one route, so `apps/web/index.html` carries a real shell —
+tagline, description, how it works, the privacy link — that paints before the bundle and is
+replaced when the app mounts; it is what a crawler, a link unfurler and a driver on LTE see
+first (ADR-0034). The title, description, Open Graph tags, JSON-LD, `robots.txt`,
+`sitemap.xml` and the web manifest are all written from `packages/protocol/src/brand.json`
+by the Vite config, so the brand stays a one-file change.
+
+The image a shared link unfurls into is the share card with the product's words on it, drawn
+by the app at `/og` (development only) and screenshotted:
+
+```bash
+pnpm gen:social        # writes public/og.png and the PNG icons; CHROMIUM_PATH=... if needed
+```
+
+Re-run it when the card drawing, the tagline or the icon changes, and commit the result.
+Where and how to put the link in front of drivers is in [docs/distribution.md](docs/distribution.md).
+
 ## Checks
 
 Against a deployed URL, the same suite runs without a local server:
@@ -197,5 +216,6 @@ from Workers Builds on non-production branches, or `wrangler versions upload`.
 
 - [docs/decisions](docs/decisions) — one file per non-obvious decision, written as it was made
 - [docs/privacy.md](docs/privacy.md) — what leaves the car, what is kept, and for how long
+- [docs/distribution.md](docs/distribution.md) — where drivers are, and the order to reach them in
 - [docs/tesla-notes.md](docs/tesla-notes.md) — findings from real cars, the only real data
 - [docs/design-qa.md](docs/design-qa.md) — the checklist a release walks before it ships

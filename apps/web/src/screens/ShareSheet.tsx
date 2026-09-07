@@ -2,12 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { BRAND, type TeslaModel } from '@teslawave/protocol';
 import { Button, Sheet, SheetActions } from '../ui/primitives';
 import { useCopy } from '../i18n';
-import {
-  cardBlob,
-  drawShareCard,
-  shareAbility,
-  type ShareAbility,
-} from '../share/card';
+import { cardBlob, drawShareCard, shareAbility, type ShareAbility } from '../share/card';
 
 /**
  * The card, on screen, with whatever this browser can do with it.
@@ -63,7 +58,12 @@ export function ShareSheet({
       }
       const file = new File([blob], 'teslawave.png', { type: 'image/png' });
       if (ability === 'share') {
-        await navigator.share({ files: [file], text: copy.share.headline(waves) });
+        // The picture is what travels; the address is how anyone who sees it gets here.
+        await navigator.share({
+          files: [file],
+          text: copy.share.message(waves),
+          url: BRAND.url,
+        });
         return;
       }
       const url = URL.createObjectURL(blob);

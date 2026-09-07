@@ -42,7 +42,11 @@ const check = async (name, fn) => {
     const detail = await fn();
     results.push({ name, ok: true, detail: detail ?? '' });
   } catch (error) {
-    results.push({ name, ok: false, detail: error instanceof Error ? error.message : String(error) });
+    results.push({
+      name,
+      ok: false,
+      detail: error instanceof Error ? error.message : String(error),
+    });
   }
 };
 
@@ -123,20 +127,39 @@ await check('a valid hub without an upgrade is refused politely', async () => {
   return '426';
 });
 
+/**
+ * The wire version the client is built against, read from the protocol source rather than
+ * copied here: a smoke test that speaks a stale version would be told to upgrade instead of
+ * being welcomed, and would fail a deploy that is actually fine.
+ */
+const protocolVersion = async () => {
+  const { readFileSync } = await import('node:fs');
+  const source = readFileSync(
+    new URL('../packages/protocol/src/constants.ts', import.meta.url),
+    'utf8',
+  );
+  const match = /export const PROTOCOL_VERSION = (\d+)/.exec(source);
+  return match ? Number(match[1]) : undefined;
+};
+
 await check('a real driver can connect and be welcomed', async () => {
   const url = `${base.replace(/^http/, 'ws')}/ws?hub=u0`;
+  const v = await protocolVersion();
   const ws = new WebSocket(url);
   const welcome = await new Promise((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error('no welcome within 10 s')), 10_000);
     ws.addEventListener('open', () => {
+      // A hello carries the driver's secret, never an id: the hub derives the id by hashing
+      // it (ADR-0025). Anything else is answered with an error, not a welcome.
       ws.send(
         JSON.stringify({
           t: 'hello',
-          id: `smoke-${Math.random().toString(36).slice(2, 10)}`,
+          secret: `smoke-${Math.random().toString(36).slice(2)}${Math.random().toString(36).slice(2)}`,
           model: '3',
           colour: 'red',
           cells: ['u0hq'],
           spectator: true,
+          ...(v === undefined ? {} : { v }),
         }),
       );
     });
@@ -145,6 +168,13 @@ await check('a real driver can connect and be welcomed', async () => {
       if (msg.t === 'welcome') {
         clearTimeout(timer);
         resolve(msg);
+      } else if (msg.t === 'error') {
+        // Say what the hub said, rather than waiting ten seconds to say nothing.
+        clearTimeout(timer);
+        reject(new Error(`hub refused the hello: ${msg.code}`));
+      } else if (msg.t === 'upgrade') {
+        clearTimeout(timer);
+        reject(new Error(`hub speaks protocol ${msg.v}, the smoke test sent ${v ?? 'none'}`));
       }
     });
     ws.addEventListener('error', () => {
@@ -171,7 +201,15 @@ if (process.env.GITHUB_STEP_SUMMARY) {
   const { appendFileSync } = await import('node:fs');
   appendFileSync(
     process.env.GITHUB_STEP_SUMMARY,
-    ['', `### Smoke test: ${base}`, '', '```', ...results.map((r) => `${r.ok ? 'ok  ' : 'FAIL'}  ${r.name}  ${r.detail}`), '```', ''].join('\n'),
+    [
+      '',
+      `### Smoke test: ${base}`,
+      '',
+      '```',
+      ...results.map((r) => `${r.ok ? 'ok  ' : 'FAIL'}  ${r.name}  ${r.detail}`),
+      '```',
+      '',
+    ].join('\n'),
   );
 }
 if (failed > 0) {

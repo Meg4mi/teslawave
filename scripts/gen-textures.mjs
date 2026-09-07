@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 /**
- * Generates the static textures the design system needs, so nothing is blurred at runtime:
- * a tiled noise PNG (stands in for frosted glass) and the OG image.
+ * Generates the static texture the design system needs, so nothing is blurred at runtime:
+ * a tiled noise PNG that stands in for frosted glass. The social image and the icons are
+ * drawn by the app itself: `pnpm gen:social`.
  *
  * Pure Node, no dependencies: both are written as raw PNGs.
  */
@@ -75,27 +76,4 @@ writeFileSync(
   }),
 );
 
-// OG image: dark ground, a cyan sweep, no text (text is drawn by the social card renderer
-// from the page title, and a wrong-font PNG ages badly).
-const W = 1200;
-const H = 630;
-writeFileSync(
-  join(out, 'og.png'),
-  png(W, H, (x, y) => {
-    const dx = (x - W / 2) / (W / 2);
-    const dy = (y - H / 2) / (H / 2);
-    const d = Math.sqrt(dx * dx + dy * dy);
-    const ring = Math.exp(-((d - 0.55) ** 2) / 0.006) * 0.55 + Math.exp(-((d - 0.34) ** 2) / 0.004) * 0.35;
-    const base = [7, 9, 12];
-    const accent = [110, 231, 255];
-    const k = Math.min(1, ring);
-    return [
-      Math.round(base[0] + (accent[0] - base[0]) * k),
-      Math.round(base[1] + (accent[1] - base[1]) * k),
-      Math.round(base[2] + (accent[2] - base[2]) * k),
-      255,
-    ];
-  }),
-);
-
-console.log('wrote noise.png and og.png');
+console.log('wrote noise.png');

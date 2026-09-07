@@ -5,20 +5,132 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>%BRAND_TITLE%</title>
     <meta name="description" content="%BRAND_DESCRIPTION%" />
+    <link rel="canonical" href="%BRAND_URL%/" />
+    <!-- One URL speaks both languages; ?lang= is how a link lands in a known one (i18n/locale.ts). -->
+    <link rel="alternate" hreflang="en" href="%BRAND_URL%/?lang=en" />
+    <link rel="alternate" hreflang="fr" href="%BRAND_URL%/?lang=fr" />
+    <link rel="alternate" hreflang="x-default" href="%BRAND_URL%/" />
     <meta name="theme-color" content="#08090b" />
+    <meta name="color-scheme" content="dark" />
     <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="preconnect" href="https://tiles.openfreemap.org" crossorigin />
+    <!--
+      What a link to this page looks like in a group chat, which is where it will mostly be
+      seen. The image is drawn by the app's own share-card renderer: `pnpm gen:social`.
+    -->
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="%BRAND_NAME%" />
     <meta property="og:title" content="%BRAND_TITLE%" />
     <meta property="og:description" content="%BRAND_DESCRIPTION%" />
-    <meta property="og:url" content="%BRAND_URL%" />
+    <meta property="og:url" content="%BRAND_URL%/" />
+    <meta property="og:locale" content="en_GB" />
+    <meta property="og:locale:alternate" content="fr_FR" />
     <meta property="og:image" content="%BRAND_URL%/og.png" />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="%BRAND_IMAGE_ALT%" />
     <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="%BRAND_TITLE%" />
+    <meta name="twitter:description" content="%BRAND_DESCRIPTION%" />
+    <meta name="twitter:image" content="%BRAND_URL%/og.png" />
+    <meta name="twitter:image:alt" content="%BRAND_IMAGE_ALT%" />
+    <script type="application/ld+json">
+      %BRAND_JSONLD%
+    </script>
+    <!--
+      The shell below is what a crawler, a link unfurler and a driver on LTE all see before the
+      bundle arrives; the app replaces it the moment it mounts. Styled here, inline, because
+      the stylesheet it would otherwise wait for is the one thing it must not wait for.
+      Nothing in here may blur, animate a shadow, or name a screen size (check:css).
+    -->
+    <style>
+      .shell {
+        min-height: 100dvh;
+        display: grid;
+        place-items: center;
+        padding: 24px;
+        box-sizing: border-box;
+        background: #08090b;
+        color: #f5f6f7;
+        font-family:
+          system-ui,
+          -apple-system,
+          'SF Pro Text',
+          'Segoe UI',
+          Roboto,
+          'Helvetica Neue',
+          Helvetica,
+          Arial,
+          sans-serif;
+        text-align: center;
+      }
+      .shell__inner {
+        max-width: 36rem;
+      }
+      .shell__brand {
+        margin: 0 0 12px;
+        font: 600 11px/1.2 inherit;
+        font-family: inherit;
+        letter-spacing: 0.32em;
+        text-transform: uppercase;
+        color: #9da2aa;
+      }
+      .shell h1 {
+        margin: 0 0 12px;
+        font-size: 40px;
+        line-height: 1.05;
+        font-weight: 600;
+        letter-spacing: -0.025em;
+      }
+      .shell p,
+      .shell li {
+        margin: 0 0 10px;
+        font-size: 17px;
+        line-height: 1.45;
+        color: #9da2aa;
+      }
+      .shell ul {
+        list-style: none;
+        margin: 20px 0;
+        padding: 0;
+      }
+      .shell a {
+        color: #6ee7ff;
+      }
+      .shell p.shell__disclaimer {
+        font-size: 12px;
+        color: #62676f;
+      }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <main class="shell">
+        <div class="shell__inner">
+          <p class="shell__brand">%BRAND_NAME%</p>
+          <h1>%BRAND_TAGLINE%</h1>
+          <p>%BRAND_DESCRIPTION%</p>
+          <ul>
+            <li>
+              Open %BRAND_DOMAIN% in your car&rsquo;s browser, pick your model and colour, and tap
+              Go.
+            </li>
+            <li>
+              Other drivers running %BRAND_NAME% appear around you on the map, moving as they move.
+            </li>
+            <li>
+              When one comes within about 300 m, a Wave button appears. Tap it, and your wave lands
+              on their screen.
+            </li>
+          </ul>
+          <p><a href="/privacy">What leaves your car, and what is kept</a></p>
+          <p class="shell__disclaimer">%BRAND_DISCLAIMER%</p>
+        </div>
+      </main>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
     <!--
       Cloudflare Web Analytics: free, no cookies, so no cookie banner. Injected only when a

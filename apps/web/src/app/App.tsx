@@ -32,6 +32,7 @@ import { HowToWave } from '../screens/HowToWave';
 import type { Renderer } from '../overlay/renderer';
 import { installTestHook } from './testHook';
 import { useSession } from './useSession';
+import { useDocumentMeta } from './meta';
 import { isE2E } from '../config/env';
 import './app.css';
 import '../screens/sheets.css';
@@ -57,6 +58,7 @@ type Paired = { secret: string; model: string; colour: string; nick?: string };
  */
 export function App(): ReactNode {
   const copy = useCopy();
+  useDocumentMeta(copy.seo.title, copy.seo.description);
   const { identity, prefs, setIdentity, setPrefs, claimMilestone } = useIdentity();
   const [sheet, setSheet] = useState<SheetName>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);

@@ -43,6 +43,11 @@ export type ShareCardContent = {
   brand: string;
   domain: string;
   disclaimer: string;
+  /**
+   * A named face instead of the system stack, for the one place the card is drawn on a
+   * machine whose system font is not the car's: the social image (`scripts/gen-social.mjs`).
+   */
+  font?: string;
 };
 
 /** The car, at the size and place the layout wants it, from the shared scene. */
@@ -91,6 +96,7 @@ export function drawShareCard(
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
   ctx.scale(scale, scale);
+  const font = content.font ?? FONT;
 
   const ground = ctx.createLinearGradient(0, 0, 0, CARD_H);
   ground.addColorStop(0, '#0e1319');
@@ -100,7 +106,7 @@ export function drawShareCard(
 
   ctx.textBaseline = 'alphabetic';
   ctx.fillStyle = DIM;
-  ctx.font = `600 15px ${FONT}`;
+  ctx.font = `600 15px ${font}`;
   // Letter spacing by hand: `ctx.letterSpacing` is recent and not everywhere yet, and this
   // one string is the only place the card needs it.
   let x = 64;
@@ -113,20 +119,20 @@ export function drawShareCard(
 
   ctx.textAlign = 'center';
   ctx.fillStyle = FG;
-  ctx.font = `600 58px ${FONT}`;
+  ctx.font = `600 58px ${font}`;
   ctx.fillText(content.headline, CARD_W / 2, 416, CARD_W - 128);
 
   ctx.fillStyle = DIM;
-  ctx.font = `450 22px ${FONT}`;
+  ctx.font = `450 22px ${font}`;
   ctx.fillText(content.sub, CARD_W / 2, 456, CARD_W - 128);
 
   ctx.fillStyle = ACCENT;
-  ctx.font = `600 20px ${FONT}`;
+  ctx.font = `600 20px ${font}`;
   ctx.fillText(content.domain, CARD_W / 2, 506, CARD_W - 128);
 
   // Required on every surface the brand appears on, this one included.
   ctx.fillStyle = 'rgba(157, 162, 170, 0.7)';
-  ctx.font = `450 12px ${FONT}`;
+  ctx.font = `450 12px ${font}`;
   ctx.fillText(content.disclaimer, CARD_W / 2, 540, CARD_W - 96);
   ctx.textAlign = 'left';
 
@@ -148,8 +154,7 @@ export type ShareAbility = 'share' | 'download' | 'none';
 export function shareAbility(file: File): ShareAbility {
   const nav = navigator as Navigator & { canShare?: (data: unknown) => boolean };
   try {
-    if (typeof navigator.share === 'function' && nav.canShare?.({ files: [file] }))
-      return 'share';
+    if (typeof navigator.share === 'function' && nav.canShare?.({ files: [file] })) return 'share';
   } catch {
     // Some browsers throw from canShare rather than answering it.
   }

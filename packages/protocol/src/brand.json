@@ -2,7 +2,9 @@
   "name": "TeslaWave",
   "domain": "teslawave.app",
   "url": "https://teslawave.app",
+  "tagline": "Wave at other Teslas",
   "title": "Wave at other Teslas on the road — live map from your Tesla screen",
-  "description": "See other Teslas around you on a live map and wave at them. Free, no account, runs in your car browser.",
+  "description": "A live map of the Teslas around you, on your car screen. When one comes close, wave. Free, no account, nothing to install, and your position is never stored.",
+  "imageAlt": "A blue Tesla seen from above on a dark ground, with the words Wave at other Teslas and the address teslawave.app",
   "disclaimer": "Independent project. Not affiliated with, endorsed or sponsored by Tesla, Inc. TESLA is a trademark of Tesla, Inc."
 }
