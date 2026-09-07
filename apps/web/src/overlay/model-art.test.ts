@@ -10,7 +10,7 @@ import {
   type Path,
   type Pt,
 } from './model-art';
-import { buildCarScene } from './car-scene';
+import { FINE_DETAIL_PX, buildCarScene, showsFineDetail } from './car-scene';
 
 /**
  * Hand-authored geometry has no compiler. These are the checks that stand in for one: the
@@ -146,8 +146,28 @@ describe('model art', () => {
           if (op.clip) expect(scene.clips[op.clip]).toBeDefined();
         }
       });
+
+      it('keeps the car whole without its fine detail', () => {
+        // A map sprite skips the wipers, creases and door cuts; what is left must still be
+        // paint, glass, lamps and an outline, not a car missing a panel.
+        const scene = buildCarScene(model, 'pearl');
+        const fine = scene.ops.filter((op) => op.fine);
+        const coarse = scene.ops.filter((op) => !op.fine);
+        expect(fine.length).toBeGreaterThan(3);
+        expect(coarse.length).toBeGreaterThan(20);
+        expect(coarse.some((op) => op.kind === 'fill' && op.d === scene.clips['body'])).toBe(true);
+        expect(coarse.some((op) => op.kind === 'fill' && op.clip === 'glass')).toBe(true);
+        expect(coarse.some((op) => op.paint === '#ff3a3f')).toBe(true);
+        for (const arm of spec.wipers) expect(fine.some((op) => op.d === pathData(arm))).toBe(true);
+      });
     });
   }
+
+  it('draws fine detail on the hero and not on the map', () => {
+    expect(showsFineDetail(58)).toBe(false);
+    expect(showsFineDetail(FINE_DETAIL_PX)).toBe(true);
+    expect(showsFineDetail(560)).toBe(true);
+  });
 
   it('gives the Model 3 a roof bar and two panels, and the Model Y one uninterrupted panel', () => {
     // The clearest way to tell apart the two most common cars on the road, from above.

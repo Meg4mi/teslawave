@@ -20,8 +20,23 @@ import {
  * Everything here is flat colour, gradients and strokes: no blur, no filters, nothing that
  * cannot be baked (ADR-0014). Depth comes from where the light falls — a longitudinal paint
  * gradient, darker shoulders where the flanks roll away, a reflection band across the glass.
+ *
+ * Detail is drawn to the size it will be seen at. The marks that make the hero a portrait
+ * of the right car — wipers, creases, door cuts, wheel arches — are flagged `fine`, and a
+ * renderer drops them below `FINE_DETAIL_PX`, where they would only be specks on the paint.
  */
 export type Stop = readonly [offset: number, colour: string];
+
+/**
+ * Below this length on screen the fine detail — wipers, creases, door cuts, the arches —
+ * is skipped. At 58 px a wiper is a smudge on the glass and a door cut a speck on the
+ * flank; the car reads better as clean paint and clean glass, which is also how Tesla draws
+ * its own cars. At hero size the same marks are what make it a photograph of the right car.
+ */
+export const FINE_DETAIL_PX = 150;
+
+/** Whether a car drawn this long, in CSS pixels, should carry its fine detail. */
+export const showsFineDetail = (lengthPx: number): boolean => lengthPx >= FINE_DETAIL_PX;
 export type Paint =
   | string
   | { readonly kind: 'linear'; readonly from: readonly [number, number]; readonly to: readonly [number, number]; readonly stops: readonly Stop[] };
@@ -36,6 +51,8 @@ export type Op =
       readonly alpha?: number;
       /** Drawn displaced by this much, in mm. */
       readonly offset?: readonly [number, number];
+      /** Only drawn when the car is at least `FINE_DETAIL_PX` long. */
+      readonly fine?: boolean;
     }
   | {
       readonly kind: 'stroke';
@@ -48,6 +65,8 @@ export type Op =
       readonly clip?: string;
       readonly alpha?: number;
       readonly cap?: 'round' | 'butt';
+      /** Only drawn when the car is at least `FINE_DETAIL_PX` long. */
+      readonly fine?: boolean;
     };
 
 export type Scene = {
@@ -161,21 +180,13 @@ export function buildCarScene(model: TeslaModel, colourId: string): Scene {
   }
 
   // 3. Paint. Lit from the nose, rolling away at the shoulders.
-  ops.push({
-    kind: 'fill',
-    d: body,
-    paint: {
-      kind: 'linear',
-      from: [0, -half],
-      to: [0, half],
-      stops: [
-        [0, mix(base, '#ffffff', light ? 0.06 : 0.2)],
-        [0.3, mix(base, '#ffffff', light ? 0.02 : 0.06)],
-        [0.6, base],
-        [1, mix(base, '#000000', 0.3)],
-      ],
-    },
-  });
+  const bodyStops: Stop[] = [
+    [0, mix(base, '#ffffff', light ? 0.06 : 0.2)],
+    [0.3, mix(base, '#ffffff', light ? 0.02 : 0.06)],
+    [0.6, base],
+    [1, mix(base, '#000000', 0.3)],
+  ];
+  ops.push({ kind: 'fill', d: body, paint: { kind: 'linear', from: [0, -half], to: [0, half], stops: bodyStops } });
   ops.push({
     kind: 'fill',
     d: body,
@@ -210,10 +221,11 @@ export function buildCarScene(model: TeslaModel, colourId: string): Scene {
     ops.push({
       kind: 'stroke',
       d: rect(wheelX, axle, art.wheels.widthMm + 20, art.wheels.lengthMm + 80, art.angular ? 12 : 80),
-      paint: 'rgba(0,0,0,0.5)',
-      width: 40,
+      paint: 'rgba(0,0,0,0.32)',
+      width: 30,
       mirror: true,
       clip: 'flanks',
+      fine: true,
     });
 
   // 4. The bonnet, a panel of its own: the fender tops catch the light and the lid between
@@ -239,16 +251,16 @@ export function buildCarScene(model: TeslaModel, colourId: string): Scene {
   ops.push({
     kind: 'stroke',
     d: pathData(art.frunk),
-    paint: rgba(mix(base, '#ffffff', 0.6), light ? 0.4 : 0.18),
-    width: 70,
+    paint: rgba(mix(base, '#ffffff', 0.6), light ? 0.3 : 0.14),
+    width: 56,
     mirror: true,
     clip: 'body',
   });
   ops.push({
     kind: 'stroke',
     d: pathData(art.frunk),
-    paint: 'rgba(0,0,0,0.12)',
-    width: 60,
+    paint: 'rgba(0,0,0,0.1)',
+    width: 50,
     mirror: true,
     clip: 'frunk',
   });
@@ -256,8 +268,8 @@ export function buildCarScene(model: TeslaModel, colourId: string): Scene {
   // Bonnet creases: a highlight and a shadow either side of each ridge.
   for (const crease of art.creases) {
     const d = pathData(crease);
-    ops.push({ kind: 'stroke', d, paint: rgba(mix(base, '#ffffff', 0.5), light ? 0.6 : 0.3), width: 30, mirror: true, clip: 'frunk' });
-    ops.push({ kind: 'stroke', d, paint: rgba(mix(base, '#000000', 0.55), light ? 0.22 : 0.32), width: 24, mirror: true, clip: 'frunk' });
+    ops.push({ kind: 'stroke', d, paint: rgba(mix(base, '#ffffff', 0.5), light ? 0.45 : 0.24), width: 26, mirror: true, clip: 'frunk', fine: true });
+    ops.push({ kind: 'stroke', d, paint: rgba(mix(base, '#000000', 0.55), light ? 0.18 : 0.26), width: 22, mirror: true, clip: 'frunk', fine: true });
   }
 
   // 5. Shut lines: frunk, boot, door cuts across the shoulder.
@@ -273,6 +285,7 @@ export function buildCarScene(model: TeslaModel, colourId: string): Scene {
       mirror: true,
       clip: 'body',
       alpha: 0.7,
+      fine: true,
     });
 
   // The Cybertruck's flares: bare composite, matte, over each wheel.
@@ -287,11 +300,12 @@ export function buildCarScene(model: TeslaModel, colourId: string): Scene {
   // are strokes along the frame's outline, drawn before the frame so only the outer half
   // shows.
   if (!light)
-    ops.push({ kind: 'stroke', d: frame, paint: 'rgba(255,255,255,0.09)', width: 320, clip: 'body' });
-  ops.push({ kind: 'stroke', d: frame, paint: 'rgba(0,0,0,0.28)', width: 70, clip: 'body' });
+    ops.push({ kind: 'stroke', d: frame, paint: 'rgba(255,255,255,0.06)', width: 260, clip: 'body' });
+  ops.push({ kind: 'stroke', d: frame, paint: 'rgba(0,0,0,0.22)', width: 70, clip: 'body' });
 
-  // The greenhouse frame: pillars, rails and the side glass seen edge-on, nearly black, a
-  // touch lighter at its outer edge where the top of the door glass catches the sky.
+  // The greenhouse frame: pillars, rails and the side glass seen edge-on, nearly black in
+  // the middle and rolling up to a blue-grey at its outer edge, where the top of the door
+  // glass catches the sky. A gradient, not a line: the edge is a curve, not a seam.
   ops.push({
     kind: 'fill',
     d: frame,
@@ -300,33 +314,40 @@ export function buildCarScene(model: TeslaModel, colourId: string): Scene {
       from: [-bodyHalf, 0],
       to: [bodyHalf, 0],
       stops: [
-        [0.1, '#1a2029'],
-        [0.3, GLASS_FRAME],
-        [0.7, GLASS_FRAME],
-        [0.9, '#1a2029'],
+        [0.08, '#2a3646'],
+        [0.22, '#151c25'],
+        [0.34, GLASS_FRAME],
+        [0.66, GLASS_FRAME],
+        [0.78, '#151c25'],
+        [0.92, '#2a3646'],
       ],
     },
   });
-  ops.push({ kind: 'stroke', d: frame, paint: 'rgba(170,190,215,0.16)', width: 28, clip: 'frame' });
 
-  // The A-pillar and roof rail, seen from above, are painted: one thin line of body colour
-  // down each side between the glass and the side glass seen edge-on.
-  const roofPaint = mix(base, '#000000', light ? 0.28 : 0.38);
+  // Roof that is painted, not glass, is the same panel as the bonnet and lit the same way:
+  // the body's own gradient, a shade down for the angle it sits at. The A-pillar and roof
+  // rail are one thin line of it down each side between the glass and the edge-on side
+  // glass; the Y's strip behind its roof panel, the X's beam and spine, and the 3's cross bar
+  // are panels of it.
+  const roofPaint = mix(base, '#000000', light ? 0.27 : 0.34);
+  const roofGradient: Paint = {
+    kind: 'linear',
+    from: [0, -half],
+    to: [0, half],
+    stops: bodyStops.map(([offset, colour]) => [offset, mix(colour, '#000000', light ? 0.16 : 0.26)]),
+  };
   ops.push({
     kind: 'stroke',
     d: pathData(art.rail),
     paint: roofPaint,
-    width: 50,
+    width: 44,
     minPx: 0.6,
     mirror: true,
     clip: 'frame',
     cap: 'round',
   });
-
-  // Roof that is painted, not glass: the Y's strip behind its roof panel, the X's beam and
-  // spine. Body colour, a shade down for the angle it sits at.
   for (const panel of art.roofPaint ?? [])
-    ops.push({ kind: 'fill', d: mirroredPathData(panel), paint: roofPaint, clip: 'frame' });
+    ops.push({ kind: 'fill', d: mirroredPathData(panel), paint: roofGradient, clip: 'frame' });
 
   // 7. Glass. The windscreen is the most raked and reflects the most sky; the roof is darkest.
   ops.push({
@@ -389,14 +410,15 @@ export function buildCarScene(model: TeslaModel, colourId: string): Scene {
   // The wipers, parked on the glass, and the camera housing behind the mirror at the top of
   // the screen: the two things on a Tesla's windscreen that show from above.
   for (const arm of art.wipers)
-    ops.push({ kind: 'stroke', d: pathData(arm), paint: '#0b0e13', width: 28, alpha: 0.85, clip: 'windscreen', cap: 'round' });
+    ops.push({ kind: 'stroke', d: pathData(arm), paint: '#0b0e13', width: 22, alpha: 0.6, clip: 'windscreen', cap: 'round', fine: true });
   const screenTop = art.windscreen.segs.at(-1)?.to[1] ?? 0;
   ops.push({
     kind: 'fill',
-    d: `M-120 ${screenTop - 220}L120 ${screenTop - 220}L80 ${screenTop - 40}L-80 ${screenTop - 40}Z`,
+    d: `M-90 ${screenTop - 190}L90 ${screenTop - 190}L58 ${screenTop - 50}L-58 ${screenTop - 50}Z`,
     paint: '#0d1116',
-    alpha: 0.85,
+    alpha: 0.7,
     clip: 'windscreen',
+    fine: true,
   });
   // The reflection: one soft band of sky across every panel, and a thin bright streak along
   // its leading edge. The cue that says "glass".
@@ -434,13 +456,13 @@ export function buildCarScene(model: TeslaModel, colourId: string): Scene {
       ],
     },
   });
-  // The Model 3's roof bar, across the frame between the two panels: matte black steel, so it
-  // reads against glass that is reflecting sky, whatever colour the car is.
+  // The Model 3's roof bar, across the frame between the two panels: painted, like the roof
+  // rails it joins, so the roof reads as two panes of glass in one body-coloured frame.
   if (art.roofBar)
     ops.push({
       kind: 'fill',
       d: rect(0, art.roofBar.y, bodyHalf * 2, art.roofBar.heightMm, 0),
-      paint: '#2c3440',
+      paint: roofGradient,
       clip: 'frame',
     });
   // The Model X's door seams into the roof, either side of the spine.
@@ -451,6 +473,7 @@ export function buildCarScene(model: TeslaModel, colourId: string): Scene {
       paint: 'rgba(160,184,214,0.28)',
       width: 16,
       mirror: true,
+      fine: true,
     });
   }
   // The Cybertruck's vault: a ribbed tonneau, a shade off the stainless around it.
@@ -461,7 +484,7 @@ export function buildCarScene(model: TeslaModel, colourId: string): Scene {
     const top = art.vault.start[1];
     const bottom = art.vault.segs.at(-1)?.to[1] ?? top;
     for (let y = top + 150; y < bottom; y += 150)
-      ops.push({ kind: 'stroke', d: `M-900 ${y}L900 ${y}`, paint: 'rgba(255,255,255,0.07)', width: 30, clip: 'vault' });
+      ops.push({ kind: 'stroke', d: `M-900 ${y}L900 ${y}`, paint: 'rgba(255,255,255,0.07)', width: 30, clip: 'vault', fine: true });
     ops.push({ kind: 'stroke', d: vault, paint: 'rgba(0,0,0,0.5)', width: 20, minPx: 0.5 });
     clips['vault'] = vault;
   }
@@ -469,7 +492,7 @@ export function buildCarScene(model: TeslaModel, colourId: string): Scene {
   // 8. Mirrors, in paint, hung off the shoulder, with a shadow so they stand off it. The
   // cap is body colour and lit from the front; the back third is the glass, dark.
   const mirrorY = art.mirror.start[1];
-  ops.push({ kind: 'fill', d: pathData(art.mirror), paint: '#000000', alpha: 0.3, offset: [30, 60], mirror: true, clip: 'body' });
+  ops.push({ kind: 'fill', d: pathData(art.mirror), paint: '#000000', alpha: 0.3, offset: [30, 60], mirror: true, clip: 'body', fine: true });
   ops.push({
     kind: 'fill',
     d: pathData(art.mirror),
@@ -489,15 +512,17 @@ export function buildCarScene(model: TeslaModel, colourId: string): Scene {
   ops.push({ kind: 'stroke', d: pathData(art.mirror), paint: outline, width: 16, minPx: 0.4, mirror: true });
 
   // 9. Lights. Warm-white at the nose, red at the tail: which way a car points is never in
-  // doubt. A dark housing, the lamp, and a bright core.
+  // doubt. A dark housing, a soft glow spilling onto the paint, the lamp, and a bright core.
   const head = pathData(art.headlight.path);
-  ops.push({ kind: 'stroke', d: head, paint: 'rgba(8,11,16,0.5)', width: art.headlight.widthMm + 26, mirror: true, clip: 'body', cap: 'round' });
-  ops.push({ kind: 'stroke', d: head, paint: '#dbe9ff', width: art.headlight.widthMm, minPx: 0.9, mirror: true, clip: 'body', cap: 'round' });
-  ops.push({ kind: 'stroke', d: head, paint: '#ffffff', width: art.headlight.widthMm * 0.45, mirror: true, clip: 'body', cap: 'round' });
+  ops.push({ kind: 'stroke', d: head, paint: 'rgba(8,11,16,0.5)', width: art.headlight.widthMm + 40, mirror: true, clip: 'body', cap: 'round' });
+  ops.push({ kind: 'stroke', d: head, paint: 'rgba(150,200,255,0.3)', width: art.headlight.widthMm + 24, mirror: true, clip: 'body', cap: 'round' });
+  ops.push({ kind: 'stroke', d: head, paint: '#e6f1ff', width: art.headlight.widthMm, minPx: 0.9, mirror: true, clip: 'body', cap: 'round' });
+  ops.push({ kind: 'stroke', d: head, paint: '#ffffff', width: art.headlight.widthMm * 0.4, mirror: true, clip: 'body', cap: 'round' });
   const tail = pathData(art.taillight.path);
-  ops.push({ kind: 'stroke', d: tail, paint: 'rgba(8,11,16,0.5)', width: art.taillight.widthMm + 26, mirror: true, clip: 'body', cap: 'round' });
-  ops.push({ kind: 'stroke', d: tail, paint: '#f0323a', width: art.taillight.widthMm, minPx: 0.9, mirror: true, clip: 'body', cap: 'round' });
-  ops.push({ kind: 'stroke', d: tail, paint: '#ff9d9d', width: art.taillight.widthMm * 0.35, mirror: true, clip: 'body', cap: 'round' });
+  ops.push({ kind: 'stroke', d: tail, paint: 'rgba(8,11,16,0.5)', width: art.taillight.widthMm + 40, mirror: true, clip: 'body', cap: 'round' });
+  ops.push({ kind: 'stroke', d: tail, paint: 'rgba(255,60,60,0.3)', width: art.taillight.widthMm + 24, mirror: true, clip: 'body', cap: 'round' });
+  ops.push({ kind: 'stroke', d: tail, paint: '#ff3a3f', width: art.taillight.widthMm, minPx: 0.9, mirror: true, clip: 'body', cap: 'round' });
+  ops.push({ kind: 'stroke', d: tail, paint: '#ff9a9a', width: art.taillight.widthMm * 0.35, mirror: true, clip: 'body', cap: 'round' });
 
   // 10. Outline, and a rim light for paint that would otherwise vanish into a dark map.
   ops.push({ kind: 'stroke', d: body, paint: outline, width: 24, minPx: 0.7 });

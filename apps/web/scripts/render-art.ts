@@ -7,7 +7,7 @@
 import { chromium } from '@playwright/test';
 import { writeFileSync } from 'node:fs';
 import { CAR_COLOURS, TESLA_MODELS } from '@teslawave/protocol';
-import { buildCarScene, type Paint, type Scene } from '../src/overlay/car-scene';
+import { buildCarScene, showsFineDetail, type Paint, type Scene } from '../src/overlay/car-scene';
 
 const [out = 'art.png', colour = 'pearl', size = '520', bg = '#0e1319'] = process.argv.slice(2);
 
@@ -25,7 +25,9 @@ export function sceneToSvg(scene: Scene, sizePx: number, heading = 0, idp = 'a')
   };
   for (const [name, d] of Object.entries(scene.clips)) defs.push(`<clipPath id="${idp}-c-${name}"><path d="${d}"/></clipPath>`);
   const els: string[] = [];
+  const fine = showsFineDetail(sizePx);
   scene.ops.forEach((op, i) => {
+    if (op.fine && !fine) return;
     const paint = paintRef(op.paint, String(i));
     const common = `${op.clip ? ` clip-path="url(#${idp}-c-${op.clip})"` : ''}${op.alpha !== undefined ? ` opacity="${op.alpha}"` : ''}`;
     const shape =

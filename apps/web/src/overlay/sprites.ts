@@ -1,7 +1,7 @@
 import type { TeslaModel } from '@teslawave/protocol';
 import { colourOf } from '@teslawave/protocol';
 import { MODEL_ART } from './model-art';
-import { buildCarScene, type Paint, type Scene } from './car-scene';
+import { buildCarScene, showsFineDetail, type Paint, type Scene } from './car-scene';
 
 /**
  * Top-down car sprites, rasterised once per (model, colour, dpr, variant) and reused.
@@ -35,9 +35,10 @@ const paintOf = (ctx: CanvasRenderingContext2D, paint: Paint): string | CanvasGr
 
 /**
  * Draw a scene into a context whose transform already maps millimetres to device pixels.
- * `pxPerMm` is only used to honour minimum stroke widths.
+ * `pxPerMm` is only used to honour minimum stroke widths. `fine` is whether to draw the
+ * detail that only reads at hero size; a caller drawing a small car passes false.
  */
-export function paintScene(ctx: CanvasRenderingContext2D, scene: Scene, pxPerMm: number): void {
+export function paintScene(ctx: CanvasRenderingContext2D, scene: Scene, pxPerMm: number, fine = true): void {
   const paths = new Map<string, Path2D>();
   const pathOf = (d: string): Path2D => {
     let p = paths.get(d);
@@ -49,6 +50,7 @@ export function paintScene(ctx: CanvasRenderingContext2D, scene: Scene, pxPerMm:
   };
   ctx.lineJoin = 'round';
   for (const op of scene.ops) {
+    if (op.fine && !fine) continue;
     ctx.save();
     if (op.clip) {
       const clip = scene.clips[op.clip];
@@ -120,7 +122,7 @@ export function getSprite(
 
   ctx.save();
   ctx.scale(scale, scale);
-  paintScene(ctx, buildCarScene(model, colourId), scale * dpr);
+  paintScene(ctx, buildCarScene(model, colourId), scale * dpr, showsFineDetail(length));
   ctx.restore();
 
   // Your own car wears a ring, so you can always find yourself.

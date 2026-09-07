@@ -1,6 +1,6 @@
 import { useId, useMemo, type CSSProperties, type ReactNode } from 'react';
 import type { TeslaModel } from '@teslawave/protocol';
-import { buildCarScene, type Paint } from '../overlay/car-scene';
+import { buildCarScene, showsFineDetail, type Paint } from '../overlay/car-scene';
 
 /**
  * A car as inline SVG: the same drawing as the map sprite, but a vector, so the hero in
@@ -49,7 +49,10 @@ export function CarSvg({
     return `url(#${gid})`;
   };
 
+  // A chip in a toast gets clean paint and glass; the hero gets the wipers and the door cuts.
+  const fine = showsFineDetail(size);
   const elements = scene.ops.flatMap((op, i) => {
+    if (op.fine && !fine) return [];
     const paint = paintRef(op.paint, String(i));
     const common = {
       clipPath: op.clip ? `url(#${id}-c-${op.clip})` : undefined,
