@@ -72,6 +72,9 @@ importers:
       jsdom:
         specifier: ^28.0.0
         version: 28.1.0
+      tsx:
+        specifier: 4.23.13
+        version: 4.23.13
       typescript:
         specifier: ^5.9.3
         version: 5.9.3
