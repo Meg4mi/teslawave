@@ -35,6 +35,26 @@ pnpm perf 30
 
 A mean over 8 ms is the e2e budget being missed on a real screen, and it is marked.
 
+## 2026-09-07 — the border blink, found without a car
+
+The first one of these not reported from a drive. The hub and the client are both pure, so
+they can be run against each other on a virtual clock, and
+`apps/web/src/sim/roundtrip.test.ts` now does (ADR-0031).
+
+It failed on code believed fixed. A car crossing a cell border is announced gone from the old
+cell and updated in the new one, and the client's guard from 2026-09-04 — delete on a `gone`
+only if the car is still in the cell the message names — works only when the update arrives
+first. Which comes first depends on which cell happened to be marked dirty first, so as soon
+as any other driver was reporting in the cell being left, the departure won and the car
+blinked. On a motorway with traffic that is most crossings, which is exactly where it was
+reported originally and exactly where the fix would have looked like it worked.
+
+A departure is now filtered per subscriber: a car still in this hub, in a cell you also hold,
+is not reported gone to you. It means "gone from your map", not "gone from this cell".
+
+Worth checking on the car anyway: drive a motorway across a cell boundary with other drivers
+around and watch whether anyone blinks. The rig says no; a rig is not a car.
+
 ## What to record
 
 - **Cold load time** on LTE, from typing the URL to seeing your own car. Target: under 3 s.

@@ -25,6 +25,17 @@ cars glide at 60 fps instead of jumping every two seconds.
 
 Positions are never written to a database. Only wave counters are, and only when they change.
 
+The `hello` carries `PROTOCOL_VERSION`. A hub that speaks a newer one answers with `upgrade`,
+and the client reloads itself the next time the car is standing still — never while moving,
+and at most once per version per tab. A Tesla is pinned to a tab for weeks, so this is the
+only way a build in the field can ever be replaced (ADR-0029). Bump the version when a change
+would make an old client and a new hub disagree.
+
+Before joining, `/api/pulse` says how many drivers are around and `/api/activity` tints the
+map cells that have seen waves this week. Both are counts from data the app already stores,
+both are cached per cell rather than per visitor, and neither can say anything about a person
+(ADR-0032).
+
 ## Running it
 
 ```bash
@@ -41,6 +52,13 @@ An empty map is a bad way to build a social product, so there is a fleet of simu
 ```bash
 pnpm sim -- --n 20 --center 46.2044,6.1432 --radius 5000
 ```
+
+Every bug found on a real car screen so far has been an ordering bug *between* the hub and
+the client, invisible from inside either half. `apps/web/src/sim/roundtrip.test.ts` runs the
+real hub against the real client on a virtual clock — drops, hibernation wakes, cell
+crossings — and checks its invariants after every message rather than once per tick, because
+two diffs that are correct together still blink if a frame is drawn between them. A protocol
+change gets proved there first (ADR-0031).
 
 `/kitchen-sink` (development only) renders every signature moment on demand: the boot sonar,
 a wave sent, received and returned, the milestone card, and the whole sprite matrix.
@@ -65,6 +83,12 @@ pnpm test:e2e    # Playwright: car screen at both densities, and a phone
 pnpm check:css   # no blur, no animated shadows, no hardcoded screen size
 pnpm check:size  # under 400 kB gzipped, excluding MapLibre
 ```
+
+The browser security policy lives in `apps/web/public/_headers`, not in the Worker: assets are
+served by the asset layer to keep them outside the request quota, so the Worker never sees them
+(ADR-0030). It is enforced by the browser and by nothing else, which is why `e2e/csp.spec.ts`
+drives the real app behind the real header and fails on the browser's own violation events.
+Changing that file without running the e2e suite is changing it blind.
 
 Every push and pull request runs the fast checks (`.github/workflows/ci.yml`). The Playwright
 suite is not part of that: it is slow and needs a Chromium download, so it has its own
