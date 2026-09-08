@@ -7,7 +7,10 @@ on:
     - cron: '0 6 * * *'
   workflow_dispatch:
 
+# Declaring any permission drops every other scope to none, so the checkout of this
+# private repository needs `contents: read` spelled out or it fails with "Repository not found".
 permissions:
+  contents: read
   issues: write
 
 jobs:
@@ -25,6 +28,17 @@ jobs:
           CF_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID || secrets.CF_ACCOUNT_ID }}
           CF_ANALYTICS_TOKEN: ${{ secrets.CF_ANALYTICS_TOKEN }}
         run: node scripts/usage-report.mjs
+
+      # The step above is allowed to fail, because going over the threshold is a failure that
+      # still has to reach the issue below. That leaves one bad state: no report at all (no
+      # credentials, or the analytics API said no). Say so, or a guardrail measuring nothing
+      # looks exactly like a guardrail with nothing to report.
+      - name: Warn when no report was produced
+        if: steps.usage.outcome == 'failure' && steps.usage.outputs.report == ''
+        run: |
+          echo "::warning title=No usage report::scripts/usage-report.mjs produced no report." \
+            "Check that CLOUDFLARE_ACCOUNT_ID (variable) or CF_ACCOUNT_ID (secret) and" \
+            "CF_ANALYTICS_TOKEN (secret, Account Analytics: Read) are set, then read the step log."
 
       - name: Open or update the usage issue
         if: steps.usage.outputs.over_threshold == 'true'
