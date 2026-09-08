@@ -148,7 +148,7 @@ sequenceDiagram
     C->>H: pos (every 5 s moving, 30 s stopped, or on a turn)
     H-->>C: diff2 per changed cell, at most every 2 s
     C->>H: "ping" every 25 s
-    H-->>C: "pong" (answered by the runtime; the object stays asleep)
+    H-->>C: "pong" (answered by the runtime — the object stays asleep)
   end
 ```
 
