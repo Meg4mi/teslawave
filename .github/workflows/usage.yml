@@ -7,8 +7,8 @@ on:
     - cron: '0 6 * * *'
   workflow_dispatch:
 
-# Declaring any permission drops every other scope to none, so the checkout of this
-# private repository needs `contents: read` spelled out or it fails with "Repository not found".
+# Declaring any permission drops every other scope to none, so both scopes this job uses are
+# spelled out: `contents: read` for the checkout, `issues: write` for the report below.
 permissions:
   contents: read
   issues: write
