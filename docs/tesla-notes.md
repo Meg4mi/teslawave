@@ -6,7 +6,9 @@ work instead of composite frame rate).
 
 Add a row per session. Keep the failures: they are the useful part.
 
-Live at **https://teslawave.meg4mi.workers.dev** — open that on the car screen.
+Live at **https://teslawave.app** — open that on the car screen, or set it up on a phone
+and bring it across with a pairing code. The workers.dev address still answers and is what
+preview deploys use.
 
 | Date | Car / firmware | What was tested | Result |
 |---|---|---|---|
@@ -16,8 +18,16 @@ Live at **https://teslawave.meg4mi.workers.dev** — open that on the car screen
 | 2026-09-04 | Tesla car screen | pinch again, car sprites | zoom ceiling raised, our per-frame work stands aside during a gesture, zoom buttons added; sprites re-traced per model (ADR-0018). |
 | 2026-09-04 | Tesla car screen | turning | the camera moved once a second, not every frame. Own position is interpolated now, and the camera pauses on touch-down (ADR-0019). |
 | 2026-09-04 | Tesla car screen | real time, other cars, frame rate, settings rows, the wave button | four bugs fixed and three costs cut, see below. Wave range widened to 300 m and the button redesigned. |
+| 2026-09-09 | Model Y (Juniper), firmware not recorded | general use on the car screen | works. Map, own car, other cars and the wave all behave. No numbers taken: cold load, frame rate and whether the resolution fallback engages are all still unmeasured here |
 | _pending_ | 2019 Model 3, MCU 2 | first load, map, own car moving | not yet run on a car |
 | _pending_ | 2022 Model Y, MCU 3 | same | not yet run on a car |
+
+The Juniper row is the good case, not the hard one: it is an AMD Ryzen unit, and every
+rendering decision in this project — the canvas overlay, the tile style, the 30 fps and 1x
+resolution fallbacks, the interest radius and the compact wire — exists for the Intel Atom in
+MCU 2 (ADR-0001, ADR-0005, ADR-0006, ADR-0021, ADR-0033). "Fine on a Juniper" is evidence
+that the app works on a real car and no evidence at all about the hardware it was designed
+around. The two pending rows are still the ones that matter.
 
 ## The beacon
 
