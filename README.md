@@ -239,3 +239,19 @@ from Workers Builds on non-production branches, or `wrangler versions upload`.
 - [docs/distribution.md](docs/distribution.md) — where drivers are, and the order to reach them in
 - [docs/tesla-notes.md](docs/tesla-notes.md) — findings from real cars, the only real data
 - [docs/design-qa.md](docs/design-qa.md) — the checklist a release walks before it ships
+- [CONTRIBUTING.md](CONTRIBUTING.md) — the checks, the cost invariants, and how a protocol change gets proved
+
+## Licence
+
+[Apache License 2.0](LICENSE). Fork it, run it, take pieces of it.
+
+Section 6 withholds trademark rights deliberately: the code is yours to reuse, the TeslaWave
+name is not. That matters more than usual here, because the name already borrows somebody
+else's mark and the disclaimer only holds while this stays an independent project.
+
+There is no CLA. Under section 5, what you submit is contributed under the same licence and
+the copyright in it stays yours. [CONTRIBUTING.md](CONTRIBUTING.md) has the rest.
+
+Map data comes from OpenStreetMap contributors, served by
+[OpenFreeMap](https://openfreemap.org); its attribution is displayed on the map and is not
+optional (ADR-0006).
