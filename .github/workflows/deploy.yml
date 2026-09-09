@@ -73,7 +73,12 @@ jobs:
         run: |
           set -o pipefail
           pnpm --filter @teslawave/worker exec wrangler deploy | tee deploy.log
-          url=$(grep -oE 'https://[A-Za-z0-9.-]+\.workers\.dev' deploy.log | head -1)
+          # Only a fallback for SMOKE_URL, so a deploy that published fine must not fail here
+          # for want of it. `shell: bash` runs with -e, and a grep that matches nothing exits
+          # 1: without the guard, no workers.dev line in the log fails the step *after* the
+          # worker is already live, which is exactly how this read as a failed deploy of a
+          # deployment that had succeeded.
+          url=$(grep -oE 'https://[A-Za-z0-9.-]+\.workers\.dev' deploy.log | head -1 || true)
           echo "url=${url}" >> "$GITHUB_OUTPUT"
 
       - name: Smoke test the deployment
