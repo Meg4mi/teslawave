@@ -15,10 +15,24 @@ const BRAND = JSON.parse(
 
 const brand = (key: string): string => BRAND[key] ?? '';
 
-/** Privacy-friendly page views, and nothing else. No token, no script. */
+/**
+ * Privacy-friendly page views, and nothing else. No token, no script.
+ *
+ * Unset is a normal state — previews, forks and development are meant to be unmeasured — so
+ * it passes quietly. A token that is set but malformed is not: it produces a build with no
+ * beacon in it, and the only symptom is an analytics dashboard that stays empty for a week
+ * before anybody wonders why. Say so at the one moment somebody is watching.
+ */
 const analyticsTag = (): string => {
   const token = process.env['VITE_CF_BEACON_TOKEN'];
-  if (!token || !/^[a-f0-9]{8,64}$/i.test(token)) return '';
+  if (!token) return '';
+  if (!/^[a-f0-9]{8,64}$/i.test(token)) {
+    console.warn(
+      'VITE_CF_BEACON_TOKEN is set but is not 8-64 hex characters, so no analytics beacon ' +
+        'was written into index.html. Check the token in Cloudflare Web Analytics.',
+    );
+    return '';
+  }
   return (
     '<script defer src="https://static.cloudflareinsights.com/beacon.min.js" ' +
     `data-cf-beacon='{"token":"${token}"}'></script>`

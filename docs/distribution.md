@@ -6,6 +6,10 @@ The likeliest way this dies is a driver opening it on a quiet Tuesday and conclu
 uses it (ADR-0032). So the plan is not "get users", it is "get density in one place, then
 the next".
 
+This file decides where to post and in what order. The copy to paste when you get there —
+per channel, in English and French, with a ledger of what may and may not be claimed — is in
+[docs/outreach](outreach/README.md).
+
 ## What we are working with
 
 - **A link, not an install.** No store listing, no review, no update lag: `teslawave.app`
@@ -47,15 +51,21 @@ In rough order of how much a single post there is worth:
    software subforum, then the wiki entry.
 4. **In-car browser app directories.** [Tesdash](https://tesda.sh/) and similar launcher
    pages are what drivers bookmark on the car screen; a listing there is a bookmark in
-   every car that uses it. Also worth a pull request or a form wherever
+   every car that uses it. **Tesdash is live as of 2026-09-09**, by pull request. Still
+   worth a pull request or a form wherever
    [codriver.io](https://codriver.io/guides/tesla-browser-summer-2026-update) and its
-   peers keep their lists.
+   peers keep their lists ([outreach/directories.md](outreach/directories.md)). It is also
+   the one channel that inverts the phone-first rule: a driver clicking a launcher page is
+   already sitting in the car, so they arrive on the car screen with no phone step, and that
+   is the arrival to keep an eye on.
 5. **Reddit.** r/TeslaLounge, r/TeslaModel3, r/TeslaModelY and r/teslamotors, plus the
    regional ones (r/TeslaUK, r/TeslaCanada and so on). Read each subreddit's
    self-promotion rule first; most want a maker post that shows the thing rather than a
    link drop. The story that lands: _"I built the Tesla wave as a live map, it runs in the
-   car browser on a 2019 Model 3, free, no account, positions never stored"_. Lead with
-   the screenshot on a car screen, not the phone.
+   car browser, free, no account, positions never stored"_. Lead with the screenshot on a
+   car screen, not the phone. Name no model or MCU until a row in
+   [tesla-notes.md](tesla-notes.md) says one was actually driven: both are still `_pending_`,
+   and the one claim a forum of owners will check is the one about their own hardware.
 6. **The Tesla news and tips sites.** Not a Tesla App, Teslascope's blog, Electrek,
    Teslarati, and the YouTube channels that review in-car software. They cover browser
    apps when there is a story: a short video of two real cars waving at each other on a
@@ -71,15 +81,47 @@ day of curious non-owners is a day of sockets from people who will never wave.
 
 ## The order
 
-**Week one: one region.** Pick the region where the people on this project drive, and
-where a club drive can be arranged. Every post above, for that region only. Aim for
-enough drivers that a commute has a real chance of a crossing; the pulse line on the
-first screen ("9 drivers out there right now") is the number to watch, and it is honest
-by design.
+The tiers above rank channels by what one post there is worth. This is the order to do them
+in, which is not the same list: it is sequenced by what each step needs to already be true.
 
-**Then the video.** Two cars, one road, both screens. Under thirty seconds. Everything in
-tiers 5 and 6 waits for this, because without it every post is a description of a feeling
-and with it the post is the feeling.
+**First, be measurable and be up.** The `VITE_CF_BEACON_TOKEN` variable set and the deploy
+carrying it, `DEPLOY_URL` pointed at the custom domain, and the API token holding the two
+zone permissions the `routes` entry now needs. Without the first of those, every step below
+teaches nothing about which channel worked; without the last, the deploy fails. Know where
+the `WS_ENABLED` kill switch is before a busy day rather than during one.
+
+**Then one forum, in the region's own language.** For French that is the BlogTesla
+applications section ([outreach/french-community.md](outreach/french-community.md)), and the
+owner groups you are already in. This is first among the posting steps because it is the only
+one that produces drivers who might actually cross each other, and because it is where the
+copy gets tested by people who will say what is wrong with it.
+
+**Then the press, once that thread exists.** Not a Tesla App and the French outlets
+([outreach/press.md](outreach/press.md)), one at a time. An article sends strangers to a map;
+an article a week after a forum thread sends them to a map with somebody on it, and gives you
+replies to quote instead of adjectives. Generate the clip first, and label it a screen
+recording every time.
+
+**The directories, whenever there is an idle hour.** They are cheap and durable and lower
+reach than their tier suggests ([outreach/directories.md](outreach/directories.md)): several
+are self-hosted dashboards, so a listing reaches whoever installs one. Batch them; do not
+spend a week on them.
+
+**A drive, as soon as three people will come.** It is the only thing that makes the product
+itself happen, and the only way the filmed clip gets made. Aim for enough drivers that a
+commute has a real chance of a crossing; the pulse line on the first screen ("9 drivers out
+there right now") is the number to watch, and it is honest by design. The number that says it
+worked is not visits: it is `/api/stats`, and a region is working when its wave count is not
+zero on weekdays.
+
+**Held back on purpose:** Reddit until the filmed clip exists, because a subreddit is spent
+the first time; Hacker News until the map is not empty for the people who click; Tesla Motors
+Club until one older car has been driven, because that thread is permanent and its readers
+own the hardware nobody has tested.
+
+**The video.** Two cars, one road, both screens. Under thirty seconds. Reddit waits for this,
+because without it a maker post is a description of a feeling and with it the post is the
+feeling. The press does not wait for it, but pitches better once it exists.
 
 That is the filmed clip, and it needs two drivers who both have this and who cross paths —
 so it is gated on the same density the press step is gated on, and a club drive is where it
@@ -93,6 +135,18 @@ nothing generated can answer it. Post the generated clip as what it is — a scr
 
 **Then the next region**, using the first as proof. A region launches when a group or a
 club there is willing to run a drive; if none is, the region is not ready.
+
+For a French-speaking region the map of all this is drawn in
+[outreach/french-community.md](outreach/french-community.md), and it inverts the obvious
+guess: Tesla Owners Club France is nearly dormant, while the BlogTesla forum carries ~395,000
+messages and has a section for Tesla applications. The official body is the wrong first post
+and the active forum is the right one.
+
+Where there is no club to ask, the drive is proposed in the owner group instead — three cars
+and a date is the same thing, and [outreach/clubs.md](outreach/clubs.md) has the fallbacks.
+Note which one a Supercharger is: the best place to put the link on somebody's phone, and the
+worst place to show them the map, because a car stopped for ten minutes is hidden until it
+moves (ADR-0026).
 
 ## What a post contains
 

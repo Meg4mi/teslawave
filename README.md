@@ -229,7 +229,8 @@ post that carries it should say so.
 
 </details>
 
-Where and how to put the link in front of drivers is in [docs/distribution.md](docs/distribution.md).
+Where and how to put the link in front of drivers is in [docs/distribution.md](docs/distribution.md),
+and the copy to paste when you get there is in [docs/outreach](docs/outreach/README.md).
 
 ## Deploying
 
@@ -259,6 +260,7 @@ once the workflow is on the default branch.
 | Secrets and variables → Actions → **Variables** | `CLOUDFLARE_ACCOUNT_ID` | your account id (an identifier, not a secret)             |
 | Variables, optional                             | `DEPLOY_URL`            | set once the custom domain is live, so smoke tests hit it |
 | Secrets, optional                               | `CF_ANALYTICS_TOKEN`    | read-only token for the daily usage report                |
+| Variables, optional                             | `VITE_CF_BEACON_TOKEN`  | Web Analytics beacon; baked into the HTML by the deploy   |
 
 </details>
 
@@ -274,16 +276,39 @@ export CLOUDFLARE_ACCOUNT_ID=...     # Workers & Pages -> Overview
 export CLOUDFLARE_API_TOKEN=...      # never committed, never written to a file
 ```
 
-The token needs four account-scoped permissions and nothing else: **Workers Scripts: Edit**
-(the Worker, the Durable Object namespace, static assets and the cron), **D1: Edit** (create
-the database and run migrations), **Account Settings: Read**, and **Account Analytics: Read**
-if you also want `pnpm usage`. No KV, no R2, and no zone permission until the custom domain
-is wired, which additionally needs Zone → Workers Routes: Edit and Zone → DNS: Edit.
+The token needs four account-scoped permissions: **Workers Scripts: Edit** (the Worker, the
+Durable Object namespace, static assets and the cron), **D1: Edit** (create the database and
+run migrations), **Account Settings: Read**, and **Account Analytics: Read** if you also want
+`pnpm usage`. No KV and no R2.
 
-Then, once `teslawave.app` is on Cloudflare DNS, uncomment the `routes` entry in
-`apps/worker/wrangler.jsonc` and deploy again. Set `VITE_CF_BEACON_TOKEN` at build time to
-turn on Cloudflare Web Analytics; without it no beacon is emitted at all, so previews and
-development stay unmeasured.
+It also needs two zone-scoped ones — **Zone → Workers Routes: Edit** and **Zone → DNS: Edit**
+— because `apps/worker/wrangler.jsonc` declares `teslawave.app` as a custom domain. That is
+deliberate: the address is printed on the share card, in the Open Graph tags and in every
+outreach post, so a deploy from a clean checkout has to reproduce it rather than depend on
+somebody having wired it in the dashboard once. A token without those two fails at the deploy
+step instead of quietly publishing to workers.dev only. A fork that does not own the domain
+removes the `routes` entry.
+
+`workers.dev` stays enabled alongside it, which is what preview links and the deploy
+workflow's smoke test use; set the `DEPLOY_URL` variable to point the smoke test at the
+custom domain instead.
+
+**Cloudflare Web Analytics** is turned on by `VITE_CF_BEACON_TOKEN`, and it is a build-time
+value rather than a runtime one: the beacon tag is written into `index.html` while the bundle
+is built, so it has to be present for `pnpm build` and setting it anywhere else does nothing.
+In CI that is the repository variable in the table above, which `deploy.yml` passes to the
+build step. It is a **variable and not a secret** on purpose — the token is served to every
+visitor inside the HTML, so it is public by construction, and masking it in the logs would
+only make a missing one harder to spot. From a terminal:
+
+```bash
+VITE_CF_BEACON_TOKEN=... pnpm build     # the token is on the Web Analytics site in the dashboard
+```
+
+Unset means no beacon and no script at all, which is what previews, forks and development
+should get. A token that is set but is not 8-64 hex characters is a build with no beacon in
+it, so the build says so rather than leaving an empty dashboard to be discovered a week
+later.
 
 </details>
 
@@ -308,6 +333,7 @@ from Workers Builds on non-production branches, or `wrangler versions upload`.
 - `/privacy` and `/terms` — the same two promises inside the app, in every language, from
   the catalogue rather than from a file a driver would never find ([ADR-0037](docs/decisions/0037-terms-safety-and-a-controller.md))
 - [docs/distribution.md](docs/distribution.md) — where drivers are, and the order to reach them in
+- [docs/outreach](docs/outreach/README.md) — the copy to paste in each of those places, in both languages, and what may not be claimed
 - [docs/tesla-notes.md](docs/tesla-notes.md) — findings from real cars, the only real data
 - [docs/design-qa.md](docs/design-qa.md) — the checklist a release walks before it ships
 - [CONTRIBUTING.md](CONTRIBUTING.md) — the checks, the cost invariants, and how a protocol change gets proved

@@ -6,9 +6,15 @@
   "compatibility_flags": ["nodejs_compat"],
   "observability": { "enabled": true },
 
-  // Uncomment once teslawave.app is on Cloudflare DNS. Until then the deploy is reachable
-  // at teslawave.<account>.workers.dev, which is what preview links use anyway.
-  // "routes": [{ "pattern": "teslawave.app", "custom_domain": true }],
+  // The custom domain, declared here rather than only in the dashboard: a deploy from a
+  // clean checkout has to reproduce the address the share card, the OG tags and every
+  // outreach post print. workers.dev stays on alongside it, which is what preview links and
+  // the deploy workflow's smoke test use.
+  //
+  // This is the one thing in this file that needs zone permissions on the API token
+  // (Zone -> Workers Routes: Edit, Zone -> DNS: Edit) on top of the account-scoped four.
+  // Without them the deploy fails here rather than silently skipping the domain.
+  "routes": [{ "pattern": "teslawave.app", "custom_domain": true }],
 
   // The SPA is served as static assets: those requests are free and unlimited.
   // Only /ws and /api/* reach the Worker and consume the 100k requests/day budget.
