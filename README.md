@@ -275,16 +275,24 @@ export CLOUDFLARE_ACCOUNT_ID=...     # Workers & Pages -> Overview
 export CLOUDFLARE_API_TOKEN=...      # never committed, never written to a file
 ```
 
-The token needs four account-scoped permissions and nothing else: **Workers Scripts: Edit**
-(the Worker, the Durable Object namespace, static assets and the cron), **D1: Edit** (create
-the database and run migrations), **Account Settings: Read**, and **Account Analytics: Read**
-if you also want `pnpm usage`. No KV, no R2, and no zone permission until the custom domain
-is wired, which additionally needs Zone → Workers Routes: Edit and Zone → DNS: Edit.
+The token needs four account-scoped permissions: **Workers Scripts: Edit** (the Worker, the
+Durable Object namespace, static assets and the cron), **D1: Edit** (create the database and
+run migrations), **Account Settings: Read**, and **Account Analytics: Read** if you also want
+`pnpm usage`. No KV and no R2.
 
-Then, once `teslawave.app` is on Cloudflare DNS, uncomment the `routes` entry in
-`apps/worker/wrangler.jsonc` and deploy again. Set `VITE_CF_BEACON_TOKEN` at build time to
-turn on Cloudflare Web Analytics; without it no beacon is emitted at all, so previews and
-development stay unmeasured.
+It also needs two zone-scoped ones — **Zone → Workers Routes: Edit** and **Zone → DNS: Edit**
+— because `apps/worker/wrangler.jsonc` declares `teslawave.app` as a custom domain. That is
+deliberate: the address is printed on the share card, in the Open Graph tags and in every
+outreach post, so a deploy from a clean checkout has to reproduce it rather than depend on
+somebody having wired it in the dashboard once. A token without those two fails at the deploy
+step instead of quietly publishing to workers.dev only. A fork that does not own the domain
+removes the `routes` entry.
+
+`workers.dev` stays enabled alongside it, which is what preview links and the deploy
+workflow's smoke test use; set the `DEPLOY_URL` variable to point the smoke test at the
+custom domain instead. Set `VITE_CF_BEACON_TOKEN` at build time to turn on Cloudflare Web
+Analytics; without it no beacon is emitted at all, so previews and development stay
+unmeasured.
 
 </details>
 
