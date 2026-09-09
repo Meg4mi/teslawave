@@ -44,19 +44,22 @@ was measured.
 
 ## The state of each channel
 
-| Tier | Channel                                     | File                                         | State                                                            |
-| ---- | ------------------------------------------- | -------------------------------------------- | ---------------------------------------------------------------- |
-| 1    | Regional owner groups                       | [owner-groups.md](owner-groups.md)           | Ready                                                            |
-| 1    | French-speaking community (BlogTesla forum) | [french-community.md](french-community.md)   | Ready — the densest French room, with a section for exactly this |
-| 2    | Tesla Owners Clubs                          | [clubs.md](clubs.md)                         | Ready                                                            |
-| 3    | Tesla Motors Club                           | [tesla-motors-club.md](tesla-motors-club.md) | Ready                                                            |
-| 4    | In-car browser directories                  | [directories.md](directories.md)             | **tesda.sh is live.** Others ready to submit                     |
-| 5    | Reddit                                      | [reddit.md](reddit.md)                       | Gated on the filmed clip                                         |
-| 6    | Press and YouTube                           | [press.md](press.md)                         | Gated on the filmed clip                                         |
-| 7    | Hacker News                                 | [hacker-news.md](hacker-news.md)             | Gated on density somewhere                                       |
+| Tier | Channel                                     | File                                         | State                                                                                                    |
+| ---- | ------------------------------------------- | -------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| 1    | Regional owner groups                       | [owner-groups.md](owner-groups.md)           | Ready                                                                                                    |
+| 1    | French-speaking community (BlogTesla forum) | [french-community.md](french-community.md)   | Ready — the densest French room, with a section for exactly this                                         |
+| 2    | Tesla Owners Clubs                          | [clubs.md](clubs.md)                         | Ready                                                                                                    |
+| 3    | Tesla Motors Club                           | [tesla-motors-club.md](tesla-motors-club.md) | Ready                                                                                                    |
+| 4    | In-car browser directories                  | [directories.md](directories.md)             | tesda.sh live. Cheap and durable, but lower reach than the tier order implies — see the note in the file |
+| 5    | Reddit                                      | [reddit.md](reddit.md)                       | Gated on the filmed clip                                                                                 |
+| 6    | Press, blogs and newsletters                | [press.md](press.md)                         | Ready with the generated clip, labelled as a screen recording. Better again once the filmed one exists   |
+| 7    | Hacker News                                 | [hacker-news.md](hacker-news.md)             | Gated on density somewhere                                                                               |
 
-Tiers 5 and 6 are gated on purpose: without the clip, every post is a description of a
-feeling. Tier 7 is gated on density, so the map is not empty for the people who click.
+Tier 5 is gated on purpose: a maker post without the clip is a description of a feeling, and
+a subreddit is spent the first time. Tier 7 is gated on density, so the map is not empty for
+the people who click. Tier 6 is no longer gated — the news sites cover browser apps as a
+matter of course, and the generated clip answers "what is this" well enough to pitch on, as
+long as it is labelled a screen recording every time ([press.md](press.md)).
 
 ## The assets
 

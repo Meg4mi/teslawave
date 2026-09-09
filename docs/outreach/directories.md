@@ -18,6 +18,15 @@ driver is already sitting in the car when they find you.
 
 When a listing goes live, add the row here rather than remembering it.
 
+**What these are worth, honestly.** Less than the tier order suggests. Several of these pages
+are self-hosted dashboards — a driver deploys their own copy — so a listing reaches whoever
+installs it rather than everyone who visits, and some of the lists have not been touched in a
+long time. The cost of a submission is near zero and a listing is durable, so they stay on the
+list; they are just not the channel to spend a week on. The news sites in
+[press.md](press.md) reach more owners in one piece than all of these together, and the
+forum in [french-community.md](french-community.md) reaches the ones who will actually
+drive with it.
+
 Two things about the car's browser worth knowing before writing to any of these, because
 they date quickly and a submission that gets them wrong reads as someone who does not own
 the car. The 2026.26 update moved the browser to a current Chromium and changed the screen's
