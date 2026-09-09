@@ -11,6 +11,11 @@ Both threads to land in:
 Read the forum's self-promotion rule before posting, and post as a member who built a thing,
 because that is what this is.
 
+[Tesla Owners Online](https://www.teslaownersonline.com/) is the same kind of place and a
+smaller room, which makes it the better one to post in first: the same post, with less at
+stake if the wording is wrong. It has a thread history of people asking for feedback on
+in-car browser sites, so the post is not out of place there.
+
 ## The post
 
 **Title:** A live map of the Teslas around you, in the car browser — free, no account

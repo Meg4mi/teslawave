@@ -6,13 +6,25 @@ driver is already sitting in the car when they find you.
 
 ## Where it stands
 
-| Directory                                           | State                                                     |
-| --------------------------------------------------- | --------------------------------------------------------- |
-| [tesda.sh](https://tesda.sh/)                       | **Listed** — submitted by pull request, merged 2026-09-09 |
-| [codriver.io](https://codriver.io/)                 | To submit                                                 |
-| Other launcher pages and "Tesla browser apps" lists | To submit as found                                        |
+| Directory                                                                  | State                                                        |
+| -------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| [tesda.sh](https://tesda.sh/)                                              | **Listed** — submitted by pull request, merged 2026-09-09    |
+| [codriver.io](https://codriver.io/guides/tesla-browser-summer-2026-update) | To submit — keeps a browser-apps guide                       |
+| [fullscreentesla.com](https://www.fullscreentesla.com/)                    | To submit — a launcher page of the same kind as tesda.sh     |
+| [technologybloggers.org/t](https://www.technologybloggers.org/t/)          | To submit — a "Web Apps for Teslas" list                     |
+| [teslatuneup.com](https://teslatuneup.com/tesla-browser-apps/)             | To pitch — a listicle rather than a list, so closer to press |
+| [tesletter.com](https://tesletter.com/tags/tesla-browser/)                 | To pitch — a newsletter that covers browser apps             |
+| Other launcher pages and "Tesla browser apps" lists                        | To submit as found                                           |
 
 When a listing goes live, add the row here rather than remembering it.
+
+Two things about the car's browser worth knowing before writing to any of these, because
+they date quickly and a submission that gets them wrong reads as someone who does not own
+the car. The 2026.26 update moved the browser to a current Chromium and changed the screen's
+pixel density — which is why nothing in this client may hardcode a screen size, and why
+`check:css` fails a build that does. And since 2026.20 an owner can block the browser
+entirely from the car's settings, so "open this in your car" is not universally possible,
+which is one more reason the phone-first route is the one to describe.
 
 ## The canonical entry
 
