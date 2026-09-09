@@ -260,6 +260,7 @@ once the workflow is on the default branch.
 | Secrets and variables → Actions → **Variables** | `CLOUDFLARE_ACCOUNT_ID` | your account id (an identifier, not a secret)             |
 | Variables, optional                             | `DEPLOY_URL`            | set once the custom domain is live, so smoke tests hit it |
 | Secrets, optional                               | `CF_ANALYTICS_TOKEN`    | read-only token for the daily usage report                |
+| Variables, optional                             | `VITE_CF_BEACON_TOKEN`  | Web Analytics beacon; baked into the HTML by the deploy   |
 
 </details>
 
@@ -290,9 +291,24 @@ removes the `routes` entry.
 
 `workers.dev` stays enabled alongside it, which is what preview links and the deploy
 workflow's smoke test use; set the `DEPLOY_URL` variable to point the smoke test at the
-custom domain instead. Set `VITE_CF_BEACON_TOKEN` at build time to turn on Cloudflare Web
-Analytics; without it no beacon is emitted at all, so previews and development stay
-unmeasured.
+custom domain instead.
+
+**Cloudflare Web Analytics** is turned on by `VITE_CF_BEACON_TOKEN`, and it is a build-time
+value rather than a runtime one: the beacon tag is written into `index.html` while the bundle
+is built, so it has to be present for `pnpm build` and setting it anywhere else does nothing.
+In CI that is the repository variable in the table above, which `deploy.yml` passes to the
+build step. It is a **variable and not a secret** on purpose — the token is served to every
+visitor inside the HTML, so it is public by construction, and masking it in the logs would
+only make a missing one harder to spot. From a terminal:
+
+```bash
+VITE_CF_BEACON_TOKEN=... pnpm build     # the token is on the Web Analytics site in the dashboard
+```
+
+Unset means no beacon and no script at all, which is what previews, forks and development
+should get. A token that is set but is not 8-64 hex characters is a build with no beacon in
+it, so the build says so rather than leaving an empty dashboard to be discovered a week
+later.
 
 </details>
 

@@ -46,7 +46,16 @@ jobs:
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm test
+
+      # The analytics beacon is baked into index.html at build time, so it has to be here
+      # rather than in the deploy step. A repository *variable* rather than a secret: the
+      # token is served to every visitor inside the HTML, so it is public by construction and
+      # masking it in the logs would only make a missing one harder to notice. Unset means no
+      # beacon and no script at all, which is what previews and forks should get.
       - run: pnpm build
+        env:
+          VITE_CF_BEACON_TOKEN: ${{ vars.VITE_CF_BEACON_TOKEN }}
+
       - run: pnpm check:css
       - run: pnpm check:size
 
