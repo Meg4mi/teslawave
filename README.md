@@ -1,6 +1,6 @@
 # TeslaWave
 
-**Live: https://teslawave.meg4mi.workers.dev**
+**Live: https://teslawave.app
 
 See other Teslas around you on a live map, and wave at them. Free, no account, built to run
 in the Tesla in-car browser while driving, and on a phone in a dash mount.
