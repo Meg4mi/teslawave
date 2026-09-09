@@ -1,0 +1,45 @@
+name: Report from a real car
+description: What happened on a Tesla screen. The most useful thing anybody can file here.
+title: 'Car report: '
+labels: ['real car']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        CI has no GPU, so notes from real screens and the performance beacon are the only real
+        performance data that exist. Keep the failures — they are the useful part. Rows land in
+        [docs/tesla-notes.md](../blob/main/docs/tesla-notes.md).
+  - type: input
+    id: car
+    attributes:
+      label: Car and firmware
+      description: Model, year, and the MCU generation if you know it.
+      placeholder: 2019 Model 3, MCU 2, 2026.8.4
+    validations:
+      required: true
+  - type: input
+    id: tested
+    attributes:
+      label: What you tried
+      placeholder: first load on LTE, map, own car moving, a wave
+    validations:
+      required: true
+  - type: textarea
+    id: result
+    attributes:
+      label: What happened
+      description: Times, stutters, anything that looked wrong. A photo of the screen is welcome.
+    validations:
+      required: true
+  - type: input
+    id: cold_load
+    attributes:
+      label: Cold load
+      description: From typing the URL to seeing your own car. The target is under three seconds.
+      placeholder: about 4 s on LTE
+  - type: checkboxes
+    id: beacon
+    attributes:
+      label: Performance data
+      options:
+        - label: 'Settings → Share performance data was on during the drive'

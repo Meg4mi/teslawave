@@ -12,7 +12,8 @@
     "test:e2e": "playwright test",
     "social": "node scripts/gen-social.mjs",
     "art": "node --import tsx scripts/render-art.ts",
-    "demo": "node scripts/gen-demo.mjs"
+    "demo": "node scripts/gen-demo.mjs",
+    "screens": "node scripts/gen-screens.mjs"
   },
   "dependencies": {
     "@tanstack/react-router": "^1.170.0",

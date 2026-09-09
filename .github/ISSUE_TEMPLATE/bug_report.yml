@@ -1,0 +1,37 @@
+name: Bug report
+description: Something behaves wrongly on a phone, a desktop browser or the hub.
+labels: ['bug']
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: And what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: How to see it again
+      placeholder: |
+        1. open teslawave.app
+        2. ...
+    validations:
+      required: true
+  - type: input
+    id: where
+    attributes:
+      label: Device and browser
+      placeholder: iPhone 13, Safari 18 / Tesla car screen / Chrome 141 on Linux
+    validations:
+      required: true
+  - type: input
+    id: build
+    attributes:
+      label: Build
+      description: Settings shows the version, or paste the commit you are running locally.
+  - type: markdown
+    attributes:
+      value: |
+        Positions are never stored, so there is no server-side trace of a drive to look up
+        afterwards. Whatever you can say about where and when is what there is to go on.

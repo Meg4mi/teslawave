@@ -1,0 +1,14 @@
+blank_issues_enabled: true
+contact_links:
+  - name: How it works, end to end
+    url: https://github.com/Meg4mi/teslawave/blob/main/docs/protocol.md
+    about: Every message on the wire between the car and the hub, and the numbers behind them.
+  - name: Why it is built this way
+    url: https://github.com/Meg4mi/teslawave/tree/main/docs/decisions
+    about: One file per non-obvious decision, including the alternatives that were rejected.
+  - name: What leaves the car
+    url: https://github.com/Meg4mi/teslawave/blob/main/docs/privacy.md
+    about: What is sent, what is kept, and for how long.
+  - name: Security or privacy report
+    url: https://github.com/Meg4mi/teslawave/blob/main/.github/SECURITY.md
+    about: Please report these privately rather than as an issue.

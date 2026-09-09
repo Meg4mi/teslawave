@@ -55,3 +55,6 @@ demand so they can be judged side by side.
 - [ ] Invisible mode: you vanish from the other screen within about two seconds.
 - [ ] At least 25 fps with 20 cars while panning, on the car.
 - [ ] The disclaimer is on every screen.
+- [ ] The share card and the pictures on the repository's front page are the drawings that
+      ship: `pnpm gen:social` and `pnpm gen:screens` re-run since the cars or the copy last
+      changed, and the results committed (ADR-0038).

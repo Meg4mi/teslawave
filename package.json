@@ -23,7 +23,8 @@
     "check:css": "node scripts/check-css.mjs",
     "deploy": "pnpm build && pnpm --filter @teslawave/worker deploy",
     "gen:social": "pnpm --filter @teslawave/web social",
-    "gen:demo": "pnpm --filter @teslawave/web demo"
+    "gen:demo": "pnpm --filter @teslawave/web demo",
+    "gen:screens": "pnpm --filter @teslawave/web screens"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.0",
