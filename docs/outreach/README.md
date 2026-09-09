@@ -44,15 +44,16 @@ was measured.
 
 ## The state of each channel
 
-| Tier | Channel                    | File                                         | State                                        |
-| ---- | -------------------------- | -------------------------------------------- | -------------------------------------------- |
-| 1    | Regional owner groups      | [owner-groups.md](owner-groups.md)           | Ready                                        |
-| 2    | Tesla Owners Clubs         | [clubs.md](clubs.md)                         | Ready                                        |
-| 3    | Tesla Motors Club          | [tesla-motors-club.md](tesla-motors-club.md) | Ready                                        |
-| 4    | In-car browser directories | [directories.md](directories.md)             | **tesda.sh is live.** Others ready to submit |
-| 5    | Reddit                     | [reddit.md](reddit.md)                       | Gated on the filmed clip                     |
-| 6    | Press and YouTube          | [press.md](press.md)                         | Gated on the filmed clip                     |
-| 7    | Hacker News                | [hacker-news.md](hacker-news.md)             | Gated on density somewhere                   |
+| Tier | Channel                                     | File                                         | State                                                            |
+| ---- | ------------------------------------------- | -------------------------------------------- | ---------------------------------------------------------------- |
+| 1    | Regional owner groups                       | [owner-groups.md](owner-groups.md)           | Ready                                                            |
+| 1    | French-speaking community (BlogTesla forum) | [french-community.md](french-community.md)   | Ready — the densest French room, with a section for exactly this |
+| 2    | Tesla Owners Clubs                          | [clubs.md](clubs.md)                         | Ready                                                            |
+| 3    | Tesla Motors Club                           | [tesla-motors-club.md](tesla-motors-club.md) | Ready                                                            |
+| 4    | In-car browser directories                  | [directories.md](directories.md)             | **tesda.sh is live.** Others ready to submit                     |
+| 5    | Reddit                                      | [reddit.md](reddit.md)                       | Gated on the filmed clip                                         |
+| 6    | Press and YouTube                           | [press.md](press.md)                         | Gated on the filmed clip                                         |
+| 7    | Hacker News                                 | [hacker-news.md](hacker-news.md)             | Gated on density somewhere                                       |
 
 Tiers 5 and 6 are gated on purpose: without the clip, every post is a description of a
 feeling. Tier 7 is gated on density, so the map is not empty for the people who click.
