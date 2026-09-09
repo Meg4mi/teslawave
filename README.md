@@ -289,9 +289,11 @@ somebody having wired it in the dashboard once. A token without those two fails 
 step instead of quietly publishing to workers.dev only. A fork that does not own the domain
 removes the `routes` entry.
 
-`workers.dev` stays enabled alongside it, which is what preview links and the deploy
-workflow's smoke test use; set the `DEPLOY_URL` variable to point the smoke test at the
-custom domain instead.
+`workers.dev` stays enabled alongside it — but only because `"workers_dev": true` says so
+explicitly. Adding `routes` turns it off by default and takes preview URLs with it, which is
+worth knowing before wondering where the workers.dev address went. Set the `DEPLOY_URL`
+variable to point the smoke test at the custom domain; the workers.dev URL parsed out of the
+deploy log is only the fallback when it is unset.
 
 **Cloudflare Web Analytics** is turned on by `VITE_CF_BEACON_TOKEN`, and it is a build-time
 value rather than a runtime one: the beacon tag is written into `index.html` while the bundle

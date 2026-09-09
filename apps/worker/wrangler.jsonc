@@ -8,13 +8,19 @@
 
   // The custom domain, declared here rather than only in the dashboard: a deploy from a
   // clean checkout has to reproduce the address the share card, the OG tags and every
-  // outreach post print. workers.dev stays on alongside it, which is what preview links and
-  // the deploy workflow's smoke test use.
+  // outreach post print.
   //
   // This is the one thing in this file that needs zone permissions on the API token
   // (Zone -> Workers Routes: Edit, Zone -> DNS: Edit) on top of the account-scoped four.
   // Without them the deploy fails here rather than silently skipping the domain.
   "routes": [{ "pattern": "teslawave.app", "custom_domain": true }],
+
+  // Explicit, and it has to be: the moment `routes` exists, wrangler turns workers.dev off
+  // for the deployment unless this says otherwise, and takes preview URLs with it. That is
+  // what happened the first time the route above was deployed — the worker published fine
+  // and the workers.dev address simply stopped existing, which broke the deploy workflow's
+  // URL fallback and the address docs/tesla-notes.md tells people to open on a car.
+  "workers_dev": true,
 
   // The SPA is served as static assets: those requests are free and unlimited.
   // Only /ws and /api/* reach the Worker and consume the 100k requests/day budget.
