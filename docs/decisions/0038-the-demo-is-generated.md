@@ -37,6 +37,10 @@ re-shoots a road for a sprite change.
 - **It says what it is.** The script prints the sentence to use, and this decision is the
   reason: a demo of the app is not a claim about who is using it.
 - **The output is committed**, like `gen:social`, and re-run when the drawings change.
+- **The README pictures come from the same rig.** `pnpm gen:screens` shoots the car screen
+  with the wave landing on it, a phone with the button up, and the screen a driver sees
+  first, into `docs/images/`. A hand-taken screenshot ages exactly as badly as a filmed
+  clip, and the repository's front page is the first thing anybody sees of the product.
 
 ## Rejected alternatives
 
@@ -57,7 +61,10 @@ The clip re-renders, so a rendering change can be checked against it rather than
 It needs a machine that can reach the tile host: the recording still succeeds without one and
 records a black map, so the script watches for failed tile requests and says so rather than
 letting it be discovered on the way to a post. Behind an HTTPS proxy, Chromium has to be told
-about it explicitly — it does not read `HTTPS_PROXY` — which is handled when one is set.
+about it explicitly — it does not read `HTTPS_PROXY` — which is handled when one is set. A
+proxy that re-terminates TLS can also reset the tunnel on Chromium's TLS 1.3 handshake, which
+looks like a refused tile host rather than a proxy fault; the screenshot script caps the
+handshake when a proxy is set, and only then.
 
 What would make us revisit it: a real crossing worth filming. This does not replace that clip,
 it fills the gap until there is one, and the two answer different questions — this one says

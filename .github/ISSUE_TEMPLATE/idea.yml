@@ -1,0 +1,25 @@
+name: Idea
+description: Something the app should do, or should stop doing.
+labels: ['idea']
+body:
+  - type: textarea
+    id: idea
+    attributes:
+      label: The idea
+      description: What a driver would be able to do that they cannot do today.
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why it matters on the road
+      description: |
+        The screen is glanced at while driving, and the whole thing runs on a free plan.
+        Anything that needs a timer in the hub, a database write per position, or an account
+        is a much bigger conversation — say so if yours does.
+  - type: checkboxes
+    id: checked
+    attributes:
+      label: Before filing
+      options:
+        - label: I looked through docs/decisions to see whether this was already decided against
