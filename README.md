@@ -229,7 +229,8 @@ post that carries it should say so.
 
 </details>
 
-Where and how to put the link in front of drivers is in [docs/distribution.md](docs/distribution.md).
+Where and how to put the link in front of drivers is in [docs/distribution.md](docs/distribution.md),
+and the copy to paste when you get there is in [docs/outreach](docs/outreach/README.md).
 
 ## Deploying
 
@@ -308,6 +309,7 @@ from Workers Builds on non-production branches, or `wrangler versions upload`.
 - `/privacy` and `/terms` — the same two promises inside the app, in every language, from
   the catalogue rather than from a file a driver would never find ([ADR-0037](docs/decisions/0037-terms-safety-and-a-controller.md))
 - [docs/distribution.md](docs/distribution.md) — where drivers are, and the order to reach them in
+- [docs/outreach](docs/outreach/README.md) — the copy to paste in each of those places, in both languages, and what may not be claimed
 - [docs/tesla-notes.md](docs/tesla-notes.md) — findings from real cars, the only real data
 - [docs/design-qa.md](docs/design-qa.md) — the checklist a release walks before it ships
 - [CONTRIBUTING.md](CONTRIBUTING.md) — the checks, the cost invariants, and how a protocol change gets proved

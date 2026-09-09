@@ -6,6 +6,10 @@ The likeliest way this dies is a driver opening it on a quiet Tuesday and conclu
 uses it (ADR-0032). So the plan is not "get users", it is "get density in one place, then
 the next".
 
+This file decides where to post and in what order. The copy to paste when you get there —
+per channel, in English and French, with a ledger of what may and may not be claimed — is in
+[docs/outreach](outreach/README.md).
+
 ## What we are working with
 
 - **A link, not an install.** No store listing, no review, no update lag: `teslawave.app`
@@ -47,15 +51,21 @@ In rough order of how much a single post there is worth:
    software subforum, then the wiki entry.
 4. **In-car browser app directories.** [Tesdash](https://tesda.sh/) and similar launcher
    pages are what drivers bookmark on the car screen; a listing there is a bookmark in
-   every car that uses it. Also worth a pull request or a form wherever
+   every car that uses it. **Tesdash is live as of 2026-09-09**, by pull request. Still
+   worth a pull request or a form wherever
    [codriver.io](https://codriver.io/guides/tesla-browser-summer-2026-update) and its
-   peers keep their lists.
+   peers keep their lists ([outreach/directories.md](outreach/directories.md)). It is also
+   the one channel that inverts the phone-first rule: a driver clicking a launcher page is
+   already sitting in the car, so they arrive on the car screen with no phone step, and that
+   is the arrival to keep an eye on.
 5. **Reddit.** r/TeslaLounge, r/TeslaModel3, r/TeslaModelY and r/teslamotors, plus the
    regional ones (r/TeslaUK, r/TeslaCanada and so on). Read each subreddit's
    self-promotion rule first; most want a maker post that shows the thing rather than a
    link drop. The story that lands: _"I built the Tesla wave as a live map, it runs in the
-   car browser on a 2019 Model 3, free, no account, positions never stored"_. Lead with
-   the screenshot on a car screen, not the phone.
+   car browser, free, no account, positions never stored"_. Lead with the screenshot on a
+   car screen, not the phone. Name no model or MCU until a row in
+   [tesla-notes.md](tesla-notes.md) says one was actually driven: both are still `_pending_`,
+   and the one claim a forum of owners will check is the one about their own hardware.
 6. **The Tesla news and tips sites.** Not a Tesla App, Teslascope's blog, Electrek,
    Teslarati, and the YouTube channels that review in-car software. They cover browser
    apps when there is a story: a short video of two real cars waving at each other on a
