@@ -76,6 +76,51 @@ run during the drive_, never as a pitch to be announced.
 - **Watch the counters that evening.** `pnpm usage` the next morning, without fail: a drive
   is the first time the hub has ever had a dozen sockets in one cell.
 
+## If there is no club within reach
+
+A club is a means, not the goal. What it supplies is one thing: **several cars on the same
+roads at the same time, on a date somebody agreed in advance.** That can be assembled without
+one, and none of these needs anybody's permission.
+
+**Check the national club before concluding there is none.** The clubs are usually national or
+regional rather than municipal, with informal chapters that never show up as a local listing.
+A country-level club with a members' group is the same offer, made to whoever runs the group.
+
+**Organise the drive yourself.** Three or four owners and a date is a club drive without a
+club, and three cars is enough for everyone to cross everyone. In a regional owner group:
+
+> Anybody up for a short drive on <day>? Meeting at <place> at <time>, coffee first, about
+> forty minutes on the <road>, home by <time>. I have built a thing that shows the Teslas
+> around you and lets you wave at them, and it needs a few cars on the same road to be worth
+> anything. Happy to help everyone set it up at the meeting point. No obligation to keep it
+> afterwards.
+
+That message is doing the work a club would have done, and it is a better first impression
+than a link, because you are offering people a morning out rather than an app.
+
+**Superchargers are where the density already is — and the one place the app hides you.**
+A car stopped for ten minutes is hidden until it moves (ADR-0026), which is deliberate and
+right, and it means a Supercharger is not somewhere to demonstrate the live map. It is the
+best place there is to **hand out the link**: drivers are stationary, bored, holding their
+phone, and every one of them owns the car. Set it up on their phone there, and the map does
+its work on the drive home. Do not stand there expecting the screen to show the six cars you
+can see out of the window: after ten minutes it will show none of them, and explaining that
+is a worse first impression than not showing the map at all.
+
+**Pick a corridor instead of a region.** One commuter road at one time of day concentrates
+far better than a city does. A dozen drivers who all use the same motorway at 8am is denser,
+in the only sense that matters, than two hundred spread across a canton.
+
+**Cars and coffee, EV meets, charging-network events.** Not Tesla-specific, and that is fine:
+the owners are there, and the organisers are usually glad of something to do.
+
+**National EV associations.** They run events, they have regional groups, and they are far
+easier to approach than a brand club.
+
+The order does not change: one region, then the next. Without a club the first step is simply
+the owner group ([owner-groups.md](owner-groups.md)), and the drive is something you propose
+there rather than something you are invited to.
+
 ## After the drive
 
 The club gets the result whether or not it went well, in one message: how many cars, how many

@@ -104,6 +104,12 @@ nothing generated can answer it. Post the generated clip as what it is — a scr
 **Then the next region**, using the first as proof. A region launches when a group or a
 club there is willing to run a drive; if none is, the region is not ready.
 
+Where there is no club to ask, the drive is proposed in the owner group instead — three cars
+and a date is the same thing, and [outreach/clubs.md](outreach/clubs.md) has the fallbacks.
+Note which one a Supercharger is: the best place to put the link on somebody's phone, and the
+worst place to show them the map, because a car stopped for ten minutes is hidden until it
+moves (ADR-0026).
+
 ## What a post contains
 
 - The card or a car-screen screenshot, first. Never a phone screenshot of a map with one
