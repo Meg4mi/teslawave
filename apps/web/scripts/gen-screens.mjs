@@ -79,6 +79,52 @@ async function waitForServer(timeoutMs = 120_000) {
   }
 }
 
+/**
+ * Whether the map actually drew, watched on one page.
+ *
+ * The first version of this counted a single failed request to the tile host and called the
+ * map black — which reported a black map over a clip whose map was perfectly fine. MapLibre
+ * cancels tile requests whenever the camera moves on, and this clip is a camera that never
+ * stops moving: `requestfailed` fires for every one of those aborts, and an abort means the
+ * map moved on, not that the host is unreachable.
+ *
+ * So it counts what arrived instead. No tile at all is the black rectangle worth refusing to
+ * post; tiles that arrived alongside real (non-abort) failures are a patchy map, worth a
+ * quieter word; aborts are not failures and are not counted.
+ */
+function watchTiles(page) {
+  const state = { loaded: 0, failed: 0 };
+  const isTile = (url) => url.includes('tiles.openfreemap.org');
+  page.on('response', (response) => {
+    if (isTile(response.url()) && response.ok()) state.loaded += 1;
+  });
+  page.on('requestfailed', (request) => {
+    if (!isTile(request.url())) return;
+    if (request.failure()?.errorText === 'net::ERR_ABORTED') return;
+    state.failed += 1;
+  });
+  return state;
+}
+
+/** What to say about the map, once, for however many screens were recorded. */
+function tileWarning(states, subject, action) {
+  const loaded = states.reduce((n, s) => n + s.loaded, 0);
+  const failed = states.reduce((n, s) => n + s.failed, 0);
+  if (loaded === 0) {
+    return (
+      `WARNING: no map tiles loaded, so ${subject} shows a black map. Re-run somewhere with ` +
+      `access to tiles.openfreemap.org before ${action}.`
+    );
+  }
+  if (failed > 0) {
+    return (
+      `NOTE: ${loaded} tiles loaded and ${failed} requests failed outright, so parts of the ` +
+      `map may be missing. Worth a look before ${action}.`
+    );
+  }
+  return null;
+}
+
 /** Pick a car, name it, go. Different paint per driver, so the two read apart. */
 async function onboard(page, driver) {
   await page.goto(sim(driver));
@@ -118,7 +164,7 @@ function startTraffic() {
 const traffic = startTraffic();
 await waitForServer();
 const browser = await chromium.launch({ ...launch, ...proxy, ...proxyArgs });
-let tilesFailed = false;
+const tiles = [];
 
 const open = async (viewport) => {
   const context = await browser.newContext({
@@ -130,9 +176,7 @@ const open = async (viewport) => {
     ...proxyTls,
   });
   const page = await context.newPage();
-  page.on('requestfailed', (r) => {
-    if (r.url().includes('tiles.openfreemap.org')) tilesFailed = true;
-  });
+  tiles.push(watchTiles(page));
   return page;
 };
 
@@ -184,10 +228,6 @@ await heroPage.screenshot({ path: join(out, 'car-screen.jpg'), type: 'jpeg', qua
 await browser.close();
 traffic.kill('SIGINT');
 
-if (tilesFailed) {
-  console.warn(
-    'WARNING: the map tiles did not load, so these show a black map. Re-run somewhere with ' +
-      'access to tiles.openfreemap.org before committing them.',
-  );
-}
+const mapNote = tileWarning(tiles, 'these', 'committing them');
+if (mapNote) console.warn(mapNote);
 console.log(`Wrote ${['choose.png', 'phone.png', 'car-screen.jpg'].join(', ')} to docs/images/`);
