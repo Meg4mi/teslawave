@@ -128,6 +128,14 @@ pnpm check:size  # under 400 kB gzipped, excluding MapLibre
 pnpm bench       # what one broadcast tick costs, on both wires, at several densities
 ```
 
+`pnpm test:e2e`, `pnpm gen:demo` and `pnpm gen:screens` drive a real browser, which
+Playwright keeps in the web package rather than at the root — so the install is filtered
+there too, once per machine:
+
+```bash
+pnpm --filter @teslawave/web exec playwright install chromium   # --with-deps on Linux
+```
+
 Against a deployed URL, the same suite runs without a local server:
 
 ```bash
