@@ -2,9 +2,13 @@
 /**
  * The demo clip: two drivers crossing, and the wave landing on both screens.
  *
- *   pnpm gen:demo                       (from the repository root)
- *   pnpm gen:demo -- --car              the car screen instead of two phones
- *   pnpm gen:demo -- --keep             keep the two raw halves beside the joined clip
+ *   pnpm gen:demo                       both clips, from the repository root
+ *   pnpm gen:demo -- --car              only the car screen; --phones only the phones
+ *   pnpm gen:demo -- --keep             keep the raw halves beside the joined clips
+ *
+ * Joining the halves into one frame needs ffmpeg on PATH (`brew install ffmpeg`, or
+ * `FFMPEG_PATH`). Without it the halves are the output, side by side in the folder rather
+ * than in the frame.
  *
  * It builds the bundle and starts the worker itself, unless one is already answering on
  * :8787, and stops the one it started. Point `DEMO_BASE_URL` at a running server — a
@@ -22,7 +26,7 @@
  * build time, so a build machine without a browser is not a build that fails.
  */
 import { chromium } from '@playwright/test';
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, renameSync, rmSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -33,7 +37,6 @@ const out = join(root, 'public', 'demo');
 const raw = join(out, '.raw');
 
 const args = new Set(process.argv.slice(2));
-const onCar = args.has('--car');
 const keepHalves = args.has('--keep');
 
 /** The same pre-installed Chromium the e2e suite prefers, rather than a second copy. */
@@ -54,13 +57,33 @@ const proxy = proxyServer
   ? { proxy: { server: proxyServer, bypass: '127.0.0.1,localhost,::1' } }
   : {};
 const proxyTls = proxyServer ? { ignoreHTTPSErrors: true } : {};
+/**
+ * A proxy that re-terminates TLS can reset the tunnel on Chromium's TLS 1.3 handshake, which
+ * arrives as a bare connection reset on every tile and a black map in the clip. The
+ * screenshot script has capped the handshake since it was first hit there; the demo did not,
+ * which is the whole difference between a clip with a map on it and a clip without one.
+ * Scoped to the proxy case, and to this browser: nothing the app ships or serves is affected.
+ */
+const proxyArgs = proxyServer ? { args: ['--ssl-version-max=tls1.2'] } : {};
 
 /**
- * A phone in a dash mount is what a driver is shown in outreach, and two of them side by
- * side fit a landscape frame. `--car` renders the 1920x1200 screen instead, for a post whose
- * point is that this runs in the car itself.
+ * Both screens the product is posted as, recorded in one run.
+ *
+ * A phone in a dash mount is what a driver is shown in outreach, and two of them side by side
+ * fit a landscape frame. The 1920x1200 car screen is the other half of the pitch — that this
+ * runs in the car itself — and it used to be a flag, which meant the two were recorded on
+ * different days off different bundles and quietly drifted apart. One run, one build, both
+ * clips: `--car` and `--phones` narrow it to one when that is all you are re-shooting.
  */
-const SCREEN = onCar ? { width: 1920, height: 1200 } : { width: 440, height: 900 };
+const VARIANTS = [
+  { key: 'phones', name: 'demo', size: { width: 440, height: 900 } },
+  { key: 'car', name: 'demo-car', size: { width: 1920, height: 1200 } },
+];
+const wanted = VARIANTS.filter(
+  (v) =>
+    (!args.has('--car') && !args.has('--phones')) ||
+    args.has(v.key === 'car' ? '--car' : '--phones'),
+);
 
 const BASE = process.env['DEMO_BASE_URL'] ?? 'http://127.0.0.1:8787';
 /**
@@ -226,6 +249,52 @@ function stopServer(child) {
   }
 }
 
+/**
+ * Whether the map actually drew, watched on one page.
+ *
+ * The first version of this counted a single failed request to the tile host and called the
+ * map black — which reported a black map over a clip whose map was perfectly fine. MapLibre
+ * cancels tile requests whenever the camera moves on, and this clip is a camera that never
+ * stops moving: `requestfailed` fires for every one of those aborts, and an abort means the
+ * map moved on, not that the host is unreachable.
+ *
+ * So it counts what arrived instead. No tile at all is the black rectangle worth refusing to
+ * post; tiles that arrived alongside real (non-abort) failures are a patchy map, worth a
+ * quieter word; aborts are not failures and are not counted.
+ */
+function watchTiles(page) {
+  const state = { loaded: 0, failed: 0 };
+  const isTile = (url) => url.includes('tiles.openfreemap.org');
+  page.on('response', (response) => {
+    if (isTile(response.url()) && response.ok()) state.loaded += 1;
+  });
+  page.on('requestfailed', (request) => {
+    if (!isTile(request.url())) return;
+    if (request.failure()?.errorText === 'net::ERR_ABORTED') return;
+    state.failed += 1;
+  });
+  return state;
+}
+
+/** What to say about the map, once, for however many screens were recorded. */
+function tileWarning(states, subject, action) {
+  const loaded = states.reduce((n, s) => n + s.loaded, 0);
+  const failed = states.reduce((n, s) => n + s.failed, 0);
+  if (loaded === 0) {
+    return (
+      `WARNING: no map tiles loaded, so ${subject} shows a black map. Re-run somewhere with ` +
+      `access to tiles.openfreemap.org before ${action}.`
+    );
+  }
+  if (failed > 0) {
+    return (
+      `NOTE: ${loaded} tiles loaded and ${failed} requests failed outright, so parts of the ` +
+      `map may be missing. Worth a look before ${action}.`
+    );
+  }
+  return null;
+}
+
 /** Pick a car on the first screen, then Go. Different paint per driver, so they read apart. */
 async function onboard(page, driver) {
   await page.goto(sim(driver.lat, driver.heading));
@@ -236,16 +305,16 @@ async function onboard(page, driver) {
   await page.waitForFunction(() => typeof window.__tw !== 'undefined');
 }
 
-async function run() {
-  rmSync(raw, { recursive: true, force: true });
-  mkdirSync(raw, { recursive: true });
-
-  const browser = await chromium.launch({ ...launch, ...proxy });
+/** One recording pass: two drivers, one screen size, one crossing. */
+async function run(browser, variant) {
+  const rawDir = join(raw, variant.key);
+  rmSync(rawDir, { recursive: true, force: true });
+  mkdirSync(rawDir, { recursive: true });
 
   // A machine that cannot reach the tile host still produces a clip, and the clip is a black
   // rectangle with two cars on it. That is worth saying out loud rather than discovering on
   // the way to a post.
-  let tilesFailed = false;
+  const tiles = [];
 
   // Recording starts when the context does, so the clip's first seconds are two browsers
   // booting and finding each other — one half of the frame saying "Quiet road. Nobody else
@@ -256,19 +325,17 @@ async function run() {
   const pages = [];
   for (const driver of DRIVERS) {
     const context = await browser.newContext({
-      viewport: SCREEN,
+      viewport: variant.size,
       deviceScaleFactor: 1,
       hasTouch: true,
       permissions: ['geolocation'],
       locale: 'en-US',
       ...proxyTls,
-      recordVideo: { dir: join(raw, driver.name), size: SCREEN },
+      recordVideo: { dir: join(rawDir, driver.name), size: variant.size },
     });
     contexts.push(context);
     const page = await context.newPage();
-    page.on('requestfailed', (request) => {
-      if (request.url().includes('tiles.openfreemap.org')) tilesFailed = true;
-    });
+    tiles.push(watchTiles(page));
     pages.push(page);
   }
   const [pageA, pageB] = pages;
@@ -280,9 +347,14 @@ async function run() {
   // Both halves must be *readable*, not merely connected: the header is a broadcast tick
   // behind the car list, so trimming on cars() alone opened the clip on one screen still
   // saying "Quiet road. Nobody else out here right now" while the other had the button up.
+  //
+  // Exactly one other car, not one or more: the second pass opens seconds after the first
+  // pass's contexts closed, and a driver the hub has not finished dropping yet is a ghost at
+  // the same coordinates as the partner. Waiting for the pair alone waits that out, and on
+  // the first pass it is the same condition either way — this clip has no other traffic.
   const bothSeeEachOther = (page) =>
     page.waitForFunction(
-      () => window.__tw.summary().online >= 2 && window.__tw.cars().length > 0,
+      () => window.__tw.summary().online >= 2 && window.__tw.cars().length === 1,
       null,
       {
         timeout: 40_000,
@@ -307,36 +379,74 @@ async function run() {
   // Hold on the aftermath: the counters, and the pulse line saying a wave just happened.
   await pageA.waitForTimeout(5_000);
 
-  if (tilesFailed) {
-    console.warn(
-      'WARNING: the map tiles did not load, so the clip shows a black map. Re-run somewhere ' +
-        'with access to tiles.openfreemap.org before posting it anywhere.',
-    );
-  }
+  const mapNote = tileWarning(tiles, `the ${variant.key} clip`, 'posting it anywhere');
+  if (mapNote) console.warn(mapNote);
 
   const videos = await Promise.all(pages.map((page) => page.video()?.path()));
+  // Closing the context is what flushes the video to disk, so the paths above are only
+  // worth anything after this.
   for (const context of contexts) await context.close();
-  await browser.close();
 
   const halves = [];
   for (const [i, driver] of DRIVERS.entries()) {
     if (!videos[i]) continue;
-    const dest = join(out, `demo-${driver.name.toLowerCase()}.webm`);
+    const dest = join(out, `${variant.name}-${driver.name.toLowerCase()}.webm`);
     renameSync(videos[i], dest);
     halves.push(dest);
   }
   return { halves, trimSeconds };
 }
 
+/**
+ * The ffmpeg that joins the two halves.
+ *
+ * `FFMPEG_PATH` first, then PATH, then the two places Homebrew puts it — a script started
+ * from an editor's terminal does not always inherit a login shell's PATH, and "ffmpeg is not
+ * on PATH" is a confusing thing to read with ffmpeg installed.
+ *
+ * Playwright's own bundled ffmpeg is deliberately not used, tempting as it is to reach for:
+ * it is a cut-down build with libvpx and no libx264, no `hstack` and no mp4 muxer. It records
+ * the halves and cannot join them.
+ */
+function findFfmpeg() {
+  const candidates = [
+    process.env['FFMPEG_PATH'],
+    'ffmpeg',
+    '/opt/homebrew/bin/ffmpeg',
+    '/usr/local/bin/ffmpeg',
+  ].filter(Boolean);
+  for (const candidate of candidates) {
+    const probe = spawnSync(candidate, ['-version'], { stdio: 'ignore' });
+    if (!probe.error && probe.status === 0) return candidate;
+  }
+  return null;
+}
+
+/** What to install, in the words of the machine this is running on. */
+function ffmpegHelp() {
+  const how =
+    process.platform === 'darwin'
+      ? 'brew install ffmpeg'
+      : process.platform === 'win32'
+        ? 'winget install Gyan.FFmpeg'
+        : 'sudo apt install ffmpeg';
+  return `No ffmpeg, so the two screens were not joined into one frame. Install it with \`${how}\`, or set FFMPEG_PATH, and re-run.`;
+}
+
 /** Join the two halves into one frame, if ffmpeg is here. Without it, the halves are the output. */
-function join2(halves, trimSeconds) {
+function join2(halves, trimSeconds, variant) {
   return new Promise((resolve) => {
     if (halves.length !== 2) return resolve(null);
-    const dest = join(out, onCar ? 'demo-car.mp4' : 'demo.mp4');
+    const ffmpeg = findFfmpeg();
+    if (!ffmpeg) {
+      console.log(ffmpegHelp());
+      return resolve(null);
+    }
+    const dest = join(out, `${variant.name}.mp4`);
     const gap = 24;
     const trim = trimSeconds > 0 ? `trim=start=${trimSeconds.toFixed(2)},setpts=PTS-STARTPTS,` : '';
     const child = spawn(
-      'ffmpeg',
+      ffmpeg,
       [
         '-y',
         '-i',
@@ -365,30 +475,62 @@ function join2(halves, trimSeconds) {
         '+faststart',
         dest,
       ],
-      { stdio: 'ignore' },
+      { stdio: ['ignore', 'ignore', 'pipe'] },
     );
-    child.on('error', () => resolve(null));
-    child.on('close', (code) => resolve(code === 0 ? dest : null));
+    // An ffmpeg that ran and failed used to report itself as an ffmpeg that was missing,
+    // which sends you looking for the wrong thing. Its own last words say more than we can.
+    let stderr = '';
+    child.stderr.on('data', (chunk) => {
+      stderr += chunk;
+    });
+    child.on('error', () => {
+      console.log(ffmpegHelp());
+      resolve(null);
+    });
+    child.on('close', (code) => {
+      if (code === 0) return resolve(dest);
+      console.warn(`${ffmpeg} exited ${code}, so the halves were not joined:`);
+      console.warn(stderr.trim().split('\n').slice(-12).join('\n'));
+      resolve(null);
+    });
   });
 }
 
-const server = await startServer();
-try {
-  const { halves, trimSeconds } = await run();
-  const joined = await join2(halves, trimSeconds);
+/** How long to let the hub forget a pass's drivers before the next pass introduces its own. */
+const DRAIN_MS = 4_000;
 
-  if (joined) {
-    console.log(`Wrote ${joined}`);
-    if (!keepHalves) for (const half of halves) rmSync(half, { force: true });
-    else console.log(`Kept the halves: ${halves.join(', ')}`);
-  } else {
-    console.log(`Wrote ${halves.join(', ')}`);
-    console.log('ffmpeg is not on PATH, so the two screens were not joined into one frame.');
+const server = await startServer();
+let browser = null;
+try {
+  browser = await chromium.launch({ ...launch, ...proxy, ...proxyArgs });
+  const written = [];
+
+  for (const [i, variant] of wanted.entries()) {
+    // One browser for both passes, but never two passes' drivers on the hub at once: the
+    // sockets close with the contexts, and this gives the hub a moment to notice.
+    if (i > 0) await new Promise((r) => setTimeout(r, DRAIN_MS));
+
+    console.log(
+      `Recording the ${variant.key} clip (${variant.size.width}x${variant.size.height}).`,
+    );
+    const { halves, trimSeconds } = await run(browser, variant);
+    const joined = await join2(halves, trimSeconds, variant);
+
+    if (joined) {
+      written.push(joined);
+      if (!keepHalves) for (const half of halves) rmSync(half, { force: true });
+      else written.push(...halves);
+    } else {
+      written.push(...halves);
+    }
   }
+
   rmSync(raw, { recursive: true, force: true });
+  console.log(`Wrote ${written.join(', ')}`);
   console.log(
     'This is a screen recording of the real app with simulated GPS. Say so wherever it is posted.',
   );
 } finally {
+  await browser?.close();
   stopServer(server);
 }
