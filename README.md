@@ -219,6 +219,9 @@ pnpm gen:demo          # two phones side by side -> public/demo/demo.mp4
 pnpm gen:demo -- --car # the 1920x1200 car screen instead
 ```
 
+It builds the bundle and starts the worker itself, unless one is already answering on :8787,
+and stops the one it started; `DEMO_BASE_URL` points it at a server you are keeping alive.
+
 Two browser contexts, the real client, the real hub, the real protocol over a real socket:
 only the GPS is simulated. It exists because a filmed clip needs two drivers who both have
 this and who cross paths, which is the thing the app does not have yet — and because the car
