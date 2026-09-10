@@ -6,6 +6,10 @@
  *   pnpm gen:demo -- --car              the car screen instead of two phones
  *   pnpm gen:demo -- --keep             keep the two raw halves beside the joined clip
  *
+ * It builds the bundle and starts the worker itself, unless one is already answering on
+ * :8787, and stops the one it started. Point `DEMO_BASE_URL` at a running server — a
+ * `pnpm dev:worker` you are already keeping alive, or a deployment — to use that instead.
+ *
  * Why this exists rather than a film of two real cars: until there are strangers to cross,
  * any real clip is two of our own devices staged to look organic, which is less honest than
  * a screen recording that says what it is. This one is the real app — the real client, the
@@ -24,6 +28,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
+const repo = join(root, '..', '..');
 const out = join(root, 'public', 'demo');
 const raw = join(out, '.raw');
 
@@ -58,6 +63,14 @@ const proxyTls = proxyServer ? { ignoreHTTPSErrors: true } : {};
 const SCREEN = onCar ? { width: 1920, height: 1200 } : { width: 440, height: 900 };
 
 const BASE = process.env['DEMO_BASE_URL'] ?? 'http://127.0.0.1:8787';
+/**
+ * A server on this machine is one this script may start and stop; anything else belongs to
+ * whoever pointed `DEMO_BASE_URL` at it, and is only waited for.
+ */
+const BASE_URL = new URL(BASE);
+const OURS_TO_START = ['127.0.0.1', 'localhost', '::1', '[::1]'].includes(BASE_URL.hostname);
+const PORT = BASE_URL.port || '8787';
+
 const GENEVA = { lat: 46.2044, lng: 6.1432 };
 
 /**
@@ -85,18 +98,131 @@ const DRIVERS = [
 
 const sim = (lat, heading) => `${BASE}/?e2e&sim=${lat},${GENEVA.lng},${heading},${SPEED_KMH}`;
 
-/** Wait for the worker to answer, so a cold `wrangler dev` is waited on rather than raced. */
-async function waitForServer(timeoutMs = 180_000) {
+/** Whether the worker answers right now. One request, no waiting. */
+async function serverIsUp() {
+  try {
+    return (await fetch(`${BASE}/api/whereami`)).ok;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Wait for the worker to answer, so a cold `wrangler dev` is waited on rather than raced.
+ *
+ * `stopped` is the server we started ourselves having died — a port already held, a failed
+ * migration — and there is no sense spending the rest of the timeout on a process that is
+ * gone. Its caller prints what it said before this error is seen.
+ */
+async function waitForServer(stopped = () => false, timeoutMs = 180_000) {
   const deadline = Date.now() + timeoutMs;
   for (;;) {
-    try {
-      const res = await fetch(`${BASE}/api/whereami`);
-      if (res.ok) return;
-    } catch {
-      /* not up yet */
+    if (await serverIsUp()) return;
+    if (stopped()) throw new Error('the worker exited before it answered; its output is above.');
+    if (Date.now() > deadline) {
+      throw new Error(
+        `no server at ${BASE} after ${timeoutMs / 1000}s. Start one with \`pnpm build && ` +
+          'pnpm dev:worker`, or point DEMO_BASE_URL at a running one.',
+      );
     }
-    if (Date.now() > deadline) throw new Error(`no server at ${BASE} after ${timeoutMs / 1000}s`);
     await new Promise((r) => setTimeout(r, 1_000));
+  }
+}
+
+/** Run one workspace script to completion, with its output on the terminal. */
+function runScript(pkg, script) {
+  return new Promise((resolve, reject) => {
+    const child = spawn('pnpm', ['--filter', pkg, script], { cwd: repo, stdio: 'inherit' });
+    child.on('error', reject);
+    child.on('close', (code) =>
+      code === 0 ? resolve() : reject(new Error(`${pkg} ${script} failed (exit ${code})`)),
+    );
+  });
+}
+
+/**
+ * The worker the clip is recorded against.
+ *
+ * This used to be the caller's job, and the failure it produced was three minutes of silence
+ * and `no server at http://127.0.0.1:8787` — which reads like a broken script rather than a
+ * missing step. Nothing about the demo needs a server that outlives it, so it starts its own:
+ * the same three steps the e2e suite's `webServer` runs (`playwright.config.ts`), for the
+ * same reasons. The bundle is rebuilt because the worker serves `apps/web/dist` and a clip
+ * of last week's drawings is exactly what this script exists to avoid, and `wrangler dev`
+ * runs supervised because closing a recording context drops a socket abruptly, which
+ * wrangler's dev proxy has been known to treat as fatal.
+ *
+ * A server that is already answering is left alone — it is somebody's `pnpm dev:worker`, and
+ * stopping it at the end would be a surprise — but it serves whatever bundle it was started
+ * on, which the e2e suite refuses outright (`reuseExistingServer: false`) and this one says
+ * out loud instead: a clip of a stale bundle is a clip of drawings that have moved on.
+ */
+async function startServer() {
+  if (await serverIsUp()) {
+    console.log(
+      `Recording against the server already on ${BASE}: the clip shows the bundle that ` +
+        'server was started on. Stop it and re-run to record a fresh build.',
+    );
+    return null;
+  }
+  if (!OURS_TO_START) {
+    console.log(`Waiting for ${BASE}.`);
+    await waitForServer();
+    return null;
+  }
+
+  console.log(`Nothing on :${PORT}: building the bundle and starting the worker.`);
+  await runScript('@teslawave/web', 'build');
+  await runScript('@teslawave/worker', 'db:local');
+
+  // Its own process group, so stopping it stops wrangler and the supervisor together rather
+  // than orphaning the runtime on the port for the next run to trip over.
+  //
+  // Its output is held rather than printed: a request log per asset per browser buries the
+  // one line that matters, and stopping a healthy server at the end makes pnpm report the
+  // SIGTERM it passed on, which reads like a failed run at the bottom of a successful one.
+  // Held, not dropped — if the server never answers, the last of it is what says why.
+  const child = spawn('pnpm', ['--filter', '@teslawave/worker', 'dev:e2e', '--port', PORT], {
+    cwd: repo,
+    stdio: ['ignore', 'pipe', 'pipe'],
+    detached: true,
+  });
+  const log = [];
+  const keep = (chunk) => {
+    log.push(String(chunk));
+    if (log.length > 200) log.shift();
+  };
+  child.stdout.on('data', keep);
+  child.stderr.on('data', keep);
+  let exited = false;
+  child.on('exit', () => {
+    exited = true;
+  });
+  // A crash on the way out should not leave a worker running: this is the one case where the
+  // script does not reach its own cleanup.
+  for (const signal of ['SIGINT', 'SIGTERM']) {
+    process.once(signal, () => {
+      stopServer(child);
+      process.exit(1);
+    });
+  }
+
+  try {
+    await waitForServer(() => exited);
+  } catch (error) {
+    process.stderr.write(log.join(''));
+    throw error;
+  }
+  return child;
+}
+
+/** Stop the worker we started, and only that one. */
+function stopServer(child) {
+  if (!child || child.exitCode !== null) return;
+  try {
+    process.kill(-child.pid, 'SIGTERM');
+  } catch {
+    /* already gone */
   }
 }
 
@@ -114,7 +240,6 @@ async function run() {
   rmSync(raw, { recursive: true, force: true });
   mkdirSync(raw, { recursive: true });
 
-  await waitForServer();
   const browser = await chromium.launch({ ...launch, ...proxy });
 
   // A machine that cannot reach the tile host still produces a clip, and the clip is a black
@@ -247,18 +372,23 @@ function join2(halves, trimSeconds) {
   });
 }
 
-const { halves, trimSeconds } = await run();
-const joined = await join2(halves, trimSeconds);
+const server = await startServer();
+try {
+  const { halves, trimSeconds } = await run();
+  const joined = await join2(halves, trimSeconds);
 
-if (joined) {
-  console.log(`Wrote ${joined}`);
-  if (!keepHalves) for (const half of halves) rmSync(half, { force: true });
-  else console.log(`Kept the halves: ${halves.join(', ')}`);
-} else {
-  console.log(`Wrote ${halves.join(', ')}`);
-  console.log('ffmpeg is not on PATH, so the two screens were not joined into one frame.');
+  if (joined) {
+    console.log(`Wrote ${joined}`);
+    if (!keepHalves) for (const half of halves) rmSync(half, { force: true });
+    else console.log(`Kept the halves: ${halves.join(', ')}`);
+  } else {
+    console.log(`Wrote ${halves.join(', ')}`);
+    console.log('ffmpeg is not on PATH, so the two screens were not joined into one frame.');
+  }
+  rmSync(raw, { recursive: true, force: true });
+  console.log(
+    'This is a screen recording of the real app with simulated GPS. Say so wherever it is posted.',
+  );
+} finally {
+  stopServer(server);
 }
-rmSync(raw, { recursive: true, force: true });
-console.log(
-  'This is a screen recording of the real app with simulated GPS. Say so wherever it is posted.',
-);
