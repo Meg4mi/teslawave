@@ -732,8 +732,15 @@
     height: 21px;
   }
 
+  /*
+   * On a 60 px button a nowrap label spills out of it: "Cap en haut" hung over the map on
+   * the French phone screen. Tighter tracking keeps every English label on one line, and a
+   * label that still does not fit wraps inside the button instead of leaving it.
+   */
   .control__label {
     font-size: 9px;
+    letter-spacing: 0.03em;
+    white-space: normal;
   }
 
   .control__sub {
