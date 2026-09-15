@@ -51,6 +51,28 @@ export const RATE_WAVE_MS = 5_000;
  */
 export const WAVE_HOLD_MS = 3_000;
 export const RATE_VIOLATIONS_TO_CLOSE = 5;
+/**
+ * One report a minute per connection. A report is a tap, and the hub places it where the
+ * car is, so there is nothing a second tap ten seconds later could add that the first did
+ * not — except noise on everybody else's map.
+ */
+export const RATE_REPORT_MS = 60_000;
+/**
+ * A second driver reporting the same kind of thing within this distance of an existing
+ * report confirms it rather than adding another marker: the count goes up, the clock
+ * restarts, the map keeps one pin.
+ */
+export const REPORT_MERGE_M = 300;
+/**
+ * A report carries the client's own position, because a hub that has just woken has no
+ * other. When the hub does hold one, the two must agree to within this: a car cannot report
+ * a patrol it is not near.
+ */
+export const REPORT_MAX_OFFSET_M = 1_000;
+/** Bounds hub memory and the size of one `reports` message: past this the oldest goes. */
+export const MAX_REPORTS_PER_CELL = 50;
+/** The client says something, once, when a report comes within this of the car. */
+export const REPORT_ALERT_M = 1_000;
 export const MAX_MSG_BYTES = 1_024;
 
 /** Anything faster than this between two updates is a spoof or a bug. */

@@ -123,6 +123,7 @@ What travels with an identity:
 | `model`     | `S`, `3`, `X`, `Y`, `CT`                                                                                  |                                                                                    |
 | `colour`    | `pearl`, `black`, `midnight`, `deepblue`, `red`, `ultrared`, `stealth`, `quicksilver`, `diamond`, `steel` | The id is the wire format; the hex never leaves the client.                        |
 | `nick`      | up to 16 characters                                                                                       | Optional. Trimmed, inner whitespace collapsed. Written the way its owner wrote it. |
+| `status`    | `roadtrip`, `charging`, `commute`, `cruising`, `newowner`                                                 | Optional. A word about the drive, from a closed list; the words are the client's (ADR-0040). |
 | `spectator` | `true` or absent                                                                                          | A driver with no position: sees, is not seen, cannot wave.                         |
 
 ---
@@ -181,6 +182,7 @@ message that fails the guard is a protocol violation (§11).
   "model": "Y",
   "colour": "deepblue",
   "nick": "Ghost",
+  "status": "roadtrip",
   "cells": ["u0hq", "u0hr"],
   "v": 2,
   "at": [4620440, 614320]
@@ -197,9 +199,11 @@ message that fails the guard is a protocol violation (§11).
   39 × 20 km cell. It never enters presence and is never broadcast; only `pos` does that. An
   invisible driver or a spectator omits it.
 - `spectator: true`: no position will follow. The driver sees the map and cannot be seen.
+- `status`: optional, one of `STATUSES`. A value this hub does not know is dropped, not
+  refused, so the list can grow without a version bump.
 
-A `hello` can be sent again on an open socket. That is how a profile edit (paint, name)
-reaches everyone: the hub re-describes the car to every connection holding it, and the socket,
+A `hello` can be sent again on an open socket. That is how a profile edit (paint, name,
+status) reaches everyone: the hub re-describes the car to every connection holding it, and the socket,
 the presence and the wave count all stay.
 
 ### 4.3 The welcome, and the first diffs
@@ -250,14 +254,15 @@ Every inbound message is untrusted. The guard never throws and never returns a p
 object: anything malformed is `null`, which the hub counts as a violation. Messages are JSON
 text frames of at most 1,024 bytes.
 
-| `t`     | Fields                                                    | What it says                                      |
-| ------- | --------------------------------------------------------- | ------------------------------------------------- |
-| `hello` | `secret, model, colour, nick?, cells, v, spectator?, at?` | Who I am, what I drive, which cells I want. §4.2. |
-| `pos`   | `lat, lng, heading, speed, ts`                            | Where I am. §7.                                   |
-| `sub`   | `cells`                                                   | My cells changed (I drove on).                    |
-| `hide`  |                                                           | Take me off the map now.                          |
-| `show`  |                                                           | I am back; my next `pos` puts me on the map.      |
-| `wave`  | `to`                                                      | Wave at this driver id. §8.                       |
+| `t`      | Fields                                                             | What it says                                      |
+| -------- | ------------------------------------------------------------------ | ------------------------------------------------- |
+| `hello`  | `secret, model, colour, nick?, status?, cells, v, spectator?, at?` | Who I am, what I drive, which cells I want. §4.2. |
+| `pos`    | `lat, lng, heading, speed, ts`                                     | Where I am. §7.                                   |
+| `sub`    | `cells`                                                            | My cells changed (I drove on).                    |
+| `hide`   |                                                                    | Take me off the map now.                          |
+| `show`   |                                                                    | I am back; my next `pos` puts me on the map.      |
+| `wave`   | `to`                                                               | Wave at this driver id. §8.                       |
+| `report` | `kind, at`                                                         | Police or an accident, where I am. §8a.           |
 
 ### `pos`
 
@@ -309,6 +314,8 @@ position straight away.
 | `wave`    | `from, ts`                                                   | Somebody waved at you. §8.                                                                               |
 | `waved`   | `to, ok, reason?`                                            | Your wave was delivered, or why not. §8.                                                                 |
 | `where`   |                                                              | I have no position for you and a wave is waiting on one. §8.4.                                           |
+| `reports` | `cell, upd, gone`                                            | The reports in one cell that changed, or all of them when you first hold the cell. §8a.                  |
+| `reported`| `ok, reason?`                                                | Your report was placed, or why not. §8a.                                                                 |
 | `upgrade` | `v`                                                          | This build is older than the hub. §10.                                                                   |
 | `error`   | `code, msg?`                                                 | A message failed the guard and was not a violation worth closing over. Only `code: "bad"` is sent today. |
 
@@ -625,6 +632,84 @@ A reason this build does not know is shown as `nofix`: never as the driver's own
 
 ---
 
+## 8a. Reports
+
+A driver can flag the police or an accident to the drivers around them, from a control on
+the map, with two taps and nothing typed (ADR-0040).
+
+### 8a.1 Sending
+
+```json
+{ "t": "report", "kind": "police", "at": [4620440, 614320] }
+```
+
+`kind` is `police` or `accident`. `at` is the car's own position, at 1e-5 of a degree, as
+the hello's `at` is. Sent to the one hub that owns the cell the car is in.
+
+The position is the client's because the hub does not always have one: just after a
+hibernation wake it holds no presence for anyone (§7.5), and a report is worth nothing a
+minute later. Where the hub does hold a position for the connection, the two have to agree
+to within **1 km** (`REPORT_MAX_OFFSET_M`): a car cannot report a patrol on a road it is
+not on.
+
+### 8a.2 What the hub checks
+
+| Check                                                                   | Answer                             |
+| ----------------------------------------------------------------------- | ---------------------------------- |
+| The sender is hidden or a spectator                                     | `reported ok:false reason:"hidden"` |
+| Fewer than 60 s since this connection's last report (`RATE_REPORT_MS`)  | `"rate"`                           |
+| The hub holds a position for the sender, and `at` is over 1 km from it  | `"range"`                          |
+| `at` falls in a cell another hub owns                                   | `"range"`                          |
+| Otherwise                                                               | placed, `reported ok:true`         |
+
+**Placed** means one of two things. A live report of the same kind within **300 m**
+(`REPORT_MERGE_M`) in the same cell is **confirmed**: its `n` goes up by one, its `at`
+becomes now, and the pin stays where it was. A driver confirming their own report is told
+`ok` and counted once. Otherwise a new report is created with `n: 1`. Either way the cell's
+subscribers hear on the next tick.
+
+At most **50** live reports per cell (`MAX_REPORTS_PER_CELL`); past that the oldest goes.
+
+### 8a.3 What everyone else gets
+
+```json
+{
+  "t": "reports",
+  "cell": "u0hq",
+  "upd": [{ "id": "u0-mf3k1x-1", "kind": "police", "lat": 46.2044, "lng": 6.1432, "at": 1788794006399, "n": 2 }],
+  "gone": ["u0-mf3jzq-3"]
+}
+```
+
+Sent on the same tick as the diffs, to every subscriber of the cell, and in full (every live
+report, `gone` empty) when a connection first holds the cell. Not filtered by interest: a
+cell holds a handful of pins at most and they do not move, so the client decides what is
+near enough to draw or to say.
+
+Nothing in it says who reported: `n` is how many drivers did, `at` is when the last of them
+did. The hub keeps the driver ids behind a report **in memory only**, to count each driver
+once, and they go with the report.
+
+A report lapses **30 minutes** after its last confirmation for the police and **60** for an
+accident (`REPORT_TTL_MS`). The hub drops it on the next flush and says `gone`; the client
+drops it on its own clock too, so a socket that dropped cannot leave a patrol on the map.
+Reports are memory only, like presence: gone on hibernation, never written to storage.
+
+### 8a.4 On the screen
+
+A pin under the cars, in the report's colour, with a ring as it lands and a fade over its
+last five minutes. When a pin comes within **1 km** (`REPORT_ALERT_M`) of the car the
+client says so once — a toast, the chime, and the voice if it is on — keyed on the pin's id,
+and a line at the foot of the screen counts the metres down while it is in range.
+
+| `reason`  | English copy                                       |
+| --------- | -------------------------------------------------- |
+| `rate`    | One report a minute.                               |
+| `hidden`  | Turn yourself back on to report.                   |
+| `range`   | The map lost your position. Try again in a moment. |
+
+---
+
 ## 9. Motion on the client
 
 The hub sends a car's position at most every 2 s and the screen redraws sixty times a second.
@@ -663,7 +748,9 @@ in `hello`.
 **What is a bump.** Anything that would make an old client and a new hub disagree: a field
 either side relies on, a changed meaning, a removed message. Adding a message or a value an
 old client can ignore and a new hub can do without is not a bump; `where` and `nofix` were
-added at version 2 for exactly that reason.
+added at version 2 for exactly that reason, and so were `status`, `report`, `reports` and
+`reported` (ADR-0040): an old client drops a message type it does not know, and an old hub
+counts a `report` as one violation out of five.
 
 | Version | Wire                                                                              |
 | ------- | --------------------------------------------------------------------------------- |
@@ -684,6 +771,7 @@ added at version 2 for exactly that reason.
 | Speed                                  | 250 km/h reported; 280 km/h implied between two positions |
 | Waves                                  | one per 5 s per driver                                    |
 | `where` asks                           | one per 2 s per connection                                |
+| Reports                                | one per 60 s per connection; 50 live per cell             |
 
 A **violation** is a message that failed the guard, arrived too large, or broke a rate or
 speed rule marked as one above. Five on one socket close it with `4008`. Below that, a
@@ -700,8 +788,9 @@ one misbehaving client, not a fleet.
 | Data                                                                         | Where                                                                    | Lifetime                                                   |
 | ---------------------------------------------------------------------------- | ------------------------------------------------------------------------ | ---------------------------------------------------------- |
 | Positions, presence                                                          | Hub memory                                                               | 60 s after the last update; gone on hibernation            |
-| Socket profile (id, model, colour, nick, cells, hidden, spectator, since, v) | The WebSocket attachment                                                 | The life of the socket. Never a position.                  |
+| Socket profile (id, model, colour, nick, status, cells, hidden, spectator, since, v) | The WebSocket attachment                                          | The life of the socket. Never a position.                  |
 | Held waves, handles, what each connection holds                              | Hub memory                                                               | Until settled or the next hibernation                      |
+| Reports (kind, position, last confirmation, count; driver ids behind them)   | Hub memory                                                               | 30 or 60 min after the last confirmation; gone on hibernation. Never a driver id on the wire |
 | Lifetime wave count, `w:<id>`                                                | Hub storage                                                              | Until the driver has not waved for 180 days                |
 | Last wave time, `wt:<id>`                                                    | Hub storage                                                              | Same; it is what the 180 days are measured from            |
 | Waves per cell per day, `c:<cell>:<yyyy-mm-dd>`                              | Hub storage, then D1                                                     | Handed to D1 by the daily harvest and deleted from the hub |
@@ -795,6 +884,8 @@ All in `packages/protocol/src/constants.ts` unless noted.
 | `RATE_WAVE_MS`                                                                       | 5,000                   | 8.1 |
 | `WAVE_BACK_WINDOW_MS`                                                                | 4,000                   | 8.1 |
 | `WAVE_HOLD_MS`                                                                       | 3,000                   | 8.4 |
+| `RATE_REPORT_MS` / `REPORT_MERGE_M` / `REPORT_MAX_OFFSET_M`                          | 60,000 / 300 / 1,000    | 8a  |
+| `REPORT_TTL_MS` (police / accident), `MAX_REPORTS_PER_CELL`, `REPORT_ALERT_M`        | 30 / 60 min, 50, 1,000  | 8a  |
 | `RATE_VIOLATIONS_TO_CLOSE`                                                           | 5                       | 11  |
 | `MAX_MSG_BYTES`                                                                      | 1,024                   | 11  |
 | `MAX_SOCKETS_PER_CELL` / `MAX_SOCKETS_PER_HUB`                                       | 1,000 / 2,000           | 11  |
@@ -820,3 +911,4 @@ All in `packages/protocol/src/constants.ts` unless noted.
 | [0031](decisions/0031-the-two-halves-are-tested-against-each-other.md)    | Departures are per subscriber; the round-trip suite                                                   |
 | [0033](decisions/0033-interest-and-the-compact-wire.md)                   | Interest filtering, handles, tuples; what a client lets go of                                         |
 | [0039](decisions/0039-a-wave-the-hub-cannot-place-is-held-not-refused.md) | Held waves and `where`                                                                                |
+| [0040](decisions/0040-a-status-a-report-and-a-voice.md)                   | A status from a closed list; reports placed by the hub, held in memory, naming nobody; the voice      |

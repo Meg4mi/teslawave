@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react';
-import type { CarColourId, TeslaModel } from '@teslawave/protocol';
+import type { CarColourId, StatusId, TeslaModel } from '@teslawave/protocol';
 import { Button } from '../ui/primitives';
 import { CarSvg } from '../ui/CarSvg';
 import { CarPicker, type CarChoice } from './CarPicker';
@@ -7,7 +7,12 @@ import { useCopy } from '../i18n';
 import { Disclaimer } from '../ui/Disclaimer';
 import './onboarding.css';
 
-export type OnboardingResult = { model: TeslaModel; colour: CarColourId; nick?: string };
+export type OnboardingResult = {
+  model: TeslaModel;
+  colour: CarColourId;
+  nick?: string;
+  status?: StatusId;
+};
 
 export type LivePulse = { online: number; wavesToday: number };
 
@@ -30,7 +35,7 @@ export function Onboarding({
   pulse: LivePulse | null;
 }): ReactNode {
   const copy = useCopy();
-  const [car, setCar] = useState<CarChoice>({ model: '3', colour: 'pearl', nick: '' });
+  const [car, setCar] = useState<CarChoice>({ model: '3', colour: 'pearl', nick: '', status: null });
 
   return (
     <div className="onboarding">
@@ -83,6 +88,7 @@ export function Onboarding({
                 model: car.model,
                 colour: car.colour,
                 ...(car.nick.trim() ? { nick: car.nick.trim() } : {}),
+                ...(car.status === null ? {} : { status: car.status }),
               })
             }
           >

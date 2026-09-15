@@ -24,6 +24,7 @@ test('you can change your car after onboarding, and it sticks', async ({ page })
   await page.getByRole('button', { name: 'Model Y', exact: true }).click();
   await page.getByRole('button', { name: 'Deep Blue', exact: true }).click();
   await page.getByRole('textbox').fill('Nine');
+  await page.getByRole('button', { name: 'On a road trip', exact: true }).click();
   await page.getByRole('button', { name: 'Save', exact: true }).click();
 
   await expect(page.getByText('Your car is updated.')).toBeVisible();
@@ -31,6 +32,7 @@ test('you can change your car after onboarding, and it sticks', async ({ page })
     model: 'Y',
     colour: 'deepblue',
     nick: 'Nine',
+    status: 'roadtrip',
   });
 
   // The identity itself must survive: changing your paint is not becoming a new driver.

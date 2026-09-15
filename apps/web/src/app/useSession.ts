@@ -1,9 +1,13 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react';
 import {
+  CELL_PRECISION,
   PROTOCOL_VERSION,
   WAVE_BACK_WINDOW_MS,
   WAVE_PROMPT_TTL_MS,
+  encode,
   hubOf,
+  toWireAt,
+  type ReportKind,
   type ServerMsg,
   type TeslaModel,
 } from '@teslawave/protocol';
@@ -26,6 +30,7 @@ import {
 } from '../sim/world';
 import type { Identity, Prefs } from '../identity/store';
 import { play, setMuted } from '../ui/sound';
+import { setVoice, setVoiceLang, speak } from '../ui/voice';
 import { useCopy } from '../i18n';
 import type { Renderer } from '../overlay/renderer';
 import type { WaveCardContent } from '../screens/WaveCard';
@@ -59,6 +64,8 @@ export type Session = {
   backFrom: WaveBack | null;
   /** Send a wave. Says so on screen if it could not go out at all. */
   wave: (id: string) => void;
+  /** Flag police or an accident where the car is now. Says so on screen either way. */
+  report: (kind: ReportKind) => void;
 };
 
 /**
@@ -87,6 +94,8 @@ export function useSession({
   });
   const netRef = useRef<Net | null>(null);
   const sentWaves = useRef(new Map<string, number>());
+  /** The last fix as sent, which is where a report is placed. */
+  const lastFix = useRef<{ lat: number; lng: number } | null>(null);
 
   const [status, setStatus] = useState<NetStatus>('idle');
   const [parked, setParked] = useState(false);
@@ -131,6 +140,8 @@ export function useSession({
         const isWaveBack = sentAt !== undefined && Date.now() - sentAt < WAVE_BACK_WINDOW_MS;
         rendererRef.current?.addWave({ kind: 'received', fromId: msg.from.id, toId: null });
         play('received');
+        // The voice says what the card shows, for the driver whose eyes are on the road.
+        speak(isWaveBack ? copy.voice.back(msg.from) : copy.voice.received(msg.from));
         bumpSelfWaves();
         celebrate();
         const at = Date.now();
@@ -140,6 +151,7 @@ export function useSession({
           colour: msg.from.colour,
           back: isWaveBack,
           ...(msg.from.nick === undefined ? {} : { nick: msg.from.nick }),
+          ...(msg.from.status === undefined ? {} : { status: msg.from.status }),
         });
         setFlashId(at);
         // A nod you did not start is one you can return. One you did start is already done.
@@ -176,8 +188,43 @@ export function useSession({
           showToast(why);
         }
       }
+      if (msg.t === 'reported') {
+        if (msg.ok) showToast(copy.report.sent);
+        else
+          showToast(
+            msg.reason === 'hidden'
+              ? copy.report.hidden
+              : msg.reason === 'rate'
+                ? copy.report.tooSoon
+                : copy.report.nofix,
+          );
+      }
     },
     [showToast, celebrate, copy, rendererRef],
+  );
+
+  /**
+   * A report goes to the hub that owns the cell the car is in, with the car's own position:
+   * the hub places it there, or refuses it, and either way answers with `reported`. The
+   * refusals a driver can do something about are said as such; one they cannot is the map's.
+   */
+  const report = useCallback(
+    (kind: ReportKind): void => {
+      const fix = lastFix.current;
+      if (!fix || spectator) {
+        showToast(spectator ? copy.report.hidden : copy.report.nofix);
+        return;
+      }
+      if (!prefs.sharing) {
+        showToast(copy.report.hidden);
+        return;
+      }
+      const hub = hubOf(encode(fix.lat, fix.lng, CELL_PRECISION));
+      const sent = netRef.current?.send({ t: 'report', kind, at: toWireAt(fix) }, hub);
+      if (!sent) showToast(copy.report.nofix);
+      else play('sent');
+    },
+    [showToast, copy, spectator, prefs.sharing],
   );
 
   const wave = useCallback(
@@ -242,6 +289,7 @@ export function useSession({
       colour: profileRef.current?.colour ?? 'pearl',
       spectator,
       ...(profileRef.current?.nick === undefined ? {} : { nick: profileRef.current.nick }),
+      ...(profileRef.current?.status === undefined ? {} : { status: profileRef.current.status }),
     });
     return () => {
       net.stop();
@@ -259,6 +307,7 @@ export function useSession({
       colour: identity.colour,
       spectator,
       ...(identity.nick === undefined ? {} : { nick: identity.nick }),
+      ...(identity.status === undefined ? {} : { status: identity.status }),
     });
   }, [identity, spectator]);
 
@@ -300,6 +349,15 @@ export function useSession({
     setMuted(prefs.muted);
   }, [prefs.muted]);
 
+  useEffect(() => {
+    setVoice(prefs.voice);
+  }, [prefs.voice]);
+
+  // The voice speaks the language the screen does.
+  useEffect(() => {
+    setVoiceLang(copy.voice.lang);
+  }, [copy]);
+
   // Anonymous frame timings, only while the driver has said yes (ADR-0027).
   useEffect(() => {
     if (!identity || !prefs.perfBeacon) return;
@@ -311,6 +369,7 @@ export function useSession({
   useEffect(() => {
     if (!fix) return;
     const reported = { lat: fix.lat, lng: fix.lng, heading: fix.heading, speed: fix.speed };
+    lastFix.current = reported;
     setSelfPlacement(reported);
     setSelfReported(reported);
     netRef.current?.update(reported);
@@ -350,5 +409,6 @@ export function useSession({
     flashId,
     backFrom,
     wave,
+    report,
   };
 }

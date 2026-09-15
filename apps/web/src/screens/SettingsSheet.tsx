@@ -4,6 +4,7 @@ import { CarSvg } from '../ui/CarSvg';
 import { ChevronRightIcon } from '../ui/icons';
 import { LOCALES, LOCALE_NAMES, useCopy, useLocale, useSetLocale } from '../i18n';
 import { Disclaimer } from '../ui/Disclaimer';
+import { speak } from '../ui/voice';
 import type { Identity, Prefs } from '../identity/store';
 
 /**
@@ -80,6 +81,7 @@ export function SettingsSheet({
               <span className="settings__hint">
                 {identity.nick ? `${copy.cars.model(identity.model)} · ` : ''}
                 {copy.cars.colour(identity.colour)}
+                {identity.status ? ` · ${copy.status.label(identity.status)}` : ''}
                 <span className="settings__tap"> · {copy.garage.tapHint}</span>
               </span>
             </span>
@@ -110,6 +112,23 @@ export function SettingsSheet({
             checked={!prefs.muted}
             label={copy.settings.sound}
             onChange={(on) => onChange({ muted: !on })}
+          />
+        </div>
+
+        <div className="settings__row">
+          <span className="settings__label">
+            {copy.voice.title}
+            <span className="settings__hint">{copy.voice.hint}</span>
+          </span>
+          <Switch
+            checked={prefs.voice}
+            label={copy.voice.title}
+            onChange={(voice) => {
+              onChange({ voice });
+              // Heard once, here, so the driver knows what the switch did without waiting
+              // for somebody to wave.
+              if (voice) speak(copy.voice.hello, true);
+            }}
           />
         </div>
 

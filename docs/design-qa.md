@@ -29,10 +29,20 @@ demand so they can be judged side by side.
       sender, even if their window had already run out.
 - [ ] Every part of a wave is transform, opacity, or a canvas stroke; the edge flash leaves the
       DOM within a second (ADR-0022).
+- [ ] **Report ahead** — a pin lands up the road with one ring, a warm toast names it with the
+      distance, the received chime plays, and the robot voice says it once. The line at the
+      foot counts the metres down and goes when the pin is behind you (ADR-0040).
 
 ## The rest
 
 - [ ] Milestone card at wave 1, and it is personal: no ranking, no comparison.
+- [ ] The robot voice says who waved, with their status as an aside, in the screen's language;
+      it is silent under the mute and off under its own switch, and turning the switch on is
+      heard. A screen with no voices is simply quiet, and the card and chime still land.
+- [ ] A status chosen in the garage shows on the settings row, the car card and the wave card
+      of the other screen, and "None" clears it.
+- [ ] The Report sheet is two hand-sized buttons and one sentence; a spectator or an invisible
+      driver is told to turn location or visibility on, not left guessing.
 - [ ] Trails visible and fading; traffic reads as light painting from above.
 - [ ] HUD legible over both dark ground and a bright motorway.
 - [ ] Roads, water and labels are all clearly visible on the map, at the floors in ADR-0006.

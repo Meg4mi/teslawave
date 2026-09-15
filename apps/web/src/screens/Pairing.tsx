@@ -41,6 +41,7 @@ export function ShowPairingSheet({
         model: identity.model,
         colour: identity.colour,
         ...(identity.nick === undefined ? {} : { nick: identity.nick }),
+        ...(identity.status === undefined ? {} : { status: identity.status }),
       }),
     })
       .then((res) => (res.ok ? (res.json() as Promise<{ code: string; expiresAt: number }>) : null))
@@ -93,7 +94,13 @@ export function EnterCodeSheet({
   onPaired,
   onClose,
 }: {
-  onPaired: (identity: { secret: string; model: string; colour: string; nick?: string }) => void;
+  onPaired: (identity: {
+    secret: string;
+    model: string;
+    colour: string;
+    nick?: string;
+    status?: string;
+  }) => void;
   onClose: () => void;
 }): ReactNode {
   const copy = useCopy();
@@ -112,7 +119,7 @@ export function EnterCodeSheet({
       });
       if (!res.ok) throw new Error('rejected');
       const body = (await res.json()) as {
-        identity: { secret: string; model: string; colour: string; nick?: string };
+        identity: { secret: string; model: string; colour: string; nick?: string; status?: string };
       };
       onPaired(body.identity);
     } catch {

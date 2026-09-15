@@ -129,6 +129,31 @@ export const BackspaceIcon = ({ size }: IconProps): ReactNode => (
   </Svg>
 );
 
+/** Report: a flag on a pole, the thing you plant where something is. */
+export const FlagIcon = ({ size }: IconProps): ReactNode => (
+  <Svg size={size}>
+    <path d="M6 21V4" />
+    <path d="M6 4.5h11.5l-2.5 4 2.5 4H6" />
+  </Svg>
+);
+
+/** Police: a badge. */
+export const BadgeIcon = ({ size }: IconProps): ReactNode => (
+  <Svg size={size}>
+    <path d="M12 2.8l7 2.8v5.6c0 4.4-3 8.1-7 9.8-4-1.7-7-5.4-7-9.8V5.6Z" />
+    <circle cx="12" cy="11" r="2.2" />
+  </Svg>
+);
+
+/** Accident: a warning triangle. */
+export const WarningIcon = ({ size }: IconProps): ReactNode => (
+  <Svg size={size}>
+    <path d="M12 3.5 21.5 20h-19Z" />
+    <path d="M12 9.5v5" />
+    <circle cx="12" cy="17" r="0.9" fill="currentColor" stroke="none" />
+  </Svg>
+);
+
 /** The wave: rings leaving a point. */
 export const WaveIcon = ({ size }: IconProps): ReactNode => (
   <Svg size={size}>

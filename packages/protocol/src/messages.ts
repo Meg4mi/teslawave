@@ -7,12 +7,16 @@ import {
 } from './constants.js';
 import { isSecret } from './hash.js';
 import { isColourId, isModel, type CarColourId, type TeslaModel } from './models.js';
+import { isReportKind, type Report, type ReportKind } from './reports.js';
+import { isStatusId, type StatusId } from './status.js';
 
 export type CarPublic = {
   id: string;
   model: TeslaModel;
   colour: string;
   nick?: string;
+  /** A word about the drive, chosen from STATUSES, shown to anyone who looks at the car. */
+  status?: StatusId;
   waves: number;
   /** server timestamp of the first hello for this id */
   since: number;
@@ -46,6 +50,7 @@ export type CarMeta = {
   model: TeslaModel;
   colour: string;
   nick?: string;
+  status?: StatusId;
   since: number;
   cell: string;
 };
@@ -78,6 +83,8 @@ export type ClientMsg =
       model: TeslaModel;
       colour: CarColourId;
       nick?: string;
+      /** Absent means no status; an old hub ignores it and an old client never sends it. */
+      status?: StatusId;
       cells: string[];
       spectator?: boolean;
       /**
@@ -101,7 +108,14 @@ export type ClientMsg =
   | { t: 'sub'; cells: string[] }
   | { t: 'hide' }
   | { t: 'show' }
-  | { t: 'wave'; to: string };
+  | { t: 'wave'; to: string }
+  /**
+   * Flag something on the road, where this car is now. `at` is the client's own position at
+   * WIRE_COORD_SCALE, as in `hello`: a hub that has just woken from hibernation holds no
+   * position for anyone, and a report is worth nothing a minute later. When the hub does
+   * hold one, the two have to agree (REPORT_MAX_OFFSET_M).
+   */
+  | { t: 'report'; kind: ReportKind; at: readonly [lat: number, lng: number] };
 
 /**
  * Why a wave did not go through. `hidden` is the driver's own doing (invisible mode, or a
@@ -109,6 +123,12 @@ export type ClientMsg =
  * none came in time.
  */
 export type WaveFailReason = 'range' | 'offline' | 'rate' | 'hidden' | 'nofix';
+
+/**
+ * Why a report was not placed. `hidden` is the driver's own doing; `rate` is one a minute;
+ * `range` is a position the hub could not reconcile with where it knows the car to be.
+ */
+export type ReportFailReason = 'rate' | 'hidden' | 'range';
 
 export type ServerMsg =
   | { t: 'welcome'; now: number; you: CarPublic | null; cells: string[]; snapshot: CarState[] }
@@ -142,6 +162,14 @@ export type ServerMsg =
     }
   | { t: 'wave'; from: CarPublic; ts: number }
   | { t: 'waved'; to: string; ok: boolean; reason?: WaveFailReason }
+  /**
+   * The reports in one cell that changed: new, confirmed, or gone. Sent to every subscriber
+   * of the cell on the same tick as the diffs, and in full when a cell is first subscribed.
+   * Not filtered by interest: a report is rare and a cell holds a handful at most, so the
+   * client decides what is near enough to draw or to say.
+   */
+  | { t: 'reports'; cell: string; upd: Report[]; gone: string[] }
+  | { t: 'reported'; ok: boolean; reason?: ReportFailReason }
   /**
    * The hub has no position for this connection and needs one now, because a wave is
    * waiting on it. The client answers with its last fix at once, outside the send policy.
@@ -220,6 +248,8 @@ export function parseClientMsg(raw: unknown): ClientMsg | null {
       // it gets told to upgrade rather than closed on.
       const v = value['v'];
       const at = parseWireAt(value['at']);
+      // A status this build does not know is dropped, not refused: the list can grow.
+      const status = value['status'];
       return {
         t: 'hello',
         secret: value['secret'],
@@ -228,6 +258,7 @@ export function parseClientMsg(raw: unknown): ClientMsg | null {
         cells,
         v: isFiniteNum(v) && v >= 0 && v < 1_000 ? Math.floor(v) : LEGACY_PROTOCOL_VERSION,
         ...(nick === undefined ? {} : { nick }),
+        ...(isStatusId(status) ? { status } : {}),
         ...(value['spectator'] === true ? { spectator: true } : {}),
         ...(at === null ? {} : { at }),
       };
@@ -251,6 +282,11 @@ export function parseClientMsg(raw: unknown): ClientMsg | null {
       return { t: 'show' };
     case 'wave':
       return isId(value['to']) ? { t: 'wave', to: value['to'] } : null;
+    case 'report': {
+      const at = parseWireAt(value['at']);
+      if (!isReportKind(value['kind']) || at === null) return null;
+      return { t: 'report', kind: value['kind'], at };
+    }
     default:
       return null;
   }
@@ -266,6 +302,7 @@ const parseCarState = (v: unknown): CarState | null => {
   if (!isFiniteNum(heading) || !isFiniteNum(speed)) return null;
   if (!isCell(cell)) return null;
   const nick = cleanNick(v['nick']);
+  const status = v['status'];
   return {
     id,
     model,
@@ -279,6 +316,7 @@ const parseCarState = (v: unknown): CarState | null => {
     ts,
     cell,
     ...(nick === undefined ? {} : { nick }),
+    ...(isStatusId(status) ? { status } : {}),
   };
 };
 
@@ -288,7 +326,17 @@ const parseCarMeta = (v: unknown): CarMeta | null => {
   if (!isFiniteNum(h) || !isId(id) || !isModel(model) || typeof colour !== 'string') return null;
   if (!isFiniteNum(since) || !isCell(cell)) return null;
   const nick = cleanNick(v['nick']);
-  return { h, id, model, colour, since, cell, ...(nick === undefined ? {} : { nick }) };
+  const status = v['status'];
+  return {
+    h,
+    id,
+    model,
+    colour,
+    since,
+    cell,
+    ...(nick === undefined ? {} : { nick }),
+    ...(isStatusId(status) ? { status } : {}),
+  };
 };
 
 /** A fixed-length tuple of finite numbers, or nothing. Length is the whole schema here. */
@@ -321,7 +369,27 @@ const parseCarPublic = (v: unknown): CarPublic | null => {
   if (!isId(id) || !isModel(model) || typeof colour !== 'string') return null;
   if (!isFiniteNum(waves) || !isFiniteNum(since)) return null;
   const nick = cleanNick(v['nick']);
-  return { id, model, colour, waves, since, ...(nick === undefined ? {} : { nick }) };
+  const status = v['status'];
+  return {
+    id,
+    model,
+    colour,
+    waves,
+    since,
+    ...(nick === undefined ? {} : { nick }),
+    ...(isStatusId(status) ? { status } : {}),
+  };
+};
+
+/** A report off the wire. A malformed one is dropped, never drawn half-made. */
+const parseReport = (v: unknown): Report | null => {
+  if (!isObj(v)) return null;
+  const { id, kind, lat, lng, at, n } = v;
+  if (!isId(id) || !isReportKind(kind)) return null;
+  if (!isFiniteNum(lat) || lat < -90 || lat > 90) return null;
+  if (!isFiniteNum(lng) || lng < -180 || lng > 180) return null;
+  if (!isFiniteNum(at) || at < 0 || !isFiniteNum(n) || n < 1) return null;
+  return { id, kind, lat, lng, at, n: Math.floor(n) };
 };
 
 /** Server messages are parsed too: a corrupt frame must never poison the world state. */
@@ -405,6 +473,20 @@ export function parseServerMsg(raw: unknown): ServerMsg | null {
         reason === 'hidden' ||
         reason === 'nofix';
       return { t: 'waved', to: value['to'], ok: value['ok'], ...(valid ? { reason } : {}) };
+    }
+    case 'reports': {
+      if (!isCell(value['cell'])) return null;
+      const upd = Array.isArray(value['upd'])
+        ? value['upd'].map(parseReport).filter((r): r is Report => r !== null)
+        : [];
+      const gone = Array.isArray(value['gone']) ? value['gone'].filter(isId) : [];
+      return { t: 'reports', cell: value['cell'], upd, gone };
+    }
+    case 'reported': {
+      if (typeof value['ok'] !== 'boolean') return null;
+      const reason = value['reason'];
+      const valid = reason === 'rate' || reason === 'hidden' || reason === 'range';
+      return { t: 'reported', ok: value['ok'], ...(valid ? { reason } : {}) };
     }
     case 'where':
       return { t: 'where' };

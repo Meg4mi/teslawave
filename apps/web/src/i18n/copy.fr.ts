@@ -3,9 +3,13 @@ import {
   MODEL_LABELS,
   PARKED_HIDE_MS,
   PRESENCE_EXPIRY_MS,
+  REPORT_ALERT_M,
+  REPORT_TTL_MS,
   colourOf,
   isColourId,
   type CarColourId,
+  type ReportKind,
+  type StatusId,
   type TeslaModel,
 } from '@teslawave/protocol';
 import type { Copy } from './copy.en';
@@ -70,6 +74,40 @@ const theCar = (model: TeslaModel, colour: string): string =>
 /** "Une Model Y bleue" / "Un Cybertruck inox", at the start of a sentence. */
 const aCar = (model: TeslaModel, colour: string): string =>
   `${FEMININE[model] ? 'Une' : 'Un'} ${describe(model, colour)}`;
+
+/** "La Model Y bleue" / "Le Cybertruck inox", at the start of a sentence. */
+const TheCar = (model: TeslaModel, colour: string): string =>
+  `${FEMININE[model] ? 'La' : 'Le'} ${describe(model, colour)}`;
+
+const STATUS_LABELS: Record<StatusId, string> = {
+  roadtrip: 'En road trip',
+  charging: 'Vers une borne',
+  commute: 'Trajet quotidien',
+  cruising: 'En balade',
+  newowner: 'Nouveau propriétaire',
+};
+
+/** Le même mot au milieu d’une phrase : « Ghost, en road trip, vous a fait signe ». */
+const STATUS_ASIDES: Record<StatusId, string> = {
+  roadtrip: 'en road trip',
+  charging: 'en route vers une borne',
+  commute: 'sur son trajet quotidien',
+  cruising: 'en balade',
+  newowner: 'tout nouveau propriétaire',
+};
+
+const REPORT_LABELS: Record<ReportKind, string> = { police: 'Police', accident: 'Accident' };
+
+/** Arrondi comme on le dirait : 600 m, puis 1,2 km. */
+const distance = (metres: number): string =>
+  metres < 950
+    ? `${n(Math.max(50, Math.round(metres / 50) * 50))} m`
+    : `${n(Math.round(metres / 100) / 10)} km`;
+
+const distanceSpoken = (metres: number): string =>
+  metres < 950
+    ? `${n(Math.max(50, Math.round(metres / 50) * 50))} mètres`
+    : `${n(Math.round(metres / 100) / 10)} kilomètres`;
 
 export const FR: Copy = {
   brand: BRAND.name,
@@ -153,10 +191,54 @@ export const FR: Copy = {
     title: 'Votre voiture',
     hint: 'Changez ce que voient les autres conducteurs. Effet immédiat pour tout le monde autour de vous.',
     open: 'Modifier',
-    tapHint: 'Touchez pour changer de modèle, de couleur ou de nom',
+    tapHint: 'Touchez pour changer de modèle, de couleur, de nom ou de statut',
     save: 'Enregistrer',
     cancel: 'Annuler',
     saved: 'Votre voiture est à jour.',
+  },
+
+  status: {
+    title: 'Statut (facultatif)',
+    hint: 'Un mot sur votre trajet, pour les conducteurs qui regardent votre voiture.',
+    none: 'Aucun',
+    label: (status: StatusId): string => STATUS_LABELS[status],
+    aside: (status: StatusId): string => STATUS_ASIDES[status],
+  },
+
+  report: {
+    control: 'Signaler',
+    title: 'Signaler',
+    hint: `Placé là où se trouve votre voiture et partagé avec les conducteurs alentour pendant ${n(REPORT_TTL_MS.police / 60_000)} à ${n(REPORT_TTL_MS.accident / 60_000)} minutes. Rien ne dit qui l’a signalé.`,
+    kind: (kind: ReportKind): string => REPORT_LABELS[kind],
+    police: 'Police',
+    policeHint: 'Une patrouille ou un contrôle devant.',
+    accident: 'Accident',
+    accidentHint: 'Un accrochage ou une voiture arrêtée sur la route.',
+    sent: 'Signalé. Les conducteurs alentour le verront.',
+    hidden: 'Redevenez visible pour signaler.',
+    tooSoon: 'Un signalement par minute.',
+    nofix: 'La carte a perdu votre position. Réessayez dans un instant.',
+    nearby: (kind: ReportKind, metres: number): string =>
+      `${REPORT_LABELS[kind]} ${kind === 'police' ? 'signalée' : 'signalé'} à ${distance(metres)}`,
+    confirmed: (count: number): string =>
+      count === 1 ? 'signalé par 1 conducteur' : `signalé par ${n(count)} conducteurs`,
+    within: `Dit une fois, à moins de ${n(REPORT_ALERT_M / 1000)} km`,
+  },
+
+  voice: {
+    title: 'Voix robot',
+    hint: 'Annonce qui vous a salué, à voix haute, avec une voix venue de 2049.',
+    hello: 'Voix activée. Je surveille la route avec vous.',
+    received: (car: { model: TeslaModel; colour: string; nick?: string; status?: StatusId }): string => {
+      const who = car.nick ?? TheCar(car.model, car.colour);
+      const aside = car.status ? `, ${STATUS_ASIDES[car.status]},` : '';
+      return `${who}${aside} vous a fait signe.`;
+    },
+    back: (car: { model: TeslaModel; colour: string; nick?: string }): string =>
+      `${car.nick ?? TheCar(car.model, car.colour)} a répondu à votre salut.`,
+    report: (kind: ReportKind, metres: number): string =>
+      `${REPORT_LABELS[kind]} ${kind === 'police' ? 'signalée' : 'signalé'} à ${distanceSpoken(metres)}.`,
+    lang: 'fr-FR',
   },
 
   howTo: {
@@ -284,6 +366,7 @@ export const FR: Copy = {
     orientationNorth: 'La carte garde le nord en haut',
     settings: 'Réglages',
     close: 'Fermer',
+    report: 'Signaler',
   },
 
   privacy: {
@@ -294,7 +377,8 @@ export const FR: Copy = {
     leaves: [
       `Votre position GPS, telle quelle, tant que vous êtes visible et en mouvement. Une voiture à l’arrêt depuis ${n(PARKED_HIDE_MS / 60_000)} minutes est masquée jusqu’à ce qu’elle roule, pour que personne ne puisse voir où vous vous arrêtez. La position sert uniquement à vous afficher aux conducteurs autour de vous.`,
       'Votre cap et votre vitesse, pour que les autres voitures glissent au lieu de sauter.',
-      'Le modèle et la couleur que vous avez choisis, et un pseudo si vous en avez saisi un.',
+      'Le modèle et la couleur que vous avez choisis, un pseudo si vous en avez saisi un, et un statut si vous en avez choisi un.',
+      `Si vous signalez la police ou un accident : l’endroit où se trouvait votre voiture au moment du geste, partagé avec les conducteurs de la même zone de carte pendant ${n(REPORT_TTL_MS.police / 60_000)} à ${n(REPORT_TTL_MS.accident / 60_000)} minutes, gardé en mémoire seulement, et sans lien avec vous.`,
       'Un secret aléatoire généré dans votre navigateur. Les autres conducteurs n’en voient qu’une empreinte, qui n’est liée ni à vous ni à Tesla et ne permet pas de se faire passer pour vous.',
     ],
     keptTitle: 'Ce qui est conservé',

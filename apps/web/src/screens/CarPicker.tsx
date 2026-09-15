@@ -2,14 +2,22 @@ import type { CSSProperties, ReactNode } from 'react';
 import {
   CAR_COLOURS,
   NICK_MAX_LEN,
+  STATUSES,
   TESLA_MODELS,
   type CarColourId,
+  type StatusId,
   type TeslaModel,
 } from '@teslawave/protocol';
 import { CheckIcon } from '../ui/icons';
 import { useCopy } from '../i18n';
 
-export type CarChoice = { model: TeslaModel; colour: CarColourId; nick: string };
+export type CarChoice = {
+  model: TeslaModel;
+  colour: CarColourId;
+  nick: string;
+  /** Null is "none", which is the usual answer and the first chip. */
+  status: StatusId | null;
+};
 
 /**
  * Choosing your car: the model, the paint, the name. Shared by onboarding and by the garage
@@ -25,7 +33,7 @@ export function CarPicker({
   onChange: (patch: Partial<CarChoice>) => void;
 }): ReactNode {
   const copy = useCopy();
-  const { model, colour, nick } = value;
+  const { model, colour, nick, status } = value;
 
   return (
     <>
@@ -100,6 +108,36 @@ export function CarPicker({
           onChange={(event) => onChange({ nick: event.target.value })}
         />
       </label>
+
+      {/* Chips, not a field: nothing typed on the car screen, nothing to moderate (ADR-0040).
+          Every chip is visible at once, "None" first, so the choice is one tap and undoable. */}
+      <fieldset className="field">
+        <legend className="field__label eyebrow">{copy.status.title}</legend>
+        <div className="chips" role="group" aria-label={copy.status.title}>
+          <button
+            type="button"
+            data-touch
+            className={`chip ${status === null ? 'chip--on' : ''}`.trim()}
+            aria-pressed={status === null}
+            onClick={() => onChange({ status: null })}
+          >
+            {copy.status.none}
+          </button>
+          {STATUSES.map((s) => (
+            <button
+              key={s}
+              type="button"
+              data-touch
+              className={`chip ${s === status ? 'chip--on' : ''}`.trim()}
+              aria-pressed={s === status}
+              onClick={() => onChange({ status: s })}
+            >
+              {copy.status.label(s)}
+            </button>
+          ))}
+        </div>
+        <p className="field__hint">{copy.status.hint}</p>
+      </fieldset>
     </>
   );
 }

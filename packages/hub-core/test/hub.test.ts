@@ -6,9 +6,11 @@ import {
   CLOSE_WRONG_HUB,
   INTEREST_RADIUS_M,
   LEGACY_PROTOCOL_VERSION,
+  MAX_REPORTS_PER_CELL,
   MAX_SOCKETS_PER_CELL,
   PRESENCE_EXPIRY_MS,
   PROTOCOL_VERSION,
+  RATE_REPORT_MS,
   SERVER_TICK_MS,
   WAVE_HOLD_MS,
   WIRE_COORD_SCALE,
@@ -1093,5 +1095,214 @@ describe('interest', () => {
     expect(seen.length).toBeLessThan(200);
     // The number that matters: the old wire would have put 200 x 210 bytes on this socket.
     expect(bytes).toBeLessThan(42_000 / 2);
+  });
+});
+
+const reportsFor = (effects: Effect[], to: string): Extract<ServerMsg, { t: 'reports' }>[] =>
+  sends(effects, to).filter((m): m is Extract<ServerMsg, { t: 'reports' }> => m.t === 'reports');
+
+const reportedFor = (effects: Effect[], to: string): Extract<ServerMsg, { t: 'reported' }>[] =>
+  sends(effects, to).filter((m): m is Extract<ServerMsg, { t: 'reported' }> => m.t === 'reported');
+
+const wireAt = (p: { lat: number; lng: number }): readonly [number, number] => [
+  Math.round(p.lat * WIRE_COORD_SCALE),
+  Math.round(p.lng * WIRE_COORD_SCALE),
+];
+
+const report = (key: string, kind: 'police' | 'accident', at: { lat: number; lng: number }): Effect[] =>
+  learned(onMessage(state, key, { t: 'report', kind, at: wireAt(at) }, now));
+
+describe('a status', () => {
+  it('travels with the car: in its description, and with its wave', () => {
+    hello('a', 'car-a', [CELL], { status: 'roadtrip' } as Partial<ClientMsg>);
+    hello('b', 'car-b');
+    pos('a', GENEVA.lat, GENEVA.lng);
+    const near = destination(GENEVA.lat, GENEVA.lng, 90, 100);
+    pos('b', near.lat, near.lng);
+    now += SERVER_TICK_MS;
+    const flushed = flush();
+    const aSeenByB = diff2sFor(flushed, 'b').flatMap((d) => d.meta).find((m) => m.id === ID('car-a'));
+    const bSeenByA = diff2sFor(flushed, 'a').flatMap((d) => d.meta).find((m) => m.id === ID('car-b'));
+    expect(aSeenByB?.status).toBe('roadtrip');
+    expect(bSeenByA).toBeDefined();
+    expect(bSeenByA).not.toHaveProperty('status');
+
+    const out = onMessage(state, 'a', { t: 'wave', to: ID('car-b') }, now);
+    expect(sends(out, 'b')[0]).toMatchObject({ t: 'wave', from: { status: 'roadtrip' } });
+  });
+
+  it('is kept in the profile, so a hibernation wake still knows it', () => {
+    hello('a', 'car-a', [CELL], { status: 'charging' } as Partial<ClientMsg>);
+    const profile = state.sockets.get('a')!;
+    expect(profile.status).toBe('charging');
+    // A fresh hello without one clears it: rebuilt, not patched.
+    hello('a', 'car-a');
+    expect(state.sockets.get('a')).not.toHaveProperty('status');
+  });
+});
+
+describe('reports', () => {
+  const twoCars = (): void => {
+    hello('a', 'car-a');
+    hello('b', 'car-b');
+    pos('a', GENEVA.lat, GENEVA.lng);
+    const near = destination(GENEVA.lat, GENEVA.lng, 90, 100);
+    pos('b', near.lat, near.lng);
+  };
+
+  it('places a report where the car is and tells the whole cell on the next tick', () => {
+    twoCars();
+    const out = report('a', 'police', GENEVA);
+    expect(reportedFor(out, 'a')).toEqual([{ t: 'reported', ok: true }]);
+    // Nothing until the tick: reports ride the same clock as everything else.
+    expect(reportsFor(out, 'b')).toHaveLength(0);
+    now += SERVER_TICK_MS;
+    const flushed = flush();
+    for (const key of ['a', 'b']) {
+      const [msg] = reportsFor(flushed, key);
+      expect(msg?.cell).toBe(CELL);
+      expect(msg?.upd).toHaveLength(1);
+      expect(msg?.upd[0]).toMatchObject({ kind: 'police', n: 1, at: now - SERVER_TICK_MS });
+      expect(msg?.upd[0]?.lat).toBeCloseTo(GENEVA.lat, 4);
+    }
+    expect(hubStats(state).reports).toBe(1);
+  });
+
+  it('says nothing about who reported it', () => {
+    twoCars();
+    report('a', 'accident', GENEVA);
+    now += SERVER_TICK_MS;
+    const serialised = JSON.stringify(reportsFor(flush(), 'b'));
+    expect(serialised).not.toContain(ID('car-a'));
+    expect(serialised).not.toContain('by');
+  });
+
+  it('merges a second driver reporting the same thing nearby into one pin', () => {
+    twoCars();
+    report('a', 'police', GENEVA);
+    now += SERVER_TICK_MS;
+    flush();
+    now += 5_000;
+    const near = destination(GENEVA.lat, GENEVA.lng, 90, 100);
+    report('b', 'police', near);
+    now += SERVER_TICK_MS;
+    const [msg] = reportsFor(flush(), 'a');
+    expect(msg?.upd).toHaveLength(1);
+    expect(msg?.upd[0]).toMatchObject({ n: 2, at: now - SERVER_TICK_MS });
+    expect(hubStats(state).reports).toBe(1);
+  });
+
+  it('keeps a different kind, or the same kind further off, as its own pin', () => {
+    twoCars();
+    report('a', 'police', GENEVA);
+    now += RATE_REPORT_MS;
+    report('a', 'accident', GENEVA);
+    now += RATE_REPORT_MS;
+    const far = destination(GENEVA.lat, GENEVA.lng, 90, 800);
+    pos('a', far.lat, far.lng);
+    report('a', 'police', far);
+    expect(hubStats(state).reports).toBe(3);
+  });
+
+  it('does not count the same driver twice, and does not refuse them either', () => {
+    twoCars();
+    report('a', 'police', GENEVA);
+    now += RATE_REPORT_MS;
+    const out = report('a', 'police', GENEVA);
+    expect(reportedFor(out, 'a')).toEqual([{ t: 'reported', ok: true }]);
+    expect([...state.reports.values()][0]?.n).toBe(1);
+  });
+
+  it('refuses a hidden driver, a second report inside a minute, and a position the car is not at', () => {
+    twoCars();
+    onMessage(state, 'b', { t: 'hide' }, now);
+    expect(reportedFor(report('b', 'police', GENEVA), 'b')[0]).toMatchObject({ ok: false, reason: 'hidden' });
+
+    report('a', 'police', GENEVA);
+    now += 10_000;
+    expect(reportedFor(report('a', 'accident', GENEVA), 'a')[0]).toMatchObject({ ok: false, reason: 'rate' });
+
+    now += RATE_REPORT_MS;
+    // The hub still knows where the car is, and it is not there.
+    pos('a', GENEVA.lat, GENEVA.lng);
+    const elsewhere = destination(GENEVA.lat, GENEVA.lng, 0, 5_000);
+    expect(reportedFor(report('a', 'police', elsewhere), 'a')[0]).toMatchObject({ ok: false, reason: 'range' });
+    expect(hubStats(state).reports).toBe(1);
+  });
+
+  it('takes the position the client gives when it has just woken and holds none', () => {
+    hello('a', 'car-a');
+    // No pos yet: the hub knows the connection and nothing else, as after a wake.
+    const out = report('a', 'accident', GENEVA);
+    expect(reportedFor(out, 'a')).toEqual([{ t: 'reported', ok: true }]);
+    expect([...state.reports.values()][0]?.cell).toBe(CELL);
+  });
+
+  it('refuses a report in a cell another hub owns', () => {
+    hello('a', 'car-a');
+    const away = { lat: GENEVA.lat, lng: GENEVA.lng + 12 };
+    expect(reportedFor(report('a', 'police', away), 'a')[0]).toMatchObject({ ok: false, reason: 'range' });
+  });
+
+  it('hands a late joiner the live reports of the cell, with its hello and with a new cell', () => {
+    hello('a', 'car-a');
+    pos('a', GENEVA.lat, GENEVA.lng);
+    report('a', 'police', GENEVA);
+    now += SERVER_TICK_MS;
+    flush();
+    const joined = hello('c', 'car-c');
+    expect(reportsFor(joined, 'c')[0]?.upd).toHaveLength(1);
+    // Somebody holding only the neighbour, who then drives into this cell.
+    const other = hello('d', 'car-d', [NEIGHBOUR_CELL]);
+    expect(reportsFor(other, 'd')).toHaveLength(0);
+    const subbed = learned(onMessage(state, 'd', { t: 'sub', cells: [NEIGHBOUR_CELL, CELL] }, now));
+    expect(reportsFor(subbed, 'd')[0]?.cell).toBe(CELL);
+  });
+
+  it('lets a report go after its lifetime, and says so', () => {
+    twoCars();
+    report('a', 'police', GENEVA);
+    now += SERVER_TICK_MS;
+    const [placed] = reportsFor(flush(), 'b');
+    const id = placed?.upd[0]?.id;
+    expect(id).toBeDefined();
+    now += 30 * 60_000 + SERVER_TICK_MS;
+    // Somebody moves, so there is a tick.
+    pos('a', GENEVA.lat + 1e-4, GENEVA.lng);
+    const [gone] = reportsFor(flush(), 'b');
+    expect(gone?.gone).toEqual([id]);
+    expect(hubStats(state).reports).toBe(0);
+  });
+
+  it('caps the reports in a cell by letting the oldest go', () => {
+    hello('a', 'car-a');
+    pos('a', GENEVA.lat, GENEVA.lng);
+    // Different drivers, well apart but all inside the cell, so nothing merges.
+    const bounds = decodeBounds(CELL);
+    const row = { lat: (bounds.minLat + bounds.maxLat) / 2, lng: bounds.minLng + 0.01 };
+    for (let i = 0; i < MAX_REPORTS_PER_CELL + 1; i++) {
+      const at = destination(row.lat, row.lng, 90, 350 * i);
+      expect(encode(at.lat, at.lng, CELL_PRECISION)).toBe(CELL);
+      hello(`r${i}`, `reporter-${i}`);
+      pos(`r${i}`, at.lat, at.lng);
+      report(`r${i}`, 'police', at);
+      now += 1_000;
+    }
+    expect(hubStats(state).reports).toBe(MAX_REPORTS_PER_CELL);
+    now += SERVER_TICK_MS;
+    const [msg] = reportsFor(flush(), 'a');
+    expect(msg?.gone).toHaveLength(1);
+  });
+
+  it('is never written to storage', () => {
+    twoCars();
+    report('a', 'police', GENEVA);
+    onMessage(state, 'a', { t: 'wave', to: ID('car-b') }, now);
+    now += COUNTER_WRITE_MS + SERVER_TICK_MS;
+    const persisted = flush().filter((e) => e.k === 'persist');
+    expect(persisted.length).toBeGreaterThan(0);
+    const serialised = JSON.stringify(persisted);
+    expect(serialised).not.toContain('police');
+    expect(serialised).not.toContain(String(GENEVA.lat));
   });
 });

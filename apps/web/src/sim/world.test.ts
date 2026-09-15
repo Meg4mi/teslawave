@@ -14,6 +14,7 @@ import {
   dropCells,
   getCar,
   getSummary,
+  reportsNow,
   resetWorld,
   setSelfPlacement,
   setSelfReported,
@@ -324,4 +325,86 @@ describe('cells and reconnects', () => {
     expect(tickWorld(performance.now()).map((c) => c.id).sort()).toEqual(['here', 'there']);
   });
 
+});
+
+describe('reports', () => {
+  const report = (
+    over: Partial<Extract<ServerMsg, { t: 'reports' }>['upd'][number]> = {},
+  ): Extract<ServerMsg, { t: 'reports' }>['upd'][number] => ({
+    id: 'u0-r1',
+    kind: 'police',
+    lat: GENEVA.lat,
+    lng: GENEVA.lng + 0.005,
+    at: Date.now(),
+    n: 1,
+    ...over,
+  });
+  const reportsMsg = (upd: ReturnType<typeof report>[] = [], gone: string[] = []): ServerMsg => ({
+    t: 'reports',
+    cell: 'u0hq',
+    upd,
+    gone,
+  });
+
+  it('holds a report the hub sends, with its distance from the car', () => {
+    apply(reportsMsg([report()]));
+    const [r] = reportsNow();
+    expect(r?.kind).toBe('police');
+    // ~385 m east of Geneva at this latitude.
+    expect(r?.distanceM).toBeGreaterThan(300);
+    expect(r?.distanceM).toBeLessThan(500);
+  });
+
+  it('raises the alert for the nearest report within range, and only that one', () => {
+    apply(reportsMsg([report(), report({ id: 'u0-r2', kind: 'accident', lng: GENEVA.lng + 0.002 })]));
+    tickWorld(performance.now() + 1_000);
+    expect(getSummary().alert).toMatchObject({ id: 'u0-r2', kind: 'accident', n: 1 });
+
+    // Twelve kilometres away: on the map, but nothing to say.
+    resetWorld('me');
+    setSelfReported({ lat: GENEVA.lat, lng: GENEVA.lng });
+    apply(reportsMsg([report({ lng: GENEVA.lng + 0.15 })]));
+    tickWorld(performance.now() + 2_000);
+    expect(reportsNow()).toHaveLength(1);
+    expect(getSummary().alert).toBeNull();
+  });
+
+  it('keeps a confirmed report as the same pin, with a bigger number', () => {
+    apply(reportsMsg([report()]));
+    const first = reportsNow()[0]?.appearedAt;
+    apply(reportsMsg([report({ n: 3, at: Date.now() + 60_000 })]));
+    expect(reportsNow()).toHaveLength(1);
+    expect(reportsNow()[0]?.n).toBe(3);
+    // The entry ring is not played again for a pin that was already there.
+    expect(reportsNow()[0]?.appearedAt).toBe(first);
+  });
+
+  it('drops a report the hub says is gone, and one the cell it is in is let go of', () => {
+    apply(reportsMsg([report(), report({ id: 'u0-r2' })]));
+    apply(reportsMsg([], ['u0-r1']));
+    expect(reportsNow().map((r) => r.id)).toEqual(['u0-r2']);
+    dropCells(['u0hq'], HUB);
+    expect(reportsNow()).toHaveLength(0);
+  });
+
+  it('lets a report lapse on its own clock, hub or no hub', () => {
+    apply(reportsMsg([report({ at: Date.now() - 31 * 60_000 })]));
+    expect(reportsNow()).toHaveLength(1);
+    tickWorld(performance.now());
+    expect(reportsNow()).toHaveLength(0);
+    // An accident lives longer.
+    apply(reportsMsg([report({ id: 'u0-r3', kind: 'accident', at: Date.now() - 31 * 60_000 })]));
+    tickWorld(performance.now());
+    expect(reportsNow()).toHaveLength(1);
+  });
+
+  it('carries a status on a car, from either wire', () => {
+    apply(welcome([car({ status: 'roadtrip' })]));
+    expect(getCar('other')?.status).toBe('roadtrip');
+    apply(diff2('u0hq', { meta: [{ ...meta(1, 'other', 'u0hq'), status: 'charging' }], upd: [wire(1, GENEVA.lat, GENEVA.lng)] }));
+    expect(getCar('other')?.status).toBe('charging');
+    // Cleared when the driver clears it: rebuilt, not patched.
+    apply(diff2('u0hq', { meta: [meta(1, 'other', 'u0hq')], upd: [wire(1, GENEVA.lat, GENEVA.lng)] }));
+    expect(getCar('other')).not.toHaveProperty('status');
+  });
 });

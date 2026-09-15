@@ -36,6 +36,8 @@ export function CarCard({
             </span>
             <span>{copy.card.onlineFor(minutes)}</span>
           </p>
+          {/* Their word about their drive, in the accent: the one line here they chose. */}
+          {car.status ? <p className="card-sheet__status">{copy.status.label(car.status)}</p> : null}
         </div>
       </div>
       <SheetActions>

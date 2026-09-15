@@ -1,4 +1,4 @@
-import type { CarState, ServerMsg, TeslaModel } from '@teslawave/protocol';
+import type { CarState, Report, ServerMsg, StatusId, TeslaModel } from '@teslawave/protocol';
 
 /** Opaque handle for one connection. The Cloudflare adapter maps it to a WebSocket. */
 export type SocketKey = string;
@@ -10,6 +10,7 @@ export type SocketProfile = {
   model: TeslaModel;
   colour: string;
   nick?: string;
+  status?: StatusId;
   cells: string[];
   spectator: boolean;
   hidden: boolean;
@@ -26,6 +27,8 @@ export type SocketProfile = {
 export type SocketRuntime = {
   lastPosAt: number;
   lastWaveAt: number;
+  /** When this connection last placed a report: one a minute (RATE_REPORT_MS). */
+  lastReportAt: number;
   /** When this connection was last asked `where`, so a burst of waves asks it once. */
   askedAt: number;
   violations: number;
@@ -52,6 +55,16 @@ export type HeldWave = {
   from: string;
   to: string;
   at: number;
+};
+
+/**
+ * A report as the hub holds it. `by` is the drivers who have reported it, kept only so a
+ * driver confirming their own report does not count twice; it is memory only, never sent
+ * and never written, and it goes with the report (ADR-0040).
+ */
+export type HubReport = Report & {
+  cell: string;
+  by: Set<string>;
 };
 
 export type Counters = {
@@ -100,6 +113,16 @@ export type HubState = {
   lastFlushAt: number;
   /** Waves waiting on a position. Settled by the next message, never by a timer. */
   held: HeldWave[];
+  /**
+   * What drivers have flagged on the road, by id. Memory only, like presence: a report is a
+   * position, and positions are never written anywhere (ADR-0002). Gone on hibernation, as
+   * presence is; a report that mattered was already on the screens that were there for it.
+   */
+  reports: Map<string, HubReport>;
+  /** cell -> report ids changed since the last flush, and ids gone since. */
+  reportsDirty: Map<string, Set<string>>;
+  reportsGone: Map<string, Set<string>>;
+  nextReportSeq: number;
   counters: Counters;
 };
 

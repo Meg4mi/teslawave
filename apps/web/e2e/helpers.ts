@@ -29,8 +29,9 @@ declare global {
     __tw: {
       cars: () => HookCar[];
       summary: () => { online: number; near: number; selfWaves: number; nearby: { id: string } | null };
+      reports: () => Array<{ id: string; kind: string; lat: number; lng: number; n: number; distanceM: number }>;
       self: () => { lat: number; lng: number; heading: number; speed: number } | null;
-      identity: () => { id: string; model: string; colour: string; nick?: string } | null;
+      identity: () => { id: string; model: string; colour: string; nick?: string; status?: string } | null;
       frameCost: () => { mean: number; p95: number; samples: number };
       resetFrameCost: () => void;
     };

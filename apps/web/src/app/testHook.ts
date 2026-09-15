@@ -1,4 +1,4 @@
-import { getSelfPlacement, getSummary, tickWorld } from '../sim/world';
+import { getSelfPlacement, getSummary, reportsNow, tickWorld } from '../sim/world';
 import { frameStats, resetFrameStats } from '../perf/frames';
 
 export type TestHook = {
@@ -11,6 +11,7 @@ export type TestHook = {
     drawn: { lat: number; lng: number };
   }>;
   summary: () => ReturnType<typeof getSummary>;
+  reports: () => Array<{ id: string; kind: string; lat: number; lng: number; n: number; distanceM: number }>;
   self: () => ReturnType<typeof getSelfPlacement>;
   identity: () => unknown;
   frameCost: () => { mean: number; p95: number; samples: number };
@@ -35,6 +36,15 @@ export function installTestHook(): void {
         drawn: { lat: car.placement.lat, lng: car.placement.lng },
       })),
     summary: getSummary,
+    reports: () =>
+      reportsNow().map((r) => ({
+        id: r.id,
+        kind: r.kind,
+        lat: r.lat,
+        lng: r.lng,
+        n: r.n,
+        distanceM: r.distanceM,
+      })),
     self: getSelfPlacement,
     frameCost: frameStats,
     resetFrameCost: resetFrameStats,

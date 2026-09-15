@@ -7,14 +7,18 @@ import {
   COMPACT_WIRE_VERSION,
   INTEREST_DROP_RADIUS_M,
   INTEREST_RADIUS_M,
+  MAX_REPORTS_PER_CELL,
   MAX_SOCKETS_PER_CELL,
   MAX_SOCKETS_PER_HUB,
   MAX_SPEED_KMH,
   PRESENCE_EXPIRY_MS,
   PROTOCOL_VERSION,
   RATE_POS_MS,
+  RATE_REPORT_MS,
   RATE_VIOLATIONS_TO_CLOSE,
   RATE_WAVE_MS,
+  REPORT_MAX_OFFSET_M,
+  REPORT_MERGE_M,
   SERVER_TICK_MS,
   WAVE_HOLD_MS,
   WAVE_VALIDATE_RANGE_M,
@@ -23,15 +27,26 @@ import {
   haversineM,
   hubOf,
   idFromSecret,
+  reportTtlMs,
   type CarMeta,
   type CarPublic,
   type CarState,
   type CarWire,
   type ClientMsg,
+  type Report,
+  type ReportFailReason,
   type ServerMsg,
   type WaveFailReason,
 } from '@teslawave/protocol';
-import type { Counters, Effect, HubState, Socket, SocketKey, SocketProfile } from './types.js';
+import type {
+  Counters,
+  Effect,
+  HubReport,
+  HubState,
+  Socket,
+  SocketKey,
+  SocketProfile,
+} from './types.js';
 
 /** Counters are flushed to storage at most this often, to stay far under 100k row writes/day. */
 export const COUNTER_WRITE_MS = 30_000;
@@ -64,6 +79,10 @@ export function createHub(hub: string, now: number, counters?: Partial<Counters>
     gone: new Map(),
     lastFlushAt: now,
     held: [],
+    reports: new Map(),
+    reportsDirty: new Map(),
+    reportsGone: new Map(),
+    nextReportSeq: 1,
     counters: {
       wavesByUser: counters?.wavesByUser ?? new Map(),
       lastWaveByUser: counters?.lastWaveByUser ?? new Map(),
@@ -95,6 +114,7 @@ const publicOf = (car: CarState): CarPublic => ({
   waves: car.waves,
   since: car.since,
   ...(car.nick === undefined ? {} : { nick: car.nick }),
+  ...(car.status === undefined ? {} : { status: car.status }),
 });
 
 const profileOf = (s: Socket): SocketProfile => ({
@@ -108,6 +128,7 @@ const profileOf = (s: Socket): SocketProfile => ({
   since: s.since,
   v: s.v,
   ...(s.nick === undefined ? {} : { nick: s.nick }),
+  ...(s.status === undefined ? {} : { status: s.status }),
 });
 
 const markDirty = (state: HubState, cell: string, id: string): void => addTo(state.dirty, cell, id);
@@ -134,6 +155,7 @@ export function restoreSocket(state: HubState, profile: SocketProfile): void {
     ...profile,
     lastPosAt: 0,
     lastWaveAt: 0,
+    lastReportAt: 0,
     askedAt: 0,
     violations: 0,
     lastSeen: null,
@@ -155,6 +177,7 @@ export function openSocket(state: HubState, key: SocketKey): void {
     v: 0,
     lastPosAt: 0,
     lastWaveAt: 0,
+    lastReportAt: 0,
     askedAt: 0,
     violations: 0,
     lastSeen: null,
@@ -298,6 +321,7 @@ const metaOf = (car: CarState, h: number): CarMeta => ({
   since: car.since,
   cell: car.cell,
   ...(car.nick === undefined ? {} : { nick: car.nick }),
+  ...(car.status === undefined ? {} : { status: car.status }),
 });
 
 const wireOf = (car: CarState, h: number, now: number): CarWire => [
@@ -392,6 +416,8 @@ function onHello(state: HubState, s: Socket, msg: Extract<ClientMsg, { t: 'hello
   s.colour = msg.colour;
   if (msg.nick === undefined) delete s.nick;
   else s.nick = msg.nick;
+  if (msg.status === undefined) delete s.status;
+  else s.status = msg.status;
   s.cells = [...msg.cells];
   s.spectator = msg.spectator === true;
   s.since = state.presence.get(s.id)?.since ?? (s.since || now);
@@ -445,6 +471,7 @@ function onHello(state: HubState, s: Socket, msg: Extract<ClientMsg, { t: 'hello
         ? { t: 'diff2', cell, now, ...enterCell(state, s, cell, now), ...cellStats(state, cell, now) }
         : { t: 'diff', cell, upd: [], gone: [], ...cellStats(state, cell, now) },
     });
+  effects.push(...reportsIn(state, s, s.cells, now));
   /*
    * An older client is told, not cut off. It keeps its map, its socket and its waves, and
    * reloads itself the next time the car is standing still (ADR-0029). Closing the socket
@@ -495,6 +522,7 @@ function onPos(state: HubState, s: Socket, msg: Extract<ClientMsg, { t: 'pos' }>
     ts: now,
     cell,
     ...(s.nick === undefined ? {} : { nick: s.nick }),
+    ...(s.status === undefined ? {} : { status: s.status }),
   });
   markDirty(state, cell, s.id);
   return [];
@@ -539,6 +567,125 @@ function onSub(state: HubState, s: Socket, msg: Extract<ClientMsg, { t: 'sub' }>
             ...cellStats(state, cell, now),
           },
     });
+  effects.push(...reportsIn(state, s, added, now));
+  return effects;
+}
+
+// --- Reports -----------------------------------------------------------------------------
+
+const publicReport = (r: HubReport): Report => ({
+  id: r.id,
+  kind: r.kind,
+  lat: r.lat,
+  lng: r.lng,
+  at: r.at,
+  n: r.n,
+});
+
+const reportExpired = (r: HubReport, now: number): boolean => now - r.at > reportTtlMs(r.kind);
+
+/**
+ * Every live report in these cells, in full, for a connection that has just started holding
+ * them. Nothing is sent for a cell with none: most cells have none, most of the time.
+ */
+function reportsIn(state: HubState, s: Socket, cells: readonly string[], now: number): Effect[] {
+  const effects: Effect[] = [];
+  for (const cell of cells) {
+    const upd: Report[] = [];
+    for (const r of state.reports.values())
+      if (r.cell === cell && !reportExpired(r, now)) upd.push(publicReport(r));
+    if (upd.length > 0)
+      effects.push({ k: 'send', to: s.key, msg: { t: 'reports', cell, upd, gone: [] } });
+  }
+  return effects;
+}
+
+const reportRefusal = (s: Socket, reason: ReportFailReason): Effect[] => [
+  { k: 'send', to: s.key, msg: { t: 'reported', ok: false, reason } },
+];
+
+const dropReport = (state: HubState, r: HubReport): void => {
+  state.reports.delete(r.id);
+  removeFrom(state.reportsDirty, r.cell, r.id);
+  addTo(state.reportsGone, r.cell, r.id);
+};
+
+/**
+ * A driver flags something where they are. The hub places it, merges it with a report of
+ * the same thing already there, and tells the cell on the next tick (ADR-0040).
+ *
+ * The position is the client's own, as the hello's `at` is, because a hub that has just
+ * woken holds nobody's — but where the hub does hold one it has to agree, so a car cannot
+ * report a patrol on a road it is not on. What is placed carries no driver id: `by` stays in
+ * memory here and goes with the report.
+ */
+function onReport(
+  state: HubState,
+  s: Socket,
+  msg: Extract<ClientMsg, { t: 'report' }>,
+  now: number,
+): Effect[] {
+  if (!s.id) return violation(s);
+  if (s.hidden || s.spectator) return reportRefusal(s, 'hidden');
+  if (s.lastReportAt !== 0 && now - s.lastReportAt < RATE_REPORT_MS) return reportRefusal(s, 'rate');
+
+  const lat = msg.at[0] / WIRE_COORD_SCALE;
+  const lng = msg.at[1] / WIRE_COORD_SCALE;
+  const known = s.lastSeen && now - s.lastSeen.ts <= PRESENCE_EXPIRY_MS ? s.lastSeen : null;
+  if (known && haversineM(known.lat, known.lng, lat, lng) > REPORT_MAX_OFFSET_M)
+    return reportRefusal(s, 'range');
+  const cell = encode(lat, lng, CELL_PRECISION);
+  if (hubOf(cell) !== state.hub) return reportRefusal(s, 'range');
+
+  s.lastReportAt = now;
+  const ok: Effect[] = [{ k: 'send', to: s.key, msg: { t: 'reported', ok: true } }];
+
+  // The same thing, already reported nearby: one pin, one more voice behind it.
+  let inCell = 0;
+  let oldest: HubReport | null = null;
+  for (const r of state.reports.values()) {
+    if (r.cell !== cell) continue;
+    if (reportExpired(r, now)) continue;
+    inCell += 1;
+    if (!oldest || r.at < oldest.at) oldest = r;
+    if (r.kind !== msg.kind || haversineM(r.lat, r.lng, lat, lng) > REPORT_MERGE_M) continue;
+    // Their own report again: still there, as far as they are concerned, but not twice.
+    if (r.by.has(s.id)) return ok;
+    r.by.add(s.id);
+    r.n += 1;
+    r.at = now;
+    addTo(state.reportsDirty, cell, r.id);
+    return ok;
+  }
+  if (inCell >= MAX_REPORTS_PER_CELL && oldest) dropReport(state, oldest);
+
+  // The id carries the time so that one minted after a hibernation cannot collide with one a
+  // client is still holding from before it.
+  const id = `${state.hub}-${now.toString(36)}-${(state.nextReportSeq++).toString(36)}`;
+  state.reports.set(id, { id, kind: msg.kind, lat, lng, at: now, n: 1, cell, by: new Set([s.id]) });
+  addTo(state.reportsDirty, cell, id);
+  return ok;
+}
+
+/** The reports news for every cell that has some, to everybody holding that cell. */
+function flushReports(state: HubState, now: number): Effect[] {
+  for (const r of [...state.reports.values()]) if (reportExpired(r, now)) dropReport(state, r);
+  const effects: Effect[] = [];
+  const cells = new Set([...state.reportsDirty.keys(), ...state.reportsGone.keys()]);
+  for (const cell of cells) {
+    const subscribers = state.socketsByCell.get(cell);
+    const gone = [...(state.reportsGone.get(cell) ?? [])];
+    const upd: Report[] = [];
+    for (const id of state.reportsDirty.get(cell) ?? []) {
+      const r = state.reports.get(id);
+      if (r) upd.push(publicReport(r));
+    }
+    if (!subscribers || (upd.length === 0 && gone.length === 0)) continue;
+    const msg: ServerMsg = { t: 'reports', cell, upd, gone };
+    for (const key of subscribers) effects.push({ k: 'send', to: key, msg });
+  }
+  state.reportsDirty.clear();
+  state.reportsGone.clear();
   return effects;
 }
 
@@ -712,6 +859,8 @@ function handle(state: HubState, s: Socket, msg: ClientMsg, now: number): Effect
       return onSub(state, s, msg, now);
     case 'wave':
       return onWave(state, s, msg.to, now);
+    case 'report':
+      return onReport(state, s, msg, now);
     case 'hide': {
       s.hidden = true;
       dropPresence(state, s.id);
@@ -934,6 +1083,7 @@ export function flushIfDue(state: HubState, now: number, force = false): Effect[
 
   state.dirty.clear();
   state.gone.clear();
+  effects.push(...flushReports(state, now));
 
   const c = state.counters;
   if (c.dirtyKeys.size > 0 && now - c.lastWriteAt >= COUNTER_WRITE_MS) {
@@ -1040,10 +1190,12 @@ export const hubStats = (state: HubState): {
   presence: number;
   cells: number;
   held: number;
+  reports: number;
 } => ({
   hub: state.hub,
   sockets: state.sockets.size,
   presence: state.presence.size,
   cells: state.socketsByCell.size,
   held: state.held.length,
+  reports: state.reports.size,
 });

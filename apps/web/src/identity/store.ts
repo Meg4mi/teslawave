@@ -5,7 +5,9 @@ import {
   isColourId,
   isModel,
   isSecret,
+  isStatusId,
   type CarColourId,
+  type StatusId,
   type TeslaModel,
 } from '@teslawave/protocol';
 
@@ -20,11 +22,13 @@ export type Identity = {
   model: TeslaModel;
   colour: CarColourId;
   nick?: string;
+  /** A word about the drive, from STATUSES. Optional, like the name, and shown beside it. */
+  status?: StatusId;
   createdAt: number;
 };
 
 /** Everything an identity holds apart from the secret and the id it derives. */
-export type IdentityCar = Pick<Identity, 'model' | 'colour' | 'nick' | 'createdAt'>;
+export type IdentityCar = Pick<Identity, 'model' | 'colour' | 'nick' | 'status' | 'createdAt'>;
 
 /** The whole identity, from a secret and the car: the id is always derived here. */
 export const identityFrom = (secret: string, car: IdentityCar): Identity => ({
@@ -34,6 +38,7 @@ export const identityFrom = (secret: string, car: IdentityCar): Identity => ({
   colour: car.colour,
   createdAt: car.createdAt,
   ...(car.nick === undefined ? {} : { nick: car.nick }),
+  ...(car.status === undefined ? {} : { status: car.status }),
 });
 
 /**
@@ -43,13 +48,14 @@ export const identityFrom = (secret: string, car: IdentityCar): Identity => ({
  */
 export function parseIdentity(value: unknown): Identity | null {
   if (typeof value !== 'object' || value === null) return null;
-  const { secret, model, colour, nick, createdAt } = value as Record<string, unknown>;
+  const { secret, model, colour, nick, status, createdAt } = value as Record<string, unknown>;
   if (!isModel(model) || !isColourId(colour)) return null;
   return identityFrom(isSecret(secret) ? secret : newSecret(), {
     model,
     colour,
     createdAt: typeof createdAt === 'number' ? createdAt : Date.now(),
     ...(typeof nick === 'string' && nick.length > 0 ? { nick } : {}),
+    ...(isStatusId(status) ? { status } : {}),
   });
 }
 
@@ -61,6 +67,8 @@ export type Prefs = {
   milestone: number;
   /** Send anonymous frame timings now and then, so the app gets tuned on real cars. Off by default. */
   perfBeacon: boolean;
+  /** The robot voice: says who waved and what was reported nearby. On by default, under the mute. */
+  voice: boolean;
 };
 
 const IDENTITY_KEY = 'tw.identity.v1';
@@ -72,6 +80,7 @@ const DEFAULT_PREFS: Prefs = {
   northUp: false,
   milestone: 0,
   perfBeacon: false,
+  voice: true,
 };
 
 function read<T>(key: string): T | null {

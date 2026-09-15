@@ -1,5 +1,6 @@
-import { TRAIL_MS, colourOf } from '@teslawave/protocol';
-import type { RenderCar } from '../sim/world';
+import { REPORT_ALERT_M, TRAIL_MS, colourOf } from '@teslawave/protocol';
+import type { RenderCar, RenderReport } from '../sim/world';
+import { getMarker, MARKER_COLOUR, MARKER_PX } from './markers';
 import { getSprite, SPRITE_LENGTH } from './sprites';
 
 /**
@@ -56,6 +57,8 @@ const COMET_GHOSTS = 6;
 
 export type RenderOptions = {
   cars: RenderCar[];
+  /** What drivers have flagged nearby. Static pins; drawn under the cars. */
+  reports?: RenderReport[];
   self: { lat: number; lng: number; heading: number; model: string; colour: string } | null;
   nearbyId: string | null;
   selectedId: string | null;
@@ -92,6 +95,11 @@ const TRAIL_LEVELS = 6;
 const TRAIL_CULL_PX = 900;
 const CONE_LENGTH = 60;
 const CONE_SPREAD = 12;
+/** A pin's entry ring, and how long a pin inside the alert range keeps pulsing. */
+const MARKER_ENTRY_MS = 900;
+const MARKER_PULSE_MS = 2_400;
+/** A pin fades over its last five minutes, so a stale one is visibly on its way out. */
+const MARKER_FADE_MS = 5 * 60_000;
 
 export function createRenderer(canvas: HTMLCanvasElement) {
   const waves: WaveBurst[] = [];
@@ -221,6 +229,45 @@ export function createRenderer(canvas: HTMLCanvasElement) {
         ctx.lineTo(b.x, b.y);
         ctx.stroke();
         ctx.globalAlpha = 1;
+      }
+
+      // 2c. Reports: pins, under the cars, with a ring as they land and a slow pulse while
+      // one is close enough to have been announced. A pin is a baked bitmap and the rings are
+      // arcs: the same budget as a car with its entry ring (ADR-0040).
+      if (options.reports) {
+        const wall = Date.now();
+        for (const report of options.reports) {
+          const p = project(report.lng, report.lat);
+          if (p.x < -60 || p.y < -60 || p.x > width + 60 || p.y > height + 60) continue;
+          const marker = getMarker(report.kind, dpr);
+          const left = report.expiresAt - wall;
+          const appearing = Math.min(1, Math.max(0, (now - report.appearedAt) / 300));
+          ctx.globalAlpha = appearing * (0.45 + 0.55 * Math.min(1, Math.max(0, left / MARKER_FADE_MS)));
+          ctx.drawImage(
+            marker.canvas,
+            p.x - marker.size / 2,
+            p.y - marker.size / 2,
+            marker.size,
+            marker.size,
+          );
+          ctx.strokeStyle = MARKER_COLOUR[report.kind];
+          if (now - report.appearedAt < MARKER_ENTRY_MS) {
+            const t = Math.max(0, (now - report.appearedAt) / MARKER_ENTRY_MS);
+            ctx.globalAlpha = 0.6 * (1 - t);
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, MARKER_PX * (0.5 + t * 1.6), 0, Math.PI * 2);
+            ctx.stroke();
+          } else if (report.distanceM <= REPORT_ALERT_M) {
+            const t = (now % MARKER_PULSE_MS) / MARKER_PULSE_MS;
+            ctx.globalAlpha = 0.35 * (1 - t);
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, MARKER_PX * (0.5 + t * 0.9), 0, Math.PI * 2);
+            ctx.stroke();
+          }
+          ctx.globalAlpha = 1;
+        }
       }
 
       // 3. Your heading cone, so "track up" feels deliberate. Two faint arcs rather than a

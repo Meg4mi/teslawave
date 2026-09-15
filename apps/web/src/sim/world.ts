@@ -3,6 +3,7 @@ import {
   CELL_PRECISION,
   POS_INTERVAL_STATIONARY_MS,
   PRESENCE_EXPIRY_MS,
+  REPORT_ALERT_M,
   TRAIL_MS,
   WAVE_PROMPT_RANGE_M,
   WAVE_VALIDATE_RANGE_M,
@@ -10,6 +11,7 @@ import {
   encode,
   haversineM,
   pushSample,
+  reportTtlMs,
   sample,
   wireToSample,
   type CarMeta,
@@ -17,7 +19,10 @@ import {
   type CarWire,
   type EntityTrack,
   type Placement,
+  type Report,
+  type ReportKind,
   type ServerMsg,
+  type StatusId,
   type TeslaModel,
 } from '@teslawave/protocol';
 
@@ -32,6 +37,7 @@ export type WorldCar = {
   model: TeslaModel;
   colour: string;
   nick?: string;
+  status?: StatusId;
   waves: number;
   since: number;
   /**
@@ -58,13 +64,25 @@ export type WorldCar = {
 /** `placement` is this frame's interpolated position, exactly where the server put the car. */
 export type RenderCar = WorldCar & { placement: Placement; distanceM: number };
 
+/**
+ * A report as the client holds it: what the hub said, plus the cell it falls in (so it goes
+ * with the cell when the cell is let go of), when it landed here (for the entry ring), and
+ * when it lapses, worked out once from the kind's lifetime.
+ */
+export type WorldReport = Report & { cell: string; appearedAt: number; expiresAt: number };
+
+/** A report with this frame's distance from the car, for the renderer and the alert. */
+export type RenderReport = WorldReport & { distanceM: number };
+
 export type Summary = {
   online: number;
   near: number;
   wavesToday: number;
   lastWaveTs: number | null;
   selfWaves: number;
-  nearby: { id: string; model: TeslaModel; colour: string; nick?: string } | null;
+  nearby: { id: string; model: TeslaModel; colour: string; nick?: string; status?: StatusId } | null;
+  /** The nearest report within REPORT_ALERT_M, or null. Said once per id by the app. */
+  alert: { id: string; kind: ReportKind; distanceM: number; n: number } | null;
   serverNow: number;
 };
 
@@ -72,6 +90,9 @@ const SUMMARY_INTERVAL_MS = 500;
 const TRAIL_SAMPLE_MS = 500;
 
 const cars = new Map<string, WorldCar>();
+const reports = new Map<string, WorldReport>();
+/** Rebuilt only when a report comes or goes: the renderer reads it every frame. */
+let reportList: WorldReport[] = [];
 const cellStats = new Map<string, { online: number; wavesToday: number; lastWaveTs: number | null }>();
 /**
  * The cells we are subscribed to right now. Counts are summed over these only: cellStats
@@ -101,6 +122,7 @@ let summary: Summary = {
   lastWaveTs: null,
   selfWaves: 0,
   nearby: null,
+  alert: null,
   serverNow: Date.now(),
 };
 
@@ -108,6 +130,8 @@ export const serverNow = (): number => Date.now() + clockOffset;
 
 export function resetWorld(id: string): void {
   cars.clear();
+  reports.clear();
+  reportList = [];
   cellStats.clear();
   handles.clear();
   pendingMeta.clear();
@@ -129,6 +153,7 @@ export function resetWorld(id: string): void {
     lastWaveTs: null,
     selfWaves: 0,
     nearby: null,
+    alert: null,
     serverNow: Date.now(),
   };
   for (const listener of listeners) listener();
@@ -176,6 +201,7 @@ const upsert = (state: CarState, hub: string, appearedAt: number): void => {
       appearedAt,
       lastServerTs: state.ts,
       ...(state.nick === undefined ? {} : { nick: state.nick }),
+      ...(state.status === undefined ? {} : { status: state.status }),
     };
     cars.set(state.id, car);
   }
@@ -187,6 +213,8 @@ const upsert = (state: CarState, hub: string, appearedAt: number): void => {
   car.lastServerTs = state.ts;
   if (state.nick === undefined) delete car.nick;
   else car.nick = state.nick;
+  if (state.status === undefined) delete car.status;
+  else car.status = state.status;
   pushSample(car.track, {
     lat: state.lat,
     lng: state.lng,
@@ -233,6 +261,8 @@ const applyMeta = (meta: CarMeta, hub: string): void => {
   existing.hub = hub;
   if (meta.nick === undefined) delete existing.nick;
   else existing.nick = meta.nick;
+  if (meta.status === undefined) delete existing.status;
+  else existing.status = meta.status;
 };
 
 /** One car's motion, by handle. Nothing here can create a car we were never told about. */
@@ -260,6 +290,7 @@ const applyWire = (wire: CarWire, hub: string, msgNow: number, appearedAt: numbe
       appearedAt,
       lastServerTs: sample.ts,
       ...(meta.nick === undefined ? {} : { nick: meta.nick }),
+      ...(meta.status === undefined ? {} : { status: meta.status }),
     };
     cars.set(id, car);
   }
@@ -324,6 +355,22 @@ export function applyServerMsg(msg: ServerMsg, hub: string): void {
       });
       break;
     }
+    case 'reports': {
+      // A confirmation is the same pin with a bigger number and a fresh clock: keep its
+      // entry ring where it was, so a pin already on the map does not flash again.
+      for (const r of msg.upd) {
+        const existing = reports.get(r.id);
+        reports.set(r.id, {
+          ...r,
+          cell: encode(r.lat, r.lng, CELL_PRECISION),
+          appearedAt: existing?.appearedAt ?? now,
+          expiresAt: r.at + reportTtlMs(r.kind),
+        });
+      }
+      for (const id of msg.gone) reports.delete(id);
+      reportList = [...reports.values()];
+      break;
+    }
     case 'diff': {
       for (const car of msg.upd) upsert(car, hub, now);
       // "Gone" is per cell. A car crossing a cell border is announced gone from the old cell
@@ -352,6 +399,13 @@ export function applyServerMsg(msg: ServerMsg, hub: string): void {
  */
 export function dropCells(cells: readonly string[], hub?: string): void {
   for (const cell of cells) cellStats.delete(cell);
+  let reportsDropped = false;
+  for (const [id, r] of reports)
+    if (cells.includes(r.cell)) {
+      reports.delete(id);
+      reportsDropped = true;
+    }
+  if (reportsDropped) reportList = [...reports.values()];
   const dropped = new Set<string>();
   for (const [id, car] of cars)
     if (cells.includes(car.cell)) {
@@ -390,7 +444,34 @@ export function pruneExpired(): number {
       cars.delete(id);
       removed++;
     }
+  // A report lapses on its own clock, hub or no hub: a socket that dropped must not leave a
+  // patrol on the map for the rest of the drive.
+  let lapsed = false;
+  for (const [id, r] of reports)
+    if (server > r.expiresAt) {
+      reports.delete(id);
+      lapsed = true;
+      removed++;
+    }
+  if (lapsed) reportList = [...reports.values()];
   return removed;
+}
+
+export const getReport = (id: string): WorldReport | undefined => reports.get(id);
+
+/**
+ * Every live report, with this frame's distance. Reports are few and static, so this is a
+ * small array; it is built per call rather than cached because the distance is not static.
+ */
+export function reportsNow(): RenderReport[] {
+  const from = selfReported ?? selfPlacement;
+  const out: RenderReport[] = [];
+  for (const r of reportList)
+    out.push({
+      ...r,
+      distanceM: from ? haversineM(from.lat, from.lng, r.lat, r.lng) : Number.POSITIVE_INFINITY,
+    });
+  return out;
 }
 
 /** Render states for the current server time. Does not touch trails, so it is safe to call
@@ -479,8 +560,16 @@ function updateSummary(rendered: RenderCar[], server: number): void {
         model: chosen.model,
         colour: chosen.colour,
         ...(chosen.nick === undefined ? {} : { nick: chosen.nick }),
+        ...(chosen.status === undefined ? {} : { status: chosen.status }),
       }
     : null;
+
+  // The nearest report inside the alert range. The app says it once per id; the distance
+  // on it is for the line at the foot of the screen, which ticks down as you approach.
+  let alert: Summary['alert'] = null;
+  for (const r of reportsNow())
+    if (r.distanceM <= REPORT_ALERT_M && (!alert || r.distanceM < alert.distanceM))
+      alert = { id: r.id, kind: r.kind, distanceM: r.distanceM, n: r.n };
 
   const changed =
     summary.online !== online ||
@@ -488,10 +577,12 @@ function updateSummary(rendered: RenderCar[], server: number): void {
     summary.wavesToday !== wavesToday ||
     summary.lastWaveTs !== lastWaveTs ||
     summary.selfWaves !== selfWaves ||
-    summary.nearby?.id !== nearby?.id;
+    summary.nearby?.id !== nearby?.id ||
+    summary.alert?.id !== alert?.id ||
+    Math.round(summary.alert?.distanceM ?? 0) !== Math.round(alert?.distanceM ?? 0);
 
   // The "last wave" label ticks, so the summary is refreshed even when nothing else moved.
-  summary = { online, near, wavesToday, lastWaveTs, selfWaves, nearby, serverNow: server };
+  summary = { online, near, wavesToday, lastWaveTs, selfWaves, nearby, alert, serverNow: server };
   if (changed || lastWaveTs !== null) for (const listener of listeners) listener();
 }
 

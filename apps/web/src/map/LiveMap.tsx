@@ -2,7 +2,7 @@ import { useEffect, useRef, type ReactNode } from 'react';
 import { AttributionControl, Map as MlMap, prewarm, setWorkerUrl } from 'maplibre-gl';
 import type { MapMouseEvent, MapTouchEvent } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
-import { getSelfPlacement, tickWorld, type RenderCar } from '../sim/world';
+import { getSelfPlacement, reportsNow, tickWorld, type RenderCar } from '../sim/world';
 import { createRenderer, type Renderer } from '../overlay/renderer';
 import { buildStyle } from './style';
 import { addActivityLayer } from './activity';
@@ -349,6 +349,7 @@ export function LiveMap({
         affineProjector(map),
         {
           cars,
+          reports: reportsNow(),
           self:
             placement && selfCar
               ? {
