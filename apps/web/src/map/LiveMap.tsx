@@ -2,7 +2,13 @@ import { useEffect, useRef, type ReactNode } from 'react';
 import { AttributionControl, Map as MlMap, prewarm, setWorkerUrl } from 'maplibre-gl';
 import type { MapMouseEvent, MapTouchEvent } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
-import { getSelfPlacement, reportsNow, tickWorld, type RenderCar } from '../sim/world';
+import {
+  getSelfPlacement,
+  reportsNow,
+  tickWorld,
+  type RenderCar,
+  type RenderReport,
+} from '../sim/world';
 import { createRenderer, type Renderer } from '../overlay/renderer';
 import { buildStyle } from './style';
 import { addActivityLayer } from './activity';
@@ -18,6 +24,8 @@ import './map.css';
 export type LiveMapProps = {
   northUp: boolean;
   selectedId: string | null;
+  /** The pin whose card is open, if one is. */
+  selectedReportId?: string | null;
   nearbyId: string | null;
   self: { model: string; colour: string } | null;
   /** Rough starting centre, before there is a GPS fix to follow. */
@@ -25,6 +33,8 @@ export type LiveMapProps = {
   onSelect: (id: string | null) => void;
   /** A tap on your own car: the natural way to change what it looks like. */
   onSelectSelf?: () => void;
+  /** A tap on a report pin: the card that asks whether it is still there. */
+  onSelectReport?: (id: string) => void;
   onReady: (renderer: Renderer) => void;
   /** False once it is clear the tiles are not coming, so the app can say so. */
   onTiles: (loaded: boolean) => void;
@@ -79,11 +89,13 @@ const LOW_RES_MAX_RATIO = 1;
 export function LiveMap({
   northUp,
   selectedId,
+  selectedReportId = null,
   nearbyId,
   self,
   origin,
   onSelect,
   onSelectSelf,
+  onSelectReport,
   onReady,
   onTiles,
   bare = false,
@@ -96,11 +108,55 @@ export function LiveMap({
   const zoomOut = useRef<HTMLButtonElement>(null);
   const mapRef = useRef<MlMap | null>(null);
   const carsRef = useRef<RenderCar[]>([]);
-  // Props read inside the animation loop, which must not restart when they change.
-  const live = useRef({ northUp, selectedId, nearbyId, self, origin });
+  const reportsRef = useRef<RenderReport[]>([]);
+  /*
+   * Props read inside the animation loop and inside the map's own handlers, which must not
+   * restart when they change.
+   *
+   * The callbacks are here for a reason that cost a real feature: the map is created once, in
+   * an effect with no dependencies, and onboarding renders a `LiveMap` in the same position of
+   * the same tree as the running app does. So React updates that element rather than
+   * remounting it when the driver taps Go — the effect does not run again, and a `pick`
+   * holding the callbacks it was mounted with was holding onboarding's: a no-op `onSelect`
+   * and no `onSelectSelf` at all. Tapping a car, your own car or a pin did nothing at all for
+   * a driver's first drive, and worked perfectly ever after, because a returning driver's
+   * first render is the running app. Nothing captured from a prop may outlive the render it
+   * came from here.
+   */
+  const live = useRef({
+    northUp,
+    selectedId,
+    selectedReportId,
+    nearbyId,
+    self,
+    origin,
+    onSelect,
+    onSelectSelf,
+    onSelectReport,
+  });
   useEffect(() => {
-    live.current = { northUp, selectedId, nearbyId, self, origin };
-  }, [northUp, selectedId, nearbyId, self, origin]);
+    live.current = {
+      northUp,
+      selectedId,
+      selectedReportId,
+      nearbyId,
+      self,
+      origin,
+      onSelect,
+      onSelectSelf,
+      onSelectReport,
+    };
+  }, [
+    northUp,
+    selectedId,
+    selectedReportId,
+    nearbyId,
+    self,
+    origin,
+    onSelect,
+    onSelectSelf,
+    onSelectReport,
+  ]);
 
   // Only until the driver's own position takes over.
   useEffect(() => {
@@ -343,13 +399,15 @@ export function LiveMap({
       const measure = performance.now();
       const cars = tickWorld(now);
       carsRef.current = cars;
+      reportsRef.current = reportsNow();
       renderer.render(
         now,
         // Built once per frame from the map's own transform: see map/projector.ts.
         affineProjector(map),
         {
           cars,
-          reports: reportsNow(),
+          reports: reportsRef.current,
+          selectedReportId: live.current.selectedReportId,
           self:
             placement && selfCar
               ? {
@@ -374,25 +432,44 @@ export function LiveMap({
     };
     raf = requestAnimationFrame(frame);
 
+    /**
+     * What the finger landed on: another car, your own car, or a report pin. Everything
+     * within the hit radius competes on distance, so a pin sitting under a car does not
+     * steal the tap and neither does the reverse.
+     */
     const pick = (event: MapMouseEvent | MapTouchEvent): void => {
+      const { onSelect: select, onSelectSelf: selectSelf, onSelectReport: selectReport } = live.current;
+      const distanceTo = (lng: number, lat: number): number => {
+        const p = map.project([lng, lat]);
+        return Math.hypot(p.x - event.point.x, p.y - event.point.y);
+      };
       let best: { id: string; d: number } | null = null;
       for (const car of carsRef.current) {
-        const p = map.project([car.placement.lng, car.placement.lat]);
-        const d = Math.hypot(p.x - event.point.x, p.y - event.point.y);
+        const d = distanceTo(car.placement.lng, car.placement.lat);
         if (d <= HIT_RADIUS_PX && (!best || d < best.d)) best = { id: car.id, d };
       }
+      let pin: { id: string; d: number } | null = null;
+      if (selectReport)
+        for (const report of reportsRef.current) {
+          const d = distanceTo(report.lng, report.lat);
+          if (d <= HIT_RADIUS_PX && (!pin || d < pin.d)) pin = { id: report.id, d };
+        }
       // Your own car, when it is the closest thing to the finger: open the garage.
       const me = getSelfPlacement();
-      if (me && live.current.self && onSelectSelf) {
-        const p = map.project([me.lng, me.lat]);
-        const d = Math.hypot(p.x - event.point.x, p.y - event.point.y);
-        if (d <= HIT_RADIUS_PX && (!best || d < best.d)) {
-          onSelect(null);
-          onSelectSelf();
+      if (me && live.current.self && selectSelf) {
+        const d = distanceTo(me.lng, me.lat);
+        if (d <= HIT_RADIUS_PX && (!best || d < best.d) && (!pin || d < pin.d)) {
+          select(null);
+          selectSelf();
           return;
         }
       }
-      onSelect(best?.id ?? null);
+      if (pin && selectReport && (!best || pin.d < best.d)) {
+        select(null);
+        selectReport(pin.id);
+        return;
+      }
+      select(best?.id ?? null);
     };
     map.on('click', pick);
 

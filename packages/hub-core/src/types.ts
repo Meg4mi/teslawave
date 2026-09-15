@@ -11,6 +11,7 @@ export type SocketProfile = {
   colour: string;
   nick?: string;
   status?: StatusId;
+  statusText?: string;
   cells: string[];
   spectator: boolean;
   hidden: boolean;
@@ -29,6 +30,8 @@ export type SocketRuntime = {
   lastWaveAt: number;
   /** When this connection last placed a report: one a minute (RATE_REPORT_MS). */
   lastReportAt: number;
+  /** When it last voted on one: one every ten seconds (RATE_CONFIRM_MS). */
+  lastConfirmAt: number;
   /** When this connection was last asked `where`, so a burst of waves asks it once. */
   askedAt: number;
   violations: number;
@@ -58,13 +61,17 @@ export type HeldWave = {
 };
 
 /**
- * A report as the hub holds it. `by` is the drivers who have reported it, kept only so a
- * driver confirming their own report does not count twice; it is memory only, never sent
- * and never written, and it goes with the report (ADR-0040).
+ * A report as the hub holds it.
+ *
+ * `by` is the drivers who say it is there and `against` those who say it is gone, kept only
+ * so each driver counts once and can change their mind. They are memory only, never sent and
+ * never written, and they go with the report (ADR-0040). `n` and `no` on the wire are their
+ * sizes and nothing else, so the two can never drift apart.
  */
 export type HubReport = Report & {
   cell: string;
   by: Set<string>;
+  against: Set<string>;
 };
 
 export type Counters = {

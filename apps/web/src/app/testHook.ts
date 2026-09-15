@@ -11,7 +11,15 @@ export type TestHook = {
     drawn: { lat: number; lng: number };
   }>;
   summary: () => ReturnType<typeof getSummary>;
-  reports: () => Array<{ id: string; kind: string; lat: number; lng: number; n: number; distanceM: number }>;
+  reports: () => Array<{
+    id: string;
+    kind: string;
+    lat: number;
+    lng: number;
+    n: number;
+    no: number;
+    distanceM: number;
+  }>;
   self: () => ReturnType<typeof getSelfPlacement>;
   identity: () => unknown;
   frameCost: () => { mean: number; p95: number; samples: number };
@@ -43,6 +51,7 @@ export function installTestHook(): void {
         lat: r.lat,
         lng: r.lng,
         n: r.n,
+        no: r.no,
         distanceM: r.distanceM,
       })),
     self: getSelfPlacement,

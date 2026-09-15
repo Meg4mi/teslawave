@@ -59,6 +59,8 @@ export type RenderOptions = {
   cars: RenderCar[];
   /** What drivers have flagged nearby. Static pins; drawn under the cars. */
   reports?: RenderReport[];
+  /** The pin whose card is open, drawn a little larger with a ring, as a selected car is. */
+  selectedReportId?: string | null;
   self: { lat: number; lng: number; heading: number; model: string; colour: string } | null;
   nearbyId: string | null;
   selectedId: string | null;
@@ -100,6 +102,12 @@ const MARKER_ENTRY_MS = 900;
 const MARKER_PULSE_MS = 2_400;
 /** A pin fades over its last five minutes, so a stale one is visibly on its way out. */
 const MARKER_FADE_MS = 5 * 60_000;
+/**
+ * A pin somebody has said is gone, while others still say it is there. Drawn faint: the map
+ * should show that it is doubted without deciding the argument, which the hub does when the
+ * voices even out (ADR-0040, amended).
+ */
+const MARKER_DISPUTED_ALPHA = 0.55;
 
 export function createRenderer(canvas: HTMLCanvasElement) {
   const waves: WaveBurst[] = [];
@@ -242,15 +250,23 @@ export function createRenderer(canvas: HTMLCanvasElement) {
           const marker = getMarker(report.kind, dpr);
           const left = report.expiresAt - wall;
           const appearing = Math.min(1, Math.max(0, (now - report.appearedAt) / 300));
-          ctx.globalAlpha = appearing * (0.45 + 0.55 * Math.min(1, Math.max(0, left / MARKER_FADE_MS)));
-          ctx.drawImage(
-            marker.canvas,
-            p.x - marker.size / 2,
-            p.y - marker.size / 2,
-            marker.size,
-            marker.size,
-          );
+          const selected = report.id === options.selectedReportId;
+          const size = marker.size * (selected ? 1.12 : 1);
+          ctx.globalAlpha =
+            appearing *
+            (0.45 + 0.55 * Math.min(1, Math.max(0, left / MARKER_FADE_MS))) *
+            (report.no > 0 ? MARKER_DISPUTED_ALPHA : 1);
+          ctx.drawImage(marker.canvas, p.x - size / 2, p.y - size / 2, size, size);
           ctx.strokeStyle = MARKER_COLOUR[report.kind];
+          // The pin whose card is open, so a tap and the sheet it raised are plainly the
+          // same thing. A steady ring, not an animated one: it is up while a sheet is.
+          if (selected) {
+            ctx.globalAlpha = 0.8;
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, MARKER_PX * 0.78, 0, Math.PI * 2);
+            ctx.stroke();
+          }
           if (now - report.appearedAt < MARKER_ENTRY_MS) {
             const t = Math.max(0, (now - report.appearedAt) / MARKER_ENTRY_MS);
             ctx.globalAlpha = 0.6 * (1 - t);

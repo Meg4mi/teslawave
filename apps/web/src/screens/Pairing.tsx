@@ -42,6 +42,7 @@ export function ShowPairingSheet({
         colour: identity.colour,
         ...(identity.nick === undefined ? {} : { nick: identity.nick }),
         ...(identity.status === undefined ? {} : { status: identity.status }),
+        ...(identity.statusText === undefined ? {} : { statusText: identity.statusText }),
       }),
     })
       .then((res) => (res.ok ? (res.json() as Promise<{ code: string; expiresAt: number }>) : null))
@@ -100,6 +101,7 @@ export function EnterCodeSheet({
     colour: string;
     nick?: string;
     status?: string;
+    statusText?: string;
   }) => void;
   onClose: () => void;
 }): ReactNode {
@@ -119,7 +121,14 @@ export function EnterCodeSheet({
       });
       if (!res.ok) throw new Error('rejected');
       const body = (await res.json()) as {
-        identity: { secret: string; model: string; colour: string; nick?: string; status?: string };
+        identity: {
+          secret: string;
+          model: string;
+          colour: string;
+          nick?: string;
+          status?: string;
+          statusText?: string;
+        };
       };
       onPaired(body.identity);
     } catch {

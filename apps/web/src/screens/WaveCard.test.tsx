@@ -93,6 +93,20 @@ describe('WaveCard with a status', () => {
     vi.useRealTimers();
   });
 
+  it('shows the driver\u2019s own words as they wrote them, untranslated', () => {
+    act(() =>
+      root.render(
+        <WaveCard
+          card={{ id: 2, model: '3', colour: 'red', back: false, statusText: 'towing a caravan' }}
+          onDone={() => undefined}
+        />,
+      ),
+    );
+    expect(host.querySelector('.wave-card__what')?.textContent).toBe(
+      'waved at you \u00b7 towing a caravan',
+    );
+  });
+
   it('rides on the beat line, as an aside, and takes no line of its own', () => {
     act(() =>
       root.render(

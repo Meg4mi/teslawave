@@ -10,7 +10,10 @@ import {
   MAX_SOCKETS_PER_CELL,
   PRESENCE_EXPIRY_MS,
   PROTOCOL_VERSION,
+  RATE_CONFIRM_MS,
   RATE_REPORT_MS,
+  REPORT_MAX_LIFE_MS,
+  REPORT_TTL_MS,
   SERVER_TICK_MS,
   WAVE_HOLD_MS,
   WIRE_COORD_SCALE,
@@ -1266,9 +1269,15 @@ describe('reports', () => {
     const [placed] = reportsFor(flush(), 'b');
     const id = placed?.upd[0]?.id;
     expect(id).toBeDefined();
-    now += 30 * 60_000 + SERVER_TICK_MS;
-    // Somebody moves, so there is a tick.
+    // An accident would have gone half an hour ago; a patrol is given ninety minutes.
+    now += REPORT_TTL_MS.accident + SERVER_TICK_MS;
     pos('a', GENEVA.lat + 1e-4, GENEVA.lng);
+    expect(reportsFor(flush(), 'b')[0]?.gone ?? []).toEqual([]);
+    expect(hubStats(state).reports).toBe(1);
+
+    now += REPORT_TTL_MS.police - REPORT_TTL_MS.accident + SERVER_TICK_MS;
+    // Somebody moves, so there is a tick.
+    pos('a', GENEVA.lat + 2e-4, GENEVA.lng);
     const [gone] = reportsFor(flush(), 'b');
     expect(gone?.gone).toEqual([id]);
     expect(hubStats(state).reports).toBe(0);
@@ -1304,5 +1313,189 @@ describe('reports', () => {
     const serialised = JSON.stringify(persisted);
     expect(serialised).not.toContain('police');
     expect(serialised).not.toContain(String(GENEVA.lat));
+  });
+});
+
+const confirm = (
+  key: string,
+  id: string,
+  there: boolean,
+  at: { lat: number; lng: number },
+): Effect[] => learned(onMessage(state, key, { t: 'confirm', id, there, at: wireAt(at) }, now));
+
+const confirmedFor = (effects: Effect[], to: string): Extract<ServerMsg, { t: 'confirmed' }>[] =>
+  sends(effects, to).filter((m): m is Extract<ServerMsg, { t: 'confirmed' }> => m.t === 'confirmed');
+
+describe('is it still there', () => {
+  /** Two drivers side by side, and a patrol reported by the first. */
+  const patrol = (): string => {
+    hello('a', 'car-a');
+    hello('b', 'car-b');
+    pos('a', GENEVA.lat, GENEVA.lng);
+    const near = destination(GENEVA.lat, GENEVA.lng, 90, 100);
+    pos('b', near.lat, near.lng);
+    report('a', 'police', GENEVA);
+    now += SERVER_TICK_MS;
+    const id = reportsFor(flush(), 'b')[0]?.upd[0]?.id;
+    expect(id).toBeDefined();
+    return id as string;
+  };
+
+  it('restarts the clock when a driver says it is still there, and counts them once', () => {
+    const id = patrol();
+    now += 60 * 60_000;
+    expect(confirmedFor(confirm('b', id, true, GENEVA), 'b')).toEqual([{ t: 'confirmed', id, ok: true }]);
+    now += SERVER_TICK_MS;
+    expect(reportsFor(flush(), 'a')[0]?.upd[0]).toMatchObject({ n: 2, no: 0, at: now - SERVER_TICK_MS });
+
+    // The same driver again: still there, still one voice.
+    now += RATE_CONFIRM_MS;
+    confirm('b', id, true, GENEVA);
+    expect([...state.reports.values()][0]?.n).toBe(2);
+
+    // And it outlives the lifetime it would have had, because the clock moved.
+    now += REPORT_TTL_MS.police - 60_000;
+    pos('a', GENEVA.lat + 1e-4, GENEVA.lng);
+    expect(hubStats(state).reports).toBe(1);
+  });
+
+  it('drops a pin when as many drivers say it is gone as say it is there', () => {
+    const id = patrol();
+    const out = confirm('b', id, false, GENEVA);
+    expect(confirmedFor(out, 'b')).toEqual([{ t: 'confirmed', id, ok: true }]);
+    expect(hubStats(state).reports).toBe(0);
+    now += SERVER_TICK_MS;
+    expect(reportsFor(flush(), 'a')[0]?.gone).toEqual([id]);
+  });
+
+  it('needs as many voices against as a well-confirmed pin has for it', () => {
+    const id = patrol();
+    hello('c', 'car-c');
+    pos('c', GENEVA.lat, GENEVA.lng);
+    confirm('c', id, true, GENEVA);
+    // Two for it: one against leaves it standing, dimmed.
+    confirm('b', id, false, GENEVA);
+    expect(hubStats(state).reports).toBe(1);
+    now += SERVER_TICK_MS;
+    expect(reportsFor(flush(), 'a')[0]?.upd[0]).toMatchObject({ n: 2, no: 1 });
+
+    now += RATE_CONFIRM_MS;
+    confirm('c', id, false, GENEVA);
+    expect(hubStats(state).reports).toBe(0);
+  });
+
+  it('takes a change of mind, in either direction, without double counting', () => {
+    const id = patrol();
+    hello('c', 'car-c');
+    pos('c', GENEVA.lat, GENEVA.lng);
+    confirm('c', id, true, GENEVA);
+    now += RATE_CONFIRM_MS;
+    // c says gone: one for (a), one against (c). Dropped.
+    confirm('c', id, false, GENEVA);
+    expect(hubStats(state).reports).toBe(0);
+  });
+
+  it('never lets a dismissal extend a pin', () => {
+    const id = patrol();
+    hello('c', 'car-c');
+    hello('d', 'car-d');
+    pos('c', GENEVA.lat, GENEVA.lng);
+    pos('d', GENEVA.lat, GENEVA.lng);
+    confirm('c', id, true, GENEVA);
+    const confirmedAt = [...state.reports.values()][0]?.at;
+    expect(confirmedAt).toBe(now);
+
+    // Ten minutes later a fourth driver says it is gone. Two voices for it to one against,
+    // so the pin stands — but a vote against must never buy it another ninety minutes.
+    now += 10 * 60_000;
+    confirm('d', id, false, GENEVA);
+    expect([...state.reports.values()][0]?.at).toBe(confirmedAt);
+  });
+
+  it('refuses a vote from a driver who is nowhere near it, hidden, or too quick', () => {
+    const id = patrol();
+    const away = destination(GENEVA.lat, GENEVA.lng, 0, 8_000);
+    pos('b', away.lat, away.lng);
+    expect(confirmedFor(confirm('b', id, false, away), 'b')[0]).toMatchObject({
+      ok: false,
+      reason: 'range',
+    });
+
+    now += RATE_CONFIRM_MS;
+    pos('b', GENEVA.lat, GENEVA.lng);
+    confirm('b', id, true, GENEVA);
+    expect(confirmedFor(confirm('b', id, true, GENEVA), 'b')[0]).toMatchObject({
+      ok: false,
+      reason: 'rate',
+    });
+
+    now += RATE_CONFIRM_MS;
+    onMessage(state, 'b', { t: 'hide' }, now);
+    expect(confirmedFor(confirm('b', id, true, GENEVA), 'b')[0]).toMatchObject({
+      ok: false,
+      reason: 'hidden',
+    });
+  });
+
+  it('says a pin is gone when the vote arrives after it has already gone', () => {
+    const id = patrol();
+    now += REPORT_TTL_MS.police + 1;
+    expect(confirmedFor(confirm('b', id, true, GENEVA), 'b')[0]).toMatchObject({
+      ok: false,
+      reason: 'gone',
+    });
+    expect(confirmedFor(confirm('b', 'u0-nothing-1', true, GENEVA), 'b')[0]).toMatchObject({
+      ok: false,
+      reason: 'gone',
+    });
+  });
+
+  it('lets a pin go at the ceiling however often it is confirmed', () => {
+    const id = patrol();
+    // Confirmed every half hour, for ever, by two drivers taking turns.
+    hello('c', 'car-c');
+    pos('c', GENEVA.lat, GENEVA.lng);
+    for (let i = 0; i < 12; i++) {
+      now += 30 * 60_000;
+      confirm(i % 2 === 0 ? 'b' : 'c', id, true, GENEVA);
+      pos('a', GENEVA.lat + i * 1e-5, GENEVA.lng);
+      flush();
+    }
+    expect(hubStats(state).reports).toBe(0);
+    // Four hours from the first report, and no later.
+    expect(now - REPORT_MAX_LIFE_MS).toBeGreaterThan(0);
+  });
+
+  it('says nothing about who voted', () => {
+    const id = patrol();
+    confirm('b', id, true, GENEVA);
+    now += SERVER_TICK_MS;
+    const serialised = JSON.stringify(reportsFor(flush(), 'a'));
+    expect(serialised).not.toContain(ID('car-a'));
+    expect(serialised).not.toContain(ID('car-b'));
+    expect(serialised).not.toContain('against');
+  });
+});
+
+describe('a status a driver wrote', () => {
+  it('travels like a chosen one, and a chosen one replaces it', () => {
+    hello('a', 'car-a', [CELL], { statusText: 'towing a caravan' } as Partial<ClientMsg>);
+    hello('b', 'car-b');
+    pos('a', GENEVA.lat, GENEVA.lng);
+    const near = destination(GENEVA.lat, GENEVA.lng, 90, 100);
+    pos('b', near.lat, near.lng);
+    now += SERVER_TICK_MS;
+    const described = diff2sFor(flush(), 'b')
+      .flatMap((d) => d.meta)
+      .find((m) => m.id === ID('car-a'));
+    expect(described?.statusText).toBe('towing a caravan');
+    expect(described).not.toHaveProperty('status');
+
+    const out = onMessage(state, 'a', { t: 'wave', to: ID('car-b') }, now);
+    expect(sends(out, 'b')[0]).toMatchObject({ t: 'wave', from: { statusText: 'towing a caravan' } });
+
+    hello('a', 'car-a', [CELL], { status: 'charging' } as Partial<ClientMsg>);
+    expect(state.sockets.get('a')?.status).toBe('charging');
+    expect(state.sockets.get('a')).not.toHaveProperty('statusText');
   });
 });

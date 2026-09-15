@@ -82,6 +82,7 @@ export function SettingsSheet({
                 {identity.nick ? `${copy.cars.model(identity.model)} · ` : ''}
                 {copy.cars.colour(identity.colour)}
                 {identity.status ? ` · ${copy.status.label(identity.status)}` : ''}
+                {identity.statusText ? ` · ${identity.statusText}` : ''}
                 <span className="settings__tap"> · {copy.garage.tapHint}</span>
               </span>
             </span>

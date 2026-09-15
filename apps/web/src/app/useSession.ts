@@ -20,6 +20,7 @@ import {
   bumpSelfWaves,
   dropCells,
   getCar,
+  getReport,
   getSelfWaves,
   pruneExpired,
   refreshSummary,
@@ -66,6 +67,8 @@ export type Session = {
   wave: (id: string) => void;
   /** Flag police or an accident where the car is now. Says so on screen either way. */
   report: (kind: ReportKind) => void;
+  /** Answer a pin: is it still there? `false` is a dismissal. */
+  confirm: (id: string, there: boolean) => void;
 };
 
 /**
@@ -96,6 +99,8 @@ export function useSession({
   const sentWaves = useRef(new Map<string, number>());
   /** The last fix as sent, which is where a report is placed. */
   const lastFix = useRef<{ lat: number; lng: number } | null>(null);
+  /** Which way the vote in flight went, so its answer can be worded as the driver meant it. */
+  const votedRef = useRef(true);
 
   const [status, setStatus] = useState<NetStatus>('idle');
   const [parked, setParked] = useState(false);
@@ -152,6 +157,7 @@ export function useSession({
           back: isWaveBack,
           ...(msg.from.nick === undefined ? {} : { nick: msg.from.nick }),
           ...(msg.from.status === undefined ? {} : { status: msg.from.status }),
+          ...(msg.from.statusText === undefined ? {} : { statusText: msg.from.statusText }),
         });
         setFlashId(at);
         // A nod you did not start is one you can return. One you did start is already done.
@@ -199,6 +205,21 @@ export function useSession({
                 : copy.report.nofix,
           );
       }
+      if (msg.t === 'confirmed') {
+        // Which way the vote went is not on the answer: the hub says only that it counted,
+        // and we asked, so we know. A pin that has gone is the one refusal worth its own line.
+        if (msg.ok) showToast(votedRef.current ? copy.report.voteThanks : copy.report.voteCleared);
+        else
+          showToast(
+            msg.reason === 'gone'
+              ? copy.report.voteGone
+              : msg.reason === 'rate'
+                ? copy.report.voteTooSoon
+                : msg.reason === 'hidden'
+                  ? copy.report.hidden
+                  : copy.report.voteTooFar,
+          );
+      }
     },
     [showToast, celebrate, copy, rendererRef],
   );
@@ -221,6 +242,35 @@ export function useSession({
       }
       const hub = hubOf(encode(fix.lat, fix.lng, CELL_PRECISION));
       const sent = netRef.current?.send({ t: 'report', kind, at: toWireAt(fix) }, hub);
+      if (!sent) showToast(copy.report.nofix);
+      else play('sent');
+    },
+    [showToast, copy, spectator, prefs.sharing],
+  );
+
+  /**
+   * Answer the question a pin asks. It goes to the hub that owns the pin's cell rather than
+   * the one that owns ours: near a boundary those differ, and only one of them is holding
+   * the report. The car's own position rides along, as a report's does, so the hub can tell
+   * a driver who is looking at the thing from one who is nowhere near it.
+   */
+  const confirm = useCallback(
+    (id: string, there: boolean): void => {
+      const fix = lastFix.current;
+      if (!fix || spectator || !prefs.sharing) {
+        showToast(spectator || !prefs.sharing ? copy.report.hidden : copy.report.nofix);
+        return;
+      }
+      const report = getReport(id);
+      if (!report) {
+        showToast(copy.report.voteGone);
+        return;
+      }
+      votedRef.current = there;
+      const sent = netRef.current?.send(
+        { t: 'confirm', id, there, at: toWireAt(fix) },
+        hubOf(report.cell),
+      );
       if (!sent) showToast(copy.report.nofix);
       else play('sent');
     },
@@ -290,6 +340,9 @@ export function useSession({
       spectator,
       ...(profileRef.current?.nick === undefined ? {} : { nick: profileRef.current.nick }),
       ...(profileRef.current?.status === undefined ? {} : { status: profileRef.current.status }),
+      ...(profileRef.current?.statusText === undefined
+        ? {}
+        : { statusText: profileRef.current.statusText }),
     });
     return () => {
       net.stop();
@@ -308,6 +361,7 @@ export function useSession({
       spectator,
       ...(identity.nick === undefined ? {} : { nick: identity.nick }),
       ...(identity.status === undefined ? {} : { status: identity.status }),
+      ...(identity.statusText === undefined ? {} : { statusText: identity.statusText }),
     });
   }, [identity, spectator]);
 
@@ -410,5 +464,6 @@ export function useSession({
     backFrom,
     wave,
     report,
+    confirm,
   };
 }

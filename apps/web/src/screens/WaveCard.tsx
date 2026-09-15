@@ -11,6 +11,8 @@ export type WaveCardContent = {
   nick?: string;
   /** Their word about their drive, if they chose one: "on a road trip". */
   status?: StatusId;
+  /** Or the words they wrote themselves, shown as they wrote them. */
+  statusText?: string;
   back: boolean;
 };
 
@@ -79,8 +81,11 @@ export function WaveCard({
           {card.back ? copy.wave.cardBackTitle : copy.wave.cardTitle}
           {/* The status rides on the beat line rather than taking a fourth: the card is read
               in a glance, and "waved at you · on a road trip" is still one glance. */}
-          {card.status ? (
-            <span className="wave-card__status"> · {copy.status.aside(card.status)}</span>
+          {card.status || card.statusText ? (
+            <span className="wave-card__status">
+              {' · '}
+              {card.status ? copy.status.aside(card.status) : card.statusText}
+            </span>
           ) : null}
         </span>
       </span>

@@ -8,7 +8,7 @@ import {
 import { isSecret } from './hash.js';
 import { isColourId, isModel, type CarColourId, type TeslaModel } from './models.js';
 import { isReportKind, type Report, type ReportKind } from './reports.js';
-import { isStatusId, type StatusId } from './status.js';
+import { cleanStatusText, isStatusId, type StatusId } from './status.js';
 
 export type CarPublic = {
   id: string;
@@ -17,6 +17,8 @@ export type CarPublic = {
   nick?: string;
   /** A word about the drive, chosen from STATUSES, shown to anyone who looks at the car. */
   status?: StatusId;
+  /** Or the driver's own words, if they wrote some. At most one of the two is ever set. */
+  statusText?: string;
   waves: number;
   /** server timestamp of the first hello for this id */
   since: number;
@@ -51,6 +53,7 @@ export type CarMeta = {
   colour: string;
   nick?: string;
   status?: StatusId;
+  statusText?: string;
   since: number;
   cell: string;
 };
@@ -85,6 +88,8 @@ export type ClientMsg =
       nick?: string;
       /** Absent means no status; an old hub ignores it and an old client never sends it. */
       status?: StatusId;
+      /** The driver's own words instead of a chosen one. The hub keeps whichever arrives. */
+      statusText?: string;
       cells: string[];
       spectator?: boolean;
       /**
@@ -115,7 +120,13 @@ export type ClientMsg =
    * position for anyone, and a report is worth nothing a minute later. When the hub does
    * hold one, the two have to agree (REPORT_MAX_OFFSET_M).
    */
-  | { t: 'report'; kind: ReportKind; at: readonly [lat: number, lng: number] };
+  | { t: 'report'; kind: ReportKind; at: readonly [lat: number, lng: number] }
+  /**
+   * Answer the question a pin on the map asks: is it still there? `there: false` is a
+   * dismissal. `at` is the car's own position, as a report's is, so the hub can tell a
+   * driver looking at the thing from one who is nowhere near it (§8a.5).
+   */
+  | { t: 'confirm'; id: string; there: boolean; at: readonly [lat: number, lng: number] };
 
 /**
  * Why a wave did not go through. `hidden` is the driver's own doing (invisible mode, or a
@@ -129,6 +140,12 @@ export type WaveFailReason = 'range' | 'offline' | 'rate' | 'hidden' | 'nofix';
  * `range` is a position the hub could not reconcile with where it knows the car to be.
  */
 export type ReportFailReason = 'rate' | 'hidden' | 'range';
+
+/**
+ * Why a vote was not counted. The three above, plus the one only a vote can get: the report
+ * lapsed, or was dismissed by somebody else, between the pin being drawn and the tap.
+ */
+export type ConfirmFailReason = ReportFailReason | 'gone';
 
 export type ServerMsg =
   | { t: 'welcome'; now: number; you: CarPublic | null; cells: string[]; snapshot: CarState[] }
@@ -170,6 +187,11 @@ export type ServerMsg =
    */
   | { t: 'reports'; cell: string; upd: Report[]; gone: string[] }
   | { t: 'reported'; ok: boolean; reason?: ReportFailReason }
+  /**
+   * Your vote on a pin was counted, or why not. `gone` means the report had already lapsed
+   * or been dismissed: the answer to "is it still there" turned out to be no.
+   */
+  | { t: 'confirmed'; id: string; ok: boolean; reason?: ConfirmFailReason }
   /**
    * The hub has no position for this connection and needs one now, because a wave is
    * waiting on it. The client answers with its last fix at once, outside the send policy.
@@ -250,6 +272,9 @@ export function parseClientMsg(raw: unknown): ClientMsg | null {
       const at = parseWireAt(value['at']);
       // A status this build does not know is dropped, not refused: the list can grow.
       const status = value['status'];
+      // Their own words, cleaned exactly as a nickname is. A chosen status wins if both
+      // arrive, so a client that forgot to clear one cannot show two.
+      const statusText = status === undefined ? cleanStatusText(value['statusText']) : undefined;
       return {
         t: 'hello',
         secret: value['secret'],
@@ -259,6 +284,7 @@ export function parseClientMsg(raw: unknown): ClientMsg | null {
         v: isFiniteNum(v) && v >= 0 && v < 1_000 ? Math.floor(v) : LEGACY_PROTOCOL_VERSION,
         ...(nick === undefined ? {} : { nick }),
         ...(isStatusId(status) ? { status } : {}),
+        ...(statusText === undefined ? {} : { statusText }),
         ...(value['spectator'] === true ? { spectator: true } : {}),
         ...(at === null ? {} : { at }),
       };
@@ -287,6 +313,11 @@ export function parseClientMsg(raw: unknown): ClientMsg | null {
       if (!isReportKind(value['kind']) || at === null) return null;
       return { t: 'report', kind: value['kind'], at };
     }
+    case 'confirm': {
+      const at = parseWireAt(value['at']);
+      if (!isId(value['id']) || typeof value['there'] !== 'boolean' || at === null) return null;
+      return { t: 'confirm', id: value['id'], there: value['there'], at };
+    }
     default:
       return null;
   }
@@ -303,6 +334,7 @@ const parseCarState = (v: unknown): CarState | null => {
   if (!isCell(cell)) return null;
   const nick = cleanNick(v['nick']);
   const status = v['status'];
+  const statusText = cleanStatusText(v['statusText']);
   return {
     id,
     model,
@@ -317,6 +349,7 @@ const parseCarState = (v: unknown): CarState | null => {
     cell,
     ...(nick === undefined ? {} : { nick }),
     ...(isStatusId(status) ? { status } : {}),
+    ...(statusText === undefined ? {} : { statusText }),
   };
 };
 
@@ -327,6 +360,7 @@ const parseCarMeta = (v: unknown): CarMeta | null => {
   if (!isFiniteNum(since) || !isCell(cell)) return null;
   const nick = cleanNick(v['nick']);
   const status = v['status'];
+  const statusText = cleanStatusText(v['statusText']);
   return {
     h,
     id,
@@ -336,6 +370,7 @@ const parseCarMeta = (v: unknown): CarMeta | null => {
     cell,
     ...(nick === undefined ? {} : { nick }),
     ...(isStatusId(status) ? { status } : {}),
+    ...(statusText === undefined ? {} : { statusText }),
   };
 };
 
@@ -370,6 +405,7 @@ const parseCarPublic = (v: unknown): CarPublic | null => {
   if (!isFiniteNum(waves) || !isFiniteNum(since)) return null;
   const nick = cleanNick(v['nick']);
   const status = v['status'];
+  const statusText = cleanStatusText(v['statusText']);
   return {
     id,
     model,
@@ -378,18 +414,30 @@ const parseCarPublic = (v: unknown): CarPublic | null => {
     since,
     ...(nick === undefined ? {} : { nick }),
     ...(isStatusId(status) ? { status } : {}),
+    ...(statusText === undefined ? {} : { statusText }),
   };
 };
 
 /** A report off the wire. A malformed one is dropped, never drawn half-made. */
 const parseReport = (v: unknown): Report | null => {
   if (!isObj(v)) return null;
-  const { id, kind, lat, lng, at, n } = v;
+  const { id, kind, lat, lng, at, first, n, no } = v;
   if (!isId(id) || !isReportKind(kind)) return null;
   if (!isFiniteNum(lat) || lat < -90 || lat > 90) return null;
   if (!isFiniteNum(lng) || lng < -180 || lng > 180) return null;
   if (!isFiniteNum(at) || at < 0 || !isFiniteNum(n) || n < 1) return null;
-  return { id, kind, lat, lng, at, n: Math.floor(n) };
+  return {
+    id,
+    kind,
+    lat,
+    lng,
+    at,
+    // A hub from before the ceiling sends no `first`; the report is then as old as its last
+    // confirmation says, which is the most generous reading and the one it used to get.
+    first: isFiniteNum(first) && first > 0 ? first : at,
+    n: Math.floor(n),
+    no: isFiniteNum(no) && no > 0 ? Math.floor(no) : 0,
+  };
 };
 
 /** Server messages are parsed too: a corrupt frame must never poison the world state. */
@@ -487,6 +535,13 @@ export function parseServerMsg(raw: unknown): ServerMsg | null {
       const reason = value['reason'];
       const valid = reason === 'rate' || reason === 'hidden' || reason === 'range';
       return { t: 'reported', ok: value['ok'], ...(valid ? { reason } : {}) };
+    }
+    case 'confirmed': {
+      if (!isId(value['id']) || typeof value['ok'] !== 'boolean') return null;
+      const reason = value['reason'];
+      const valid =
+        reason === 'rate' || reason === 'hidden' || reason === 'range' || reason === 'gone';
+      return { t: 'confirmed', id: value['id'], ok: value['ok'], ...(valid ? { reason } : {}) };
     }
     case 'where':
       return { t: 'where' };

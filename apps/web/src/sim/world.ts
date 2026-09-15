@@ -11,7 +11,7 @@ import {
   encode,
   haversineM,
   pushSample,
-  reportTtlMs,
+  reportExpiryAt,
   sample,
   wireToSample,
   type CarMeta,
@@ -38,6 +38,7 @@ export type WorldCar = {
   colour: string;
   nick?: string;
   status?: StatusId;
+  statusText?: string;
   waves: number;
   since: number;
   /**
@@ -80,7 +81,14 @@ export type Summary = {
   wavesToday: number;
   lastWaveTs: number | null;
   selfWaves: number;
-  nearby: { id: string; model: TeslaModel; colour: string; nick?: string; status?: StatusId } | null;
+  nearby: {
+    id: string;
+    model: TeslaModel;
+    colour: string;
+    nick?: string;
+    status?: StatusId;
+    statusText?: string;
+  } | null;
   /** The nearest report within REPORT_ALERT_M, or null. Said once per id by the app. */
   alert: { id: string; kind: ReportKind; distanceM: number; n: number } | null;
   serverNow: number;
@@ -202,6 +210,7 @@ const upsert = (state: CarState, hub: string, appearedAt: number): void => {
       lastServerTs: state.ts,
       ...(state.nick === undefined ? {} : { nick: state.nick }),
       ...(state.status === undefined ? {} : { status: state.status }),
+      ...(state.statusText === undefined ? {} : { statusText: state.statusText }),
     };
     cars.set(state.id, car);
   }
@@ -215,6 +224,8 @@ const upsert = (state: CarState, hub: string, appearedAt: number): void => {
   else car.nick = state.nick;
   if (state.status === undefined) delete car.status;
   else car.status = state.status;
+  if (state.statusText === undefined) delete car.statusText;
+  else car.statusText = state.statusText;
   pushSample(car.track, {
     lat: state.lat,
     lng: state.lng,
@@ -263,6 +274,8 @@ const applyMeta = (meta: CarMeta, hub: string): void => {
   else existing.nick = meta.nick;
   if (meta.status === undefined) delete existing.status;
   else existing.status = meta.status;
+  if (meta.statusText === undefined) delete existing.statusText;
+  else existing.statusText = meta.statusText;
 };
 
 /** One car's motion, by handle. Nothing here can create a car we were never told about. */
@@ -291,6 +304,7 @@ const applyWire = (wire: CarWire, hub: string, msgNow: number, appearedAt: numbe
       lastServerTs: sample.ts,
       ...(meta.nick === undefined ? {} : { nick: meta.nick }),
       ...(meta.status === undefined ? {} : { status: meta.status }),
+      ...(meta.statusText === undefined ? {} : { statusText: meta.statusText }),
     };
     cars.set(id, car);
   }
@@ -364,7 +378,9 @@ export function applyServerMsg(msg: ServerMsg, hub: string): void {
           ...r,
           cell: encode(r.lat, r.lng, CELL_PRECISION),
           appearedAt: existing?.appearedAt ?? now,
-          expiresAt: r.at + reportTtlMs(r.kind),
+          // The same rule the hub applies, from the same two numbers: the kind's lifetime
+          // from the last confirmation, or the ceiling from when it was placed.
+          expiresAt: reportExpiryAt(r),
         });
       }
       for (const id of msg.gone) reports.delete(id);
@@ -561,6 +577,7 @@ function updateSummary(rendered: RenderCar[], server: number): void {
         colour: chosen.colour,
         ...(chosen.nick === undefined ? {} : { nick: chosen.nick }),
         ...(chosen.status === undefined ? {} : { status: chosen.status }),
+        ...(chosen.statusText === undefined ? {} : { statusText: chosen.statusText }),
       }
     : null;
 

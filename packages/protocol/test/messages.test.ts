@@ -156,7 +156,7 @@ describe('status and reports on the wire', () => {
   });
 
   it('reads reports from the hub and drops a malformed one', () => {
-    const good = { id: 'u0-abc-1', kind: 'accident', lat: 46.2, lng: 6.1, at: 5, n: 2 };
+    const good = { id: 'u0-abc-1', kind: 'accident', lat: 46.2, lng: 6.1, at: 5, first: 1, n: 2, no: 0 };
     const msg = parseServerMsg({
       t: 'reports',
       cell: 'u0hq',
@@ -164,6 +164,56 @@ describe('status and reports on the wire', () => {
       gone: ['u0-old', 7],
     });
     expect(msg).toEqual({ t: 'reports', cell: 'u0hq', upd: [good], gone: ['u0-old'] });
+  });
+
+  it('reads a report from a hub that predates the ceiling as first-placed when last confirmed', () => {
+    const msg = parseServerMsg({
+      t: 'reports',
+      cell: 'u0hq',
+      upd: [{ id: 'u0-abc-1', kind: 'police', lat: 46.2, lng: 6.1, at: 500, n: 1 }],
+      gone: [],
+    });
+    expect(msg?.t === 'reports' && msg.upd[0]).toMatchObject({ first: 500, no: 0 });
+  });
+
+  it('reads a vote and its answer, and refuses one that names no report', () => {
+    expect(parseClientMsg({ t: 'confirm', id: 'u0-abc-1', there: false, at: [4620440, 614320] })).toEqual({
+      t: 'confirm',
+      id: 'u0-abc-1',
+      there: false,
+      at: [4620440, 614320],
+    });
+    expect(parseClientMsg({ t: 'confirm', there: true, at: [4620440, 614320] })).toBeNull();
+    expect(parseClientMsg({ t: 'confirm', id: 'u0-abc-1', there: 'yes', at: [4620440, 614320] })).toBeNull();
+    expect(parseServerMsg({ t: 'confirmed', id: 'u0-abc-1', ok: false, reason: 'gone' })).toEqual({
+      t: 'confirmed',
+      id: 'u0-abc-1',
+      ok: false,
+      reason: 'gone',
+    });
+    // A reason this build does not know is dropped, and the answer still lands.
+    expect(parseServerMsg({ t: 'confirmed', id: 'u0-abc-1', ok: false, reason: 'weather' })).toEqual({
+      t: 'confirmed',
+      id: 'u0-abc-1',
+      ok: false,
+    });
+  });
+
+  it('cleans a status a driver wrote, and lets a chosen one win over it', () => {
+    const typed = parseClientMsg({ ...hello, statusText: '   towing   a   caravan across France   ' });
+    expect(typed?.t === 'hello' && typed.statusText).toBe('towing a caravan across');
+    const both = parseClientMsg({ ...hello, status: 'charging', statusText: 'towing' });
+    expect(both?.t === 'hello' && both.status).toBe('charging');
+    expect(both?.t === 'hello' && 'statusText' in both).toBe(false);
+    // Whitespace alone is no status at all, never an empty chip.
+    const blank = parseClientMsg({ ...hello, statusText: '   ' });
+    expect(blank?.t === 'hello' && 'statusText' in blank).toBe(false);
+  });
+
+  it('carries a written status back out on a car', () => {
+    const car = { id: 'x', model: 'Y', colour: 'deepblue', waves: 3, since: 1, statusText: 'towing' };
+    const wave = parseServerMsg({ t: 'wave', from: car, ts: 1 });
+    expect(wave?.t === 'wave' && wave.from.statusText).toBe('towing');
   });
 
   it('reads every answer a report can get, and drops a reason it does not know', () => {

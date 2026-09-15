@@ -4,6 +4,7 @@ import {
   PARKED_HIDE_MS,
   PRESENCE_EXPIRY_MS,
   REPORT_ALERT_M,
+  REPORT_MAX_LIFE_MS,
   REPORT_TTL_MS,
   colourOf,
   isColourId,
@@ -195,10 +196,13 @@ export const EN = {
    */
   status: {
     title: 'Status (optional)',
-    hint: 'A word about your drive, for drivers who look at your car.',
+    hint: 'A word about your drive, for drivers who look at your car. Your own words are shown as you write them, and translated for nobody.',
     none: 'None',
     label: (status: StatusId): string => STATUS_LABELS[status],
     aside: (status: StatusId): string => STATUS_ASIDES[status],
+    /** The field under the chips: the one thing five options cannot do. */
+    own: 'Your own words',
+    ownPlaceholder: 'Say it your own way',
   },
 
   /**
@@ -209,7 +213,7 @@ export const EN = {
   report: {
     control: 'Report',
     title: 'Report',
-    hint: `Placed where your car is now and shared with drivers nearby for ${n(REPORT_TTL_MS.police / 60_000)} to ${n(REPORT_TTL_MS.accident / 60_000)} minutes. Nothing says who reported it.`,
+    hint: `Placed where your car is now and shared with drivers nearby. It stays while drivers keep confirming it, and never longer than ${n(REPORT_MAX_LIFE_MS / 3_600_000)} hours. Nothing says who reported it.`,
     kind: (kind: ReportKind): string => REPORT_LABELS[kind],
     police: 'Police',
     policeHint: 'A patrol or a check ahead.',
@@ -225,6 +229,20 @@ export const EN = {
     confirmed: (count: number): string =>
       count === 1 ? 'reported by 1 driver' : `reported by ${n(count)} drivers`,
     within: `Said once, within ${n(REPORT_ALERT_M / 1000)} km`,
+
+    /* The card a pin raises when you tap it: what it is, when, who says so, and the one
+       question a driver passing it can answer. */
+    seen: (ago: string): string => `Reported ${ago}`,
+    disputed: (count: number): string =>
+      count === 1 ? '1 driver says it is gone' : `${n(count)} drivers say it is gone`,
+    stillThere: 'Still there',
+    gone: 'Gone now',
+    cardNote: `A pin stays while drivers keep saying it is there, and goes when as many say it is not. It lapses on its own after ${n(REPORT_TTL_MS.police / 60_000)} minutes without a word, and never lives past ${n(REPORT_MAX_LIFE_MS / 3_600_000)} hours.`,
+    voteThanks: 'Noted. It stays up a while longer.',
+    voteCleared: 'Noted. Thank you for clearing it.',
+    voteTooFar: 'Too far from it to say.',
+    voteGone: 'That one has gone already.',
+    voteTooSoon: 'One at a time.',
   },
 
   /**
@@ -237,10 +255,22 @@ export const EN = {
     hint: 'Says who waved, out loud, in a voice from the year 2049.',
     /** Spoken once when the switch goes on, so the driver hears what they just turned on. */
     hello: 'Voice on. Watching the road with you.',
-    received: (car: { model: TeslaModel; colour: string; nick?: string; status?: StatusId }): string => {
+    /**
+     * A chosen status is read as an aside, because we wrote the words and know they fit the
+     * sentence. A status a driver typed gets a sentence of its own: it is their phrasing, in
+     * their language, and dropping it into the middle of ours would read as a fault.
+     */
+    received: (car: {
+      model: TeslaModel;
+      colour: string;
+      nick?: string;
+      status?: StatusId;
+      statusText?: string;
+    }): string => {
       const who = car.nick ?? `The ${describe(car.model, car.colour)}`;
       const aside = car.status ? `, ${STATUS_ASIDES[car.status]},` : '';
-      return `${who}${aside} waved at you.`;
+      const line = `${who}${aside} waved at you.`;
+      return car.statusText ? `${line} Their status: ${car.statusText}.` : line;
     },
     back: (car: { model: TeslaModel; colour: string; nick?: string }): string =>
       `${car.nick ?? `The ${describe(car.model, car.colour)}`} waved back.`,

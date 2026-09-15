@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import {
   WAVE_MILESTONES,
+  cleanStatusText,
   idFromSecret,
   isColourId,
   isModel,
@@ -24,11 +25,16 @@ export type Identity = {
   nick?: string;
   /** A word about the drive, from STATUSES. Optional, like the name, and shown beside it. */
   status?: StatusId;
+  /** Or the driver's own words. Never both: picking a chip clears the text and the reverse. */
+  statusText?: string;
   createdAt: number;
 };
 
 /** Everything an identity holds apart from the secret and the id it derives. */
-export type IdentityCar = Pick<Identity, 'model' | 'colour' | 'nick' | 'status' | 'createdAt'>;
+export type IdentityCar = Pick<
+  Identity,
+  'model' | 'colour' | 'nick' | 'status' | 'statusText' | 'createdAt'
+>;
 
 /** The whole identity, from a secret and the car: the id is always derived here. */
 export const identityFrom = (secret: string, car: IdentityCar): Identity => ({
@@ -39,6 +45,9 @@ export const identityFrom = (secret: string, car: IdentityCar): Identity => ({
   createdAt: car.createdAt,
   ...(car.nick === undefined ? {} : { nick: car.nick }),
   ...(car.status === undefined ? {} : { status: car.status }),
+  ...(car.status !== undefined || car.statusText === undefined
+    ? {}
+    : { statusText: car.statusText }),
 });
 
 /**
@@ -48,7 +57,10 @@ export const identityFrom = (secret: string, car: IdentityCar): Identity => ({
  */
 export function parseIdentity(value: unknown): Identity | null {
   if (typeof value !== 'object' || value === null) return null;
-  const { secret, model, colour, nick, status, createdAt } = value as Record<string, unknown>;
+  const { secret, model, colour, nick, status, statusText, createdAt } = value as Record<
+    string,
+    unknown
+  >;
   if (!isModel(model) || !isColourId(colour)) return null;
   return identityFrom(isSecret(secret) ? secret : newSecret(), {
     model,
@@ -56,8 +68,15 @@ export function parseIdentity(value: unknown): Identity | null {
     createdAt: typeof createdAt === 'number' ? createdAt : Date.now(),
     ...(typeof nick === 'string' && nick.length > 0 ? { nick } : {}),
     ...(isStatusId(status) ? { status } : {}),
+    ...(isStatusId(status) ? {} : { ...textStatus(statusText) }),
   });
 }
+
+/** A stored status a driver typed is as untrusted as anything else in localStorage. */
+const textStatus = (value: unknown): { statusText?: string } => {
+  const text = cleanStatusText(value);
+  return text === undefined ? {} : { statusText: text };
+};
 
 export type Prefs = {
   sharing: boolean;

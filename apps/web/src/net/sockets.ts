@@ -30,6 +30,7 @@ export type NetProfile = {
   colour: CarColourId;
   nick?: string;
   status?: StatusId;
+  statusText?: string;
   spectator: boolean;
 };
 
@@ -196,6 +197,7 @@ export function createNet(handlers: {
       v: PROTOCOL_VERSION,
       ...(profile.nick === undefined ? {} : { nick: profile.nick }),
       ...(profile.status === undefined ? {} : { status: profile.status }),
+      ...(profile.statusText === undefined ? {} : { statusText: profile.statusText }),
       ...(profile.spectator ? { spectator: true } : {}),
       ...(at === null ? {} : { at }),
     };

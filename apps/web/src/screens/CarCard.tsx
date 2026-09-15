@@ -36,8 +36,13 @@ export function CarCard({
             </span>
             <span>{copy.card.onlineFor(minutes)}</span>
           </p>
-          {/* Their word about their drive, in the accent: the one line here they chose. */}
-          {car.status ? <p className="card-sheet__status">{copy.status.label(car.status)}</p> : null}
+          {/* Their word about their drive, in the accent: the one line here they chose. A
+              chosen one is translated; one they wrote is shown as they wrote it. */}
+          {car.status || car.statusText ? (
+            <p className="card-sheet__status">
+              {car.status ? copy.status.label(car.status) : car.statusText}
+            </p>
+          ) : null}
         </div>
       </div>
       <SheetActions>

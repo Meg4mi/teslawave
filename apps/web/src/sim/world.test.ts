@@ -3,6 +3,8 @@ import {
   CELL_PRECISION,
   POS_INTERVAL_STATIONARY_MS,
   PRESENCE_EXPIRY_MS,
+  REPORT_MAX_LIFE_MS,
+  REPORT_TTL_MS,
   WIRE_COORD_SCALE,
   decodeBounds,
   destination,
@@ -330,15 +332,10 @@ describe('cells and reconnects', () => {
 describe('reports', () => {
   const report = (
     over: Partial<Extract<ServerMsg, { t: 'reports' }>['upd'][number]> = {},
-  ): Extract<ServerMsg, { t: 'reports' }>['upd'][number] => ({
-    id: 'u0-r1',
-    kind: 'police',
-    lat: GENEVA.lat,
-    lng: GENEVA.lng + 0.005,
-    at: Date.now(),
-    n: 1,
-    ...over,
-  });
+  ): Extract<ServerMsg, { t: 'reports' }>['upd'][number] => {
+    const at = Date.now();
+    return { id: 'u0-r1', kind: 'police', lat: GENEVA.lat, lng: GENEVA.lng + 0.005, at, first: at, n: 1, no: 0, ...over };
+  };
   const reportsMsg = (upd: ReturnType<typeof report>[] = [], gone: string[] = []): ServerMsg => ({
     t: 'reports',
     cell: 'u0hq',
@@ -388,14 +385,34 @@ describe('reports', () => {
   });
 
   it('lets a report lapse on its own clock, hub or no hub', () => {
-    apply(reportsMsg([report({ at: Date.now() - 31 * 60_000 })]));
+    const old = Date.now() - (REPORT_TTL_MS.police + 60_000);
+    apply(reportsMsg([report({ at: old, first: old })]));
     expect(reportsNow()).toHaveLength(1);
     tickWorld(performance.now());
     expect(reportsNow()).toHaveLength(0);
-    // An accident lives longer.
-    apply(reportsMsg([report({ id: 'u0-r3', kind: 'accident', at: Date.now() - 31 * 60_000 })]));
+    // A patrol confirmed a moment ago outlives an accident reported at the same time.
+    const hourAgo = Date.now() - 61 * 60_000;
+    apply(reportsMsg([report({ id: 'u0-r3', at: hourAgo, first: hourAgo })]));
+    apply(reportsMsg([report({ id: 'u0-r4', kind: 'accident', at: hourAgo, first: hourAgo })]));
     tickWorld(performance.now());
-    expect(reportsNow()).toHaveLength(1);
+    expect(reportsNow().map((r) => r.id)).toEqual(['u0-r3']);
+  });
+
+  it('lets a pin go at the ceiling however lately it was confirmed', () => {
+    // Placed four hours ago, confirmed a minute ago: the kind's own clock would keep it, and
+    // the ceiling is what answers (ADR-0040, amended).
+    apply(
+      reportsMsg([
+        report({ at: Date.now() - 60_000, first: Date.now() - (REPORT_MAX_LIFE_MS + 60_000) }),
+      ]),
+    );
+    tickWorld(performance.now());
+    expect(reportsNow()).toHaveLength(0);
+  });
+
+  it('carries how many drivers say a pin is gone', () => {
+    apply(reportsMsg([report({ n: 3, no: 1 })]));
+    expect(reportsNow()[0]).toMatchObject({ n: 3, no: 1 });
   });
 
   it('carries a status on a car, from either wire', () => {

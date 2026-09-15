@@ -50,20 +50,26 @@ test('tapping a car opens its card', async ({ browser }) => {
   await onboard(pageB, simUrl(GENEVA.lat + 0.0006, GENEVA.lng, 90, 5));
   await expect.poll(async () => (await cars(pageA)).length, { timeout: 20_000 }).toBeGreaterThan(0);
 
-  // Project the other car to screen space through the map and tap it.
+  /*
+   * Through the map's own projection, and the card is asserted rather than assumed. This
+   * test used to tap a point worked out by hand and check nothing at all, which is how the
+   * map came to spend a release holding onboarding's callbacks: tapping a car did nothing on
+   * a driver's first drive, and every drive after a reload was fine.
+   */
   const point = await pageA.evaluate(() => {
     const car = window.__tw.cars()[0];
-    const self = window.__tw.self();
-    if (!car || !self) return null;
-    return { car, self };
+    if (!car || !window.__twMap) return null;
+    return window.__twMap.project([car.lng, car.lat]);
   });
   expect(point).not.toBeNull();
-
-  const canvas = pageA.locator('.map__gl canvas').first();
-  const box = await canvas.boundingBox();
+  const box = await pageA.locator('.map__gl canvas').first().boundingBox();
   expect(box).not.toBeNull();
-  // The other car sits due north of us, so it is above centre on a track-up map heading east.
-  await pageA.mouse.click(box!.x + box!.width / 2 + 60, box!.y + box!.height / 2);
+  await pageA.mouse.click(box!.x + point!.x, box!.y + point!.y);
+
+  await expect(pageA.getByRole('dialog')).toBeVisible();
+  await expect(pageA.locator('.card-sheet__title')).toBeVisible();
+  // And the card can wave at the car it is about.
+  await expect(pageA.getByRole('button', { name: 'Wave', exact: true })).toBeVisible();
 
   await a.close();
   await b.close();

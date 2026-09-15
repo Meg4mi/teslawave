@@ -10,8 +10,8 @@ The design goal is that there is nothing to leak. No account, no email, no trip 
 | Heading and speed | So other cars glide instead of jumping between updates. |
 | Model and colour | Chosen by hand. No Tesla account, no Fleet API, no VIN. |
 | Nickname | Optional, at most 16 characters. |
-| Status | Optional, one of five words chosen from a list ("on a road trip", "heading to charge"…). Never typed, so never anything else (ADR-0040). |
-| A report | Only if you tap Report: the kind (police or accident) and where your car was at that moment. Shared with drivers in the same map cell for 30 minutes (police) or 60 (accident) from the last driver to confirm it, as a pin that carries no id, no name and nothing about the car that reported it. The hub keeps the ids of the drivers behind a pin in memory only, so nobody is counted twice, and they go with the pin (ADR-0040). |
+| Status | Optional: one of five words chosen from a list ("on a road trip", "heading to charge"…), or up to 24 characters you write yourself. A written one is shown to other drivers exactly as you wrote it, with the same cap and the same absence of moderation as a nickname (ADR-0040, amended). |
+| A report, and a vote on one | Only if you tap Report, or answer a pin: the kind (police or accident) and where your car was at that moment. Shared with drivers in the same map cell as a pin that carries no id, no name and nothing about the car behind it. The hub keeps the ids of the drivers who say a pin is there and those who say it is gone in memory only, so each counts once and can change their mind, and they go with the pin (ADR-0040). |
 | A random secret | Generated in the browser (`crypto.randomUUID`), stored in `localStorage`. The hub hashes it into the id other drivers see; the secret itself is never shown or stored server-side, so an id read off the wire cannot be used to pose as its driver (ADR-0025). |
 
 Positions are exact. What protects a driver is not blur but scope: a position is shown only
@@ -29,7 +29,7 @@ a wave is still validated against the exact position the device reported.
 | Data | Where | Retention |
 |---|---|---|
 | Positions | Durable Object memory only | 60 seconds since the last update, then evicted |
-| Reports | Durable Object memory only | 30 or 60 minutes from the last confirmation, then dropped; gone on hibernation. Never written to storage, like positions |
+| Reports | Durable Object memory only | The earlier of 60 to 90 minutes from the last driver who confirmed it and 4 hours from when it was placed, then dropped; gone on hibernation. Never written to storage, like positions |
 | Wave counters | Durable Object storage, as numbers | Until 180 days after that driver's last wave. The time of the last wave is kept for that purpose; no places |
 | Waves per map cell per day | Durable Object storage for the current day, then D1 | Rolled into D1 by a daily job; 7 days |
 | Pairing codes | D1 | 10 minutes, single use; the row (which carries the secret) is deleted the moment it is claimed |

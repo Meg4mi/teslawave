@@ -13,12 +13,14 @@ import {
   MAX_SPEED_KMH,
   PRESENCE_EXPIRY_MS,
   PROTOCOL_VERSION,
+  RATE_CONFIRM_MS,
   RATE_POS_MS,
   RATE_REPORT_MS,
   RATE_VIOLATIONS_TO_CLOSE,
   RATE_WAVE_MS,
   REPORT_MAX_OFFSET_M,
   REPORT_MERGE_M,
+  REPORT_VOTE_RANGE_M,
   SERVER_TICK_MS,
   WAVE_HOLD_MS,
   WAVE_VALIDATE_RANGE_M,
@@ -27,12 +29,13 @@ import {
   haversineM,
   hubOf,
   idFromSecret,
-  reportTtlMs,
+  reportExpiryAt,
   type CarMeta,
   type CarPublic,
   type CarState,
   type CarWire,
   type ClientMsg,
+  type ConfirmFailReason,
   type Report,
   type ReportFailReason,
   type ServerMsg,
@@ -115,6 +118,7 @@ const publicOf = (car: CarState): CarPublic => ({
   since: car.since,
   ...(car.nick === undefined ? {} : { nick: car.nick }),
   ...(car.status === undefined ? {} : { status: car.status }),
+  ...(car.statusText === undefined ? {} : { statusText: car.statusText }),
 });
 
 const profileOf = (s: Socket): SocketProfile => ({
@@ -129,6 +133,7 @@ const profileOf = (s: Socket): SocketProfile => ({
   v: s.v,
   ...(s.nick === undefined ? {} : { nick: s.nick }),
   ...(s.status === undefined ? {} : { status: s.status }),
+  ...(s.statusText === undefined ? {} : { statusText: s.statusText }),
 });
 
 const markDirty = (state: HubState, cell: string, id: string): void => addTo(state.dirty, cell, id);
@@ -156,6 +161,7 @@ export function restoreSocket(state: HubState, profile: SocketProfile): void {
     lastPosAt: 0,
     lastWaveAt: 0,
     lastReportAt: 0,
+    lastConfirmAt: 0,
     askedAt: 0,
     violations: 0,
     lastSeen: null,
@@ -178,6 +184,7 @@ export function openSocket(state: HubState, key: SocketKey): void {
     lastPosAt: 0,
     lastWaveAt: 0,
     lastReportAt: 0,
+    lastConfirmAt: 0,
     askedAt: 0,
     violations: 0,
     lastSeen: null,
@@ -322,6 +329,7 @@ const metaOf = (car: CarState, h: number): CarMeta => ({
   cell: car.cell,
   ...(car.nick === undefined ? {} : { nick: car.nick }),
   ...(car.status === undefined ? {} : { status: car.status }),
+  ...(car.statusText === undefined ? {} : { statusText: car.statusText }),
 });
 
 const wireOf = (car: CarState, h: number, now: number): CarWire => [
@@ -418,6 +426,8 @@ function onHello(state: HubState, s: Socket, msg: Extract<ClientMsg, { t: 'hello
   else s.nick = msg.nick;
   if (msg.status === undefined) delete s.status;
   else s.status = msg.status;
+  if (msg.statusText === undefined) delete s.statusText;
+  else s.statusText = msg.statusText;
   s.cells = [...msg.cells];
   s.spectator = msg.spectator === true;
   s.since = state.presence.get(s.id)?.since ?? (s.since || now);
@@ -523,6 +533,7 @@ function onPos(state: HubState, s: Socket, msg: Extract<ClientMsg, { t: 'pos' }>
     cell,
     ...(s.nick === undefined ? {} : { nick: s.nick }),
     ...(s.status === undefined ? {} : { status: s.status }),
+    ...(s.statusText === undefined ? {} : { statusText: s.statusText }),
   });
   markDirty(state, cell, s.id);
   return [];
@@ -579,10 +590,17 @@ const publicReport = (r: HubReport): Report => ({
   lat: r.lat,
   lng: r.lng,
   at: r.at,
+  first: r.first,
   n: r.n,
+  no: r.no,
 });
 
-const reportExpired = (r: HubReport, now: number): boolean => now - r.at > reportTtlMs(r.kind);
+/**
+ * The kind's lifetime from the last driver who said it was there, or the ceiling from when it
+ * was placed, whichever comes first: confirmations extend a report, they do not immortalise
+ * it (ADR-0040, amended).
+ */
+const reportExpired = (r: HubReport, now: number): boolean => now > reportExpiryAt(r);
 
 /**
  * Every live report in these cells, in full, for a connection that has just started holding
@@ -649,10 +667,16 @@ function onReport(
     inCell += 1;
     if (!oldest || r.at < oldest.at) oldest = r;
     if (r.kind !== msg.kind || haversineM(r.lat, r.lng, lat, lng) > REPORT_MERGE_M) continue;
-    // Their own report again: still there, as far as they are concerned, but not twice.
-    if (r.by.has(s.id)) return ok;
+    /*
+     * The same thing again. A driver who reports it a second time is saying it is still
+     * there, so the clock restarts either way; the count is the size of the set, so their
+     * second tap cannot raise it. Reporting something they had dismissed is a change of
+     * mind, and is taken as one.
+     */
+    r.against.delete(s.id);
     r.by.add(s.id);
-    r.n += 1;
+    r.n = r.by.size;
+    r.no = r.against.size;
     r.at = now;
     addTo(state.reportsDirty, cell, r.id);
     return ok;
@@ -662,8 +686,76 @@ function onReport(
   // The id carries the time so that one minted after a hibernation cannot collide with one a
   // client is still holding from before it.
   const id = `${state.hub}-${now.toString(36)}-${(state.nextReportSeq++).toString(36)}`;
-  state.reports.set(id, { id, kind: msg.kind, lat, lng, at: now, n: 1, cell, by: new Set([s.id]) });
+  state.reports.set(id, {
+    id,
+    kind: msg.kind,
+    lat,
+    lng,
+    at: now,
+    first: now,
+    n: 1,
+    no: 0,
+    cell,
+    by: new Set([s.id]),
+    against: new Set(),
+  });
   addTo(state.reportsDirty, cell, id);
+  return ok;
+}
+
+/**
+ * A driver answers the question the pin asks: is it still there?
+ *
+ * A vote is worth something only from somebody who could see the thing, so it is checked
+ * against the voter's own position the way a report is, and against the pin's: beyond
+ * REPORT_VOTE_RANGE_M there is nothing to have seen. Each driver counts once and can change
+ * their mind; `n` and `no` are the two set sizes, so they cannot drift.
+ *
+ * A report goes when as many drivers say it is gone as say it is there. One voice against
+ * one is enough to clear a pin nobody else has vouched for, and a pin four drivers have
+ * confirmed needs four — which is the right way round, and self-correcting either way,
+ * because a driver who is actually looking at it can report it again (ADR-0040, amended).
+ */
+function onConfirm(
+  state: HubState,
+  s: Socket,
+  msg: Extract<ClientMsg, { t: 'confirm' }>,
+  now: number,
+): Effect[] {
+  if (!s.id) return violation(s);
+  const refuse = (reason: ConfirmFailReason): Effect[] => [
+    { k: 'send', to: s.key, msg: { t: 'confirmed', id: msg.id, ok: false, reason } },
+  ];
+  if (s.hidden || s.spectator) return refuse('hidden');
+  if (s.lastConfirmAt !== 0 && now - s.lastConfirmAt < RATE_CONFIRM_MS) return refuse('rate');
+
+  const report = state.reports.get(msg.id);
+  // Lapsed, or dismissed by somebody else, between the pin being drawn and the tap.
+  if (!report || reportExpired(report, now)) return refuse('gone');
+
+  const lat = msg.at[0] / WIRE_COORD_SCALE;
+  const lng = msg.at[1] / WIRE_COORD_SCALE;
+  const known = s.lastSeen && now - s.lastSeen.ts <= PRESENCE_EXPIRY_MS ? s.lastSeen : null;
+  if (known && haversineM(known.lat, known.lng, lat, lng) > REPORT_MAX_OFFSET_M)
+    return refuse('range');
+  if (haversineM(report.lat, report.lng, lat, lng) > REPORT_VOTE_RANGE_M) return refuse('range');
+
+  s.lastConfirmAt = now;
+  if (msg.there) {
+    report.against.delete(s.id);
+    report.by.add(s.id);
+    // Only a voice for it restarts the clock. A dismissal must never extend a pin's life.
+    report.at = now;
+  } else {
+    report.by.delete(s.id);
+    report.against.add(s.id);
+  }
+  report.n = report.by.size;
+  report.no = report.against.size;
+
+  const ok: Effect[] = [{ k: 'send', to: s.key, msg: { t: 'confirmed', id: msg.id, ok: true } }];
+  if (report.against.size >= report.by.size) dropReport(state, report);
+  else addTo(state.reportsDirty, report.cell, report.id);
   return ok;
 }
 
@@ -861,6 +953,8 @@ function handle(state: HubState, s: Socket, msg: ClientMsg, now: number): Effect
       return onWave(state, s, msg.to, now);
     case 'report':
       return onReport(state, s, msg, now);
+    case 'confirm':
+      return onConfirm(state, s, msg, now);
     case 'hide': {
       s.hidden = true;
       dropPresence(state, s.id);

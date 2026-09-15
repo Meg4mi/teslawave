@@ -4,6 +4,7 @@ import {
   PARKED_HIDE_MS,
   PRESENCE_EXPIRY_MS,
   REPORT_ALERT_M,
+  REPORT_MAX_LIFE_MS,
   REPORT_TTL_MS,
   colourOf,
   isColourId,
@@ -199,16 +200,18 @@ export const FR: Copy = {
 
   status: {
     title: 'Statut (facultatif)',
-    hint: 'Un mot sur votre trajet, pour les conducteurs qui regardent votre voiture.',
+    hint: 'Un mot sur votre trajet, pour les conducteurs qui regardent votre voiture. Vos propres mots s’affichent tels que vous les écrivez, et ne sont traduits pour personne.',
     none: 'Aucun',
     label: (status: StatusId): string => STATUS_LABELS[status],
     aside: (status: StatusId): string => STATUS_ASIDES[status],
+    own: 'Vos propres mots',
+    ownPlaceholder: 'Dites-le à votre façon',
   },
 
   report: {
     control: 'Signaler',
     title: 'Signaler',
-    hint: `Placé là où se trouve votre voiture et partagé avec les conducteurs alentour pendant ${n(REPORT_TTL_MS.police / 60_000)} à ${n(REPORT_TTL_MS.accident / 60_000)} minutes. Rien ne dit qui l’a signalé.`,
+    hint: `Placé là où se trouve votre voiture et partagé avec les conducteurs alentour. Le repère reste tant que des conducteurs le confirment, et jamais plus de ${n(REPORT_MAX_LIFE_MS / 3_600_000)} heures. Rien ne dit qui l’a signalé.`,
     kind: (kind: ReportKind): string => REPORT_LABELS[kind],
     police: 'Police',
     policeHint: 'Une patrouille ou un contrôle devant.',
@@ -223,16 +226,37 @@ export const FR: Copy = {
     confirmed: (count: number): string =>
       count === 1 ? 'signalé par 1 conducteur' : `signalé par ${n(count)} conducteurs`,
     within: `Dit une fois, à moins de ${n(REPORT_ALERT_M / 1000)} km`,
+
+    seen: (ago: string): string => `Signalement ${ago}`,
+    disputed: (count: number): string =>
+      count === 1
+        ? '1 conducteur dit que c’est fini'
+        : `${n(count)} conducteurs disent que c’est fini`,
+    stillThere: 'Toujours là',
+    gone: 'Plus là',
+    cardNote: `Un repère reste tant que des conducteurs disent qu’il est là, et disparaît quand autant disent le contraire. Il s’efface tout seul après ${n(REPORT_TTL_MS.police / 60_000)} minutes sans nouvelles, et ne dépasse jamais ${n(REPORT_MAX_LIFE_MS / 3_600_000)} heures.`,
+    voteThanks: 'Noté. Le repère reste encore un moment.',
+    voteCleared: 'Noté. Merci de l’avoir retiré.',
+    voteTooFar: 'Trop loin pour en juger.',
+    voteGone: 'Celui-là a déjà disparu.',
+    voteTooSoon: 'Un à la fois.',
   },
 
   voice: {
     title: 'Voix robot',
     hint: 'Annonce qui vous a salué, à voix haute, avec une voix venue de 2049.',
     hello: 'Voix activée. Je surveille la route avec vous.',
-    received: (car: { model: TeslaModel; colour: string; nick?: string; status?: StatusId }): string => {
+    received: (car: {
+      model: TeslaModel;
+      colour: string;
+      nick?: string;
+      status?: StatusId;
+      statusText?: string;
+    }): string => {
       const who = car.nick ?? TheCar(car.model, car.colour);
       const aside = car.status ? `, ${STATUS_ASIDES[car.status]},` : '';
-      return `${who}${aside} vous a fait signe.`;
+      const line = `${who}${aside} vous a fait signe.`;
+      return car.statusText ? `${line} Son statut : ${car.statusText}.` : line;
     },
     back: (car: { model: TeslaModel; colour: string; nick?: string }): string =>
       `${car.nick ?? TheCar(car.model, car.colour)} a répondu à votre salut.`,

@@ -3,7 +3,7 @@ import { isColourId, isModel, isSecret, isStatusId, type ReportKind } from '@tes
 import { LiveMap } from '../map/LiveMap';
 import { nextResetLabel } from '../net/budget';
 import { usePulse } from '../net/usePulse';
-import { getCar, getSummary, subscribeSummary } from '../sim/world';
+import { getCar, getReport, getSummary, subscribeSummary } from '../sim/world';
 import { identityFrom, newSecret, useIdentity } from '../identity/store';
 import { play, unlockAudio } from '../ui/sound';
 import { speak } from '../ui/voice';
@@ -34,6 +34,7 @@ import { EnterCodeSheet, ShowPairingSheet } from '../screens/Pairing';
 import { GarageSheet, type CarEdit } from '../screens/GarageSheet';
 import { HowToWave } from '../screens/HowToWave';
 import { ReportSheet } from '../screens/ReportSheet';
+import { ReportCard } from '../screens/ReportCard';
 import type { Renderer } from '../overlay/renderer';
 import { installTestHook } from './testHook';
 import { useSession } from './useSession';
@@ -55,7 +56,14 @@ type SheetName =
 
 const BOOT_KEY = 'tw.booted';
 
-type Paired = { secret: string; model: string; colour: string; nick?: string; status?: string };
+type Paired = {
+  secret: string;
+  model: string;
+  colour: string;
+  nick?: string;
+  status?: string;
+  statusText?: string;
+};
 
 /**
  * The screens, and what opens them. Everything between the driver and the hub — the socket,
@@ -68,6 +76,7 @@ export function App(): ReactNode {
   const { identity, prefs, setIdentity, setPrefs, claimMilestone } = useIdentity();
   const [sheet, setSheet] = useState<SheetName>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedReportId, setSelectedReportId] = useState<string | null>(null);
   const [toast, setToast] = useState<ToastContent | null>(null);
   const [tiles, setTiles] = useState(true);
   const [origin, setOrigin] = useState<{ lat: number; lng: number } | null>(null);
@@ -116,6 +125,16 @@ export function App(): ReactNode {
     [session],
   );
 
+  // The card asked a question and the tap answered it: it closes, as the wave button does.
+  const voteOnReport = useCallback(
+    (there: boolean): void => {
+      if (!selectedReportId) return;
+      session.confirm(selectedReportId, there);
+      setSelectedReportId(null);
+    },
+    [session, selectedReportId],
+  );
+
   useEffect(() => {
     if (isE2E()) installTestHook();
   }, []);
@@ -161,6 +180,7 @@ export function App(): ReactNode {
           colour: next.colour,
           ...(next.nick === undefined ? {} : { nick: next.nick }),
           ...(next.status === undefined ? {} : { status: next.status }),
+          ...(next.statusText === undefined ? {} : { statusText: next.statusText }),
         }),
       );
       setSheet(null);
@@ -181,6 +201,9 @@ export function App(): ReactNode {
           createdAt: Date.now(),
           ...(paired.nick === undefined ? {} : { nick: paired.nick }),
           ...(isStatusId(paired.status) ? { status: paired.status } : {}),
+          ...(isStatusId(paired.status) || paired.statusText === undefined
+            ? {}
+            : { statusText: paired.statusText }),
         }),
       );
       setPrefs({ sharing: true });
@@ -233,6 +256,9 @@ export function App(): ReactNode {
   }, []);
 
   const selected = selectedId ? getCar(selectedId) : undefined;
+  // Looked up every render rather than held: a pin that lapses while its card is open takes
+  // the card with it, which is the honest thing for a card that asks whether it is still there.
+  const selectedReport = selectedReportId ? getReport(selectedReportId) : undefined;
   // No wave button while hidden, by hand or by the clock: the hub would refuse the wave.
   const canWave = prefs.sharing && !spectator && !parked;
   const nearby = useMemo(() => (canWave ? summary.nearby : null), [summary.nearby, canWave]);
@@ -287,11 +313,13 @@ export function App(): ReactNode {
       <LiveMap
         northUp={prefs.northUp}
         selectedId={selectedId}
+        selectedReportId={selectedReportId}
         nearbyId={nearby?.id ?? null}
         self={selfCar}
         origin={origin}
         onSelect={setSelectedId}
         onSelectSelf={openGarage}
+        onSelectReport={setSelectedReportId}
         onReady={onMapReady}
         onTiles={setTiles}
       />
@@ -379,6 +407,15 @@ export function App(): ReactNode {
           serverNow={summary.serverNow}
           onWave={wave}
           onClose={() => setSelectedId(null)}
+        />
+      ) : null}
+      {/* A tapped pin: what it is, who says so, and the question it exists to ask. */}
+      {selectedReport ? (
+        <ReportCard
+          report={selectedReport}
+          serverNow={summary.serverNow}
+          onVote={voteOnReport}
+          onClose={() => setSelectedReportId(null)}
         />
       ) : null}
       {sheet === 'pulse' ? (

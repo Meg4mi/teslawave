@@ -140,3 +140,92 @@ grammar inside them (ADR-0023).
 - What would make us revisit: pins outliving their cause on a real road (add "not there");
   a region where 50 pins a cell is reached (raise the cap or shard); a car browser with no
   voices (record a handful of lines, or drop the feature).
+
+## Amendment, 2026-09-15: a pin is answerable, a patrol outlives a clear-up, and a status can be written
+
+Three things came back from the first cut, and all three were things this record had decided
+against or had not thought hard enough about.
+
+### "Still there" and "not there"
+
+Rejected above as "wanted, and not now". It is now, and the objections turned out to be
+cheaper than they looked: the second message is one message, the UI for a pin you tap is the
+card every other object on this map already has, and "a car that is not at it" is answered
+the same way a report's own position is.
+
+- A tap on a pin opens a card: what it is, when it was reported, how many drivers say it is
+  there, how many say it is gone, and the two buttons. A tap is a tap on the map, so pins
+  compete with cars for the finger by distance rather than by layer order.
+- `{ t: 'confirm', id, there, at }` carries the voter's own position. A vote counts only
+  from within `REPORT_VOTE_RANGE_M` (2 km) of the pin — wider than the alert range, because
+  the tap comes after the announcement and a car covers the difference while the driver
+  decides — and, where the hub holds a position for them, within `REPORT_MAX_OFFSET_M` of
+  it, exactly as a report is checked.
+- **A report goes when as many drivers say it is gone as say it is there.** `n` and `no` are
+  the sizes of two sets of driver ids, held in memory beside the report and never sent, so
+  each driver counts once and can change their mind by voting again. One voice against one
+  clears a pin nobody else has vouched for; a pin four drivers confirmed needs four. That is
+  the right way round, and it is self-correcting in both directions, because a driver who is
+  actually looking at the thing can report it again.
+- Only a voice **for** a pin restarts its clock. A dismissal that failed to clear it must
+  never buy it another ninety minutes.
+- A pin somebody has disputed is drawn faint rather than removed: the map shows that it is
+  doubted without deciding the argument, which the rule above does when the voices even out.
+
+### The police last longer, and nothing lasts for ever
+
+The first cut gave a patrol thirty minutes — the shortest life of anything on the map, for
+the thing drivers most want to know about — and an accident sixty. That is backwards. A
+patrol parked on a bridge is there for the afternoon; an accident is cleared by people whose
+job that is, usually within the hour. So `REPORT_TTL_MS` is now **90 minutes for the police**
+and 60 for an accident, measured as before from the last driver who said it was there.
+
+"Still there" makes that a problem it was not before: a lifetime that restarts on every
+confirmation is a pin that never dies, and one driver passing their own report every hour
+would keep it alive for ever. So there is a ceiling, `REPORT_MAX_LIFE_MS`, **four hours from
+when the report was placed**, and it is not extended by anything. A pin lapses at the earlier
+of the two clocks, and both sides work that out from the same two numbers — `at` and `first`,
+both on the wire — rather than the hub sending a deadline, so the rule is one rule rather
+than two implementations of it.
+
+Four hours is longer than any of these is plausibly true and short enough that a stale pin is
+somebody's afternoon rather than their week.
+
+### A status the driver writes
+
+Rejected above on two grounds: nothing typed on the car screen, and nothing to moderate.
+The first is a real constraint and the second was an overstatement.
+
+The keyboard argument is about *driving*, and a status is set at a standstill, next to the
+nickname field that has always been there. The moderation argument does not survive contact
+with that nickname: this app already carries a free text field that every driver around you
+can see, with the same cap, the same cleaning and the same absence of moderation. A written
+status is that bargain again and not a new one.
+
+So `statusText` sits beside `status` on the wire, at most `STATUS_MAX_LEN` (24) characters,
+trimmed and collapsed and trimmed again like a nickname. The two are one choice: picking a
+chip clears the text and typing clears the chip, on the client and again in the guard, where
+a chosen status wins if a confused client sends both. The chips stay first and stay the
+default, because five taps cover most drives and one of them is what a driver does at 80
+km/h; the field is for the drive the five cannot describe.
+
+A written status is shown as its author wrote it and translated for nobody. The voice treats
+it differently from a chip for the same reason: a chosen status is read as an aside inside
+our own sentence because we wrote the words and know they fit, and a written one gets a
+sentence of its own ("Ghost waved at you. Their status: towing a caravan."), because dropping
+somebody's phrasing, possibly in another language, into the middle of ours reads as a fault.
+
+### Consequences of the amendment
+
+- Still no protocol bump: `confirm` and `confirmed` are a message an old hub counts as one
+  violation and one an old client drops, and `statusText`, `first` and `no` are fields either
+  side can ignore. A hub from before this sends no `first`, and a client reads its absence as
+  "placed when it was last confirmed", which is the reading it already had.
+- The hub holds a second set of driver ids per live report. Memory only, gone with the
+  report and on hibernation, like the first.
+- A driver can clear somebody else's pin. That is the point, and the bound on abuse is the
+  same as for reports: one vote per driver per pin, a position that has to make sense, and a
+  rate limit. A pin cleared wrongly is one report away from coming back.
+- What would make us revisit: pins being cleared faster than they are confirmed on a real
+  road (weight a dismissal by distance, or require two); a written status being used for
+  something a nickname is not (the same answer would have to apply to both).

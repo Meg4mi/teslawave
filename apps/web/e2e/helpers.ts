@@ -25,6 +25,8 @@ declare global {
       getStyle: () => { layers: unknown[] };
       getCenter: () => { lat: number; lng: number };
       getZoom: () => number;
+      /** Where a point on the map lands on the screen, for tapping a pin the app drew. */
+      project: (lngLat: [number, number]) => { x: number; y: number };
     };
     __tw: {
       cars: () => HookCar[];
@@ -63,8 +65,9 @@ export async function open(page: Page, url: string): Promise<void> {
  */
 export async function onboard(page: Page, url: string, nick?: string): Promise<void> {
   await open(page, url);
-  // The name is optional in the app and optional here: most drivers never type one.
-  if (nick !== undefined) await page.getByRole('textbox').fill(nick);
+  // The name is optional in the app and optional here: most drivers never type one. Named
+  // rather than "the textbox": the status a driver can write is one as well.
+  if (nick !== undefined) await page.getByRole('textbox', { name: 'Name (optional)' }).fill(nick);
   await page.getByRole('button', { name: 'Go', exact: true }).click();
   await page.waitForFunction(() => typeof window.__tw !== 'undefined');
 }

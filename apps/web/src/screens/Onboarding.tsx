@@ -12,6 +12,7 @@ export type OnboardingResult = {
   colour: CarColourId;
   nick?: string;
   status?: StatusId;
+  statusText?: string;
 };
 
 export type LivePulse = { online: number; wavesToday: number };
@@ -35,7 +36,13 @@ export function Onboarding({
   pulse: LivePulse | null;
 }): ReactNode {
   const copy = useCopy();
-  const [car, setCar] = useState<CarChoice>({ model: '3', colour: 'pearl', nick: '', status: null });
+  const [car, setCar] = useState<CarChoice>({
+    model: '3',
+    colour: 'pearl',
+    nick: '',
+    status: null,
+    statusText: '',
+  });
 
   return (
     <div className="onboarding">
@@ -89,6 +96,9 @@ export function Onboarding({
                 colour: car.colour,
                 ...(car.nick.trim() ? { nick: car.nick.trim() } : {}),
                 ...(car.status === null ? {} : { status: car.status }),
+                ...(car.status === null && car.statusText.trim()
+                  ? { statusText: car.statusText.trim() }
+                  : {}),
               })
             }
           >

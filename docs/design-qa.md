@@ -43,6 +43,11 @@ demand so they can be judged side by side.
       of the other screen, and "None" clears it.
 - [ ] The Report sheet is two hand-sized buttons and one sentence; a spectator or an invisible
       driver is told to turn location or visibility on, not left guessing.
+- [ ] Tapping a pin opens its card with the two answers at the foot, and a pin under a car
+      does not steal the tap. Answering closes the card and says what was counted; a pin
+      somebody has disputed is visibly fainter than one nobody has (ADR-0040, amended).
+- [ ] A status written by hand shows as it was typed everywhere a chosen one does, the chips
+      and the field clear each other, and the voice reads a written one as its own sentence.
 - [ ] Trails visible and fading; traffic reads as light painting from above.
 - [ ] HUD legible over both dark ground and a bright motorway.
 - [ ] Roads, water and labels are all clearly visible on the map, at the floors in ADR-0006.

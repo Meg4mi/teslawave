@@ -1,5 +1,10 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { CAR_COLOURS, TESLA_MODELS, type TeslaModel } from '@teslawave/protocol';
+import {
+  CAR_COLOURS,
+  REPORT_TTL_MS,
+  TESLA_MODELS,
+  type TeslaModel,
+} from '@teslawave/protocol';
 import { createRenderer, type Renderer } from '../overlay/renderer';
 import { createTrack, pushSample } from '@teslawave/protocol';
 import { Button, Counter } from '../ui/primitives';
@@ -134,10 +139,13 @@ export function KitchenSink(): ReactNode {
           lat: 46.2 + reportsRef.current.length * 0.0004,
           lng: 6.137,
           at,
+          first: at,
           n: 1 + reportsRef.current.length,
+          // Every other pin is doubted, so the faint state gets judged beside the plain one.
+          no: reportsRef.current.length % 2,
           cell: 'u0hq',
           appearedAt: performance.now(),
-          expiresAt: at + 30 * 60_000,
+          expiresAt: at + REPORT_TTL_MS[kind],
           distanceM,
         },
       ];

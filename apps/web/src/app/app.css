@@ -1004,3 +1004,36 @@
     font-size: 13px;
   }
 }
+
+/* --- The card a pin raises: what it is, who says so, and the question ---------------------- */
+.report-card__icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 96px;
+  height: 96px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--line-soft);
+  background: var(--bg-1);
+}
+
+.report-card__icon--police {
+  color: #7aa2ff;
+  border-color: rgba(122, 162, 255, 0.45);
+}
+
+.report-card__icon--accident {
+  color: var(--danger);
+  border-color: rgba(255, 139, 139, 0.45);
+}
+
+/* Somebody has said it is gone, and it is still up: the card says so without deciding. */
+.report-card__disputed {
+  color: var(--accent-warm);
+}
+
+/* The status a driver writes, under the chips that would otherwise have said it for them. */
+.field__input--sub {
+  min-height: 56px;
+  font-size: 15px;
+}

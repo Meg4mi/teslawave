@@ -3,6 +3,7 @@ import {
   generateCode,
   isColourId,
   isModel,
+  cleanStatusText,
   isSecret,
   isStatusId,
   isValidCode,
@@ -23,6 +24,7 @@ export type PairPayload = {
   colour: string;
   nick?: string;
   status?: StatusId;
+  statusText?: string;
 };
 
 const json = (body: unknown, status = 200): Response =>
@@ -47,16 +49,18 @@ const CREATE_WINDOW_MS = 60_000;
 
 const readPayload = (body: unknown): PairPayload | null => {
   if (typeof body !== 'object' || body === null) return null;
-  const { secret, model, colour, nick, status } = body as Record<string, unknown>;
+  const { secret, model, colour, nick, status, statusText } = body as Record<string, unknown>;
   if (!isSecret(secret)) return null;
   if (!isModel(model) || !isColourId(colour)) return null;
   const clean = typeof nick === 'string' ? nick.trim().slice(0, NICK_MAX_LEN) : '';
+  const text = isStatusId(status) ? undefined : cleanStatusText(statusText);
   return {
     secret,
     model,
     colour,
     ...(clean ? { nick: clean } : {}),
     ...(isStatusId(status) ? { status } : {}),
+    ...(text === undefined ? {} : { statusText: text }),
   };
 };
 

@@ -73,6 +73,18 @@ export const REPORT_MAX_OFFSET_M = 1_000;
 export const MAX_REPORTS_PER_CELL = 50;
 /** The client says something, once, when a report comes within this of the car. */
 export const REPORT_ALERT_M = 1_000;
+/**
+ * How near a driver has to be to a pin to vote on it. Wider than the alert range, because
+ * the tap comes after the announcement and a car at 100 km/h covers the difference while
+ * the driver decides — and narrow enough that a vote means "I am looking at this".
+ */
+export const REPORT_VOTE_RANGE_M = 2_000;
+/**
+ * One vote per connection every ten seconds. Not the report's own minute: two stale pins on
+ * the same stretch of road should both be dismissable, and the real bound on a vote is that
+ * each driver counts once per report however often they tap.
+ */
+export const RATE_CONFIRM_MS = 10_000;
 export const MAX_MSG_BYTES = 1_024;
 
 /** Anything faster than this between two updates is a spoof or a bug. */
