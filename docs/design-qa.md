@@ -41,6 +41,9 @@ demand so they can be judged side by side.
       heard. A screen with no voices is simply quiet, and the card and chime still land.
 - [ ] A status chosen in the garage shows on the settings row, the car card and the wave card
       of the other screen, and "None" clears it.
+- [ ] The Report control names what it reports — Police and Accident under the word, a pin
+      with a warning for an icon — and is the one warm button in a column of grey switches, so
+      a driver who has never opened it can tell what it is for from the map.
 - [ ] The Report sheet is two hand-sized buttons and one sentence; a spectator or an invisible
       driver is told to turn location or visibility on, not left guessing.
 - [ ] Tapping a pin opens its card with the two answers at the foot, and a pin under a car

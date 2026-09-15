@@ -190,25 +190,39 @@ export function Counter({
 /**
  * A map control: icon plus an always-visible label. A car screen has no hover, so anything
  * that only explains itself in a tooltip explains itself to nobody.
+ *
+ * `sub` names what the control acts on, a word to a line, for a control whose own name does
+ * not say it: "Report" is a verb with no object until the words under it say police and
+ * accident. A line each rather than one line with a separator, because neither fits the
+ * button's width at a size worth reading, and a wrapped one ends a line on its own separator.
+ * `tone="alert"` marks a control that acts on the world instead of switching a mode, so a
+ * driver glancing down the column does not read it as one more toggle.
+ *
+ * `aria-pressed` goes on only where there is a state to press: a control that opens a sheet
+ * is a button, and announcing it as an unpressed toggle says something untrue about it.
  */
 export function ControlButton({
   icon,
   label,
+  sub,
   title,
-  active = false,
+  active,
+  tone = 'plain',
   onClick,
 }: {
   icon: ReactNode;
   label: string;
+  sub?: readonly string[] | undefined;
   title: string;
-  active?: boolean;
+  active?: boolean | undefined;
+  tone?: 'plain' | 'alert';
   onClick: () => void;
 }): ReactNode {
   return (
     <button
       type="button"
       data-touch
-      className="control"
+      className={`control ${tone === 'alert' ? 'control--alert' : ''}`.trim()}
       aria-pressed={active}
       aria-label={title}
       title={title}
@@ -216,6 +230,11 @@ export function ControlButton({
     >
       <span className="control__icon">{icon}</span>
       <span className="control__label">{label}</span>
+      {sub?.map((line) => (
+        <span key={line} className="control__sub">
+          {line}
+        </span>
+      ))}
     </button>
   );
 }

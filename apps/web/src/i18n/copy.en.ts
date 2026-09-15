@@ -211,7 +211,8 @@ export const EN = {
    * nobody is named, because that is what a driver would want to know before tapping.
    */
   report: {
-    control: 'Report',
+    /** The map control: a verb alone says nothing, so the button names what it reports. */
+    control: 'Report police or an accident',
     title: 'Report',
     hint: `Placed where your car is now and shared with drivers nearby. It stays while drivers keep confirming it, and never longer than ${n(REPORT_MAX_LIFE_MS / 3_600_000)} hours. Nothing says who reported it.`,
     kind: (kind: ReportKind): string => REPORT_LABELS[kind],
@@ -291,6 +292,8 @@ export const EN = {
     ],
     tapHint:
       'You can also tap any car on the map to see it and wave from there. Tap your own car to change it.',
+    reportHint:
+      'Police or an accident ahead? Tap Report on the right and pick one. A pin lands where your car is, the drivers behind you see it and hear it coming, and nothing says it was you.',
     tryIt: 'Try it',
     tried: 'That is all there is to it.',
     close: 'Got it',
@@ -412,6 +415,8 @@ export const EN = {
     settings: 'Settings',
     close: 'Close',
     report: 'Report',
+    /** Under it, a word to a line: "Report" alone never said what there is to report. */
+    reportKinds: ['Police', 'Accident'],
   },
 
   privacy: {

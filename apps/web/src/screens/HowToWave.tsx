@@ -178,6 +178,9 @@ export function HowToWave({ onClose }: { onClose: () => void }): ReactNode {
         ))}
       </ol>
       <p className="settings__hint">{copy.howTo.tapHint}</p>
+      {/* The other thing the map does. The Report control says so itself, but this sheet is
+          where a driver finds out what the app is for, and reports are half of that. */}
+      <p className="settings__hint">{copy.howTo.reportHint}</p>
 
       <SheetActions>
         <Button variant="ghost" onClick={onClose}>

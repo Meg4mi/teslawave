@@ -118,7 +118,7 @@ export const FR: Copy = {
   seo: {
     title: 'Saluez les autres Tesla sur la route — carte en direct depuis l’écran de votre Tesla',
     description:
-      'Une carte en direct des Tesla autour de vous, sur l’écran de votre voiture. Quand l’une s’approche, saluez-la. Gratuit, sans compte, rien à installer, et votre position n’est jamais conservée.',
+      'Une carte en direct des Tesla autour de vous, sur l’écran de votre voiture : saluez celle qui s’approche, signalez la police ou un accident. Gratuit, sans compte, position jamais conservée.',
   },
 
   language: {
@@ -209,7 +209,7 @@ export const FR: Copy = {
   },
 
   report: {
-    control: 'Signaler',
+    control: 'Signaler la police ou un accident',
     title: 'Signaler',
     hint: `Placé là où se trouve votre voiture et partagé avec les conducteurs alentour. Le repère reste tant que des conducteurs le confirment, et jamais plus de ${n(REPORT_MAX_LIFE_MS / 3_600_000)} heures. Rien ne dit qui l’a signalé.`,
     kind: (kind: ReportKind): string => REPORT_LABELS[kind],
@@ -276,6 +276,8 @@ export const FR: Copy = {
     ],
     tapHint:
       'Vous pouvez aussi toucher n’importe quelle voiture sur la carte pour la voir et la saluer de là. Touchez la vôtre pour la modifier.',
+    reportHint:
+      'La police ou un accident devant vous ? Touchez Signaler à droite, puis choisissez. Un repère se pose là où est votre voiture, les conducteurs derrière vous le voient et l’entendent arriver, et rien ne dit que c’était vous.',
     tryIt: 'Essayer',
     tried: 'C’est tout ce qu’il y a à savoir.',
     close: 'Compris',
@@ -391,6 +393,7 @@ export const FR: Copy = {
     settings: 'Réglages',
     close: 'Fermer',
     report: 'Signaler',
+    reportKinds: ['Police', 'Accident'],
   },
 
   privacy: {

@@ -12,8 +12,8 @@ import {
   BadgeIcon,
   EyeIcon,
   EyeOffIcon,
-  FlagIcon,
   NorthUpIcon,
+  ReportIcon,
   SettingsIcon,
   SoundOffIcon,
   SoundOnIcon,
@@ -371,10 +371,16 @@ export function App(): ReactNode {
           icon={prefs.northUp ? <NorthUpIcon /> : <TrackUpIcon />}
           onClick={() => setPrefs({ northUp: !prefs.northUp })}
         />
+        {/* The one control that does something to the map rather than to your own screen, so
+            it says what it reports and wears the warm accent rather than sitting in the
+            column as one more grey toggle. A driver who has never opened it should know from
+            the column alone that police and an accident can be flagged from here. */}
         <ControlButton
           label={copy.controls.report}
-          title={copy.report.title}
-          icon={<FlagIcon />}
+          sub={copy.controls.reportKinds}
+          title={copy.report.control}
+          icon={<ReportIcon />}
+          tone="alert"
           onClick={() => setSheet('report')}
         />
         <ControlButton

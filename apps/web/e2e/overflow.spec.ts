@@ -48,7 +48,8 @@ test('no screen spills past the edge of the viewport', async ({ page }) => {
 
   // The longest model name, and the longest name a driver can type.
   await page.getByRole('button', { name: 'Cybertruck', exact: true }).click();
-  await page.getByRole('textbox').fill('WWWWWWWWWWWWWWWWWWWWWWWW');
+  // Named, not "the textbox": the status a driver can write is one as well (ADR-0040).
+  await page.getByRole('textbox', { name: 'Name (optional)' }).fill('WWWWWWWWWWWWWWWWWWWWWWWW');
   await clean(page, 'onboarding with a long name');
 
   await page.getByRole('button', { name: 'How waving works' }).first().click();
