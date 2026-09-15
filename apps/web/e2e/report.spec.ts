@@ -18,7 +18,7 @@ test('a report on one screen is a pin and an alert on the other', async ({ brows
   await onboard(pageB, simUrl(GENEVA.lat + 0.002, GENEVA.lng, 90, 10));
   await expect.poll(async () => (await cars(pageA)).length, { timeout: 20_000 }).toBeGreaterThan(0);
 
-  await pageA.getByRole('button', { name: 'Report', exact: true }).click();
+  await pageA.getByRole('button', { name: 'Report police or an accident', exact: true }).click();
   await pageA.getByRole('button', { name: /^Police/ }).click();
   await expect(pageA.getByText('Reported. Drivers nearby will see it.')).toBeVisible();
 
@@ -38,7 +38,7 @@ test('a report on one screen is a pin and an alert on the other', async ({ brows
   });
 
   // A second driver reporting the same thing confirms the pin rather than adding one.
-  await pageB.getByRole('button', { name: 'Report', exact: true }).click();
+  await pageB.getByRole('button', { name: 'Report police or an accident', exact: true }).click();
   await pageB.getByRole('button', { name: /^Police/ }).click();
   await expect
     .poll(async () => pageA.evaluate(() => window.__tw.reports()[0]?.n), { timeout: 15_000 })
@@ -55,7 +55,7 @@ test('a spectator is told to turn location on rather than left guessing', async 
   await onboard(page, '/?e2e');
   // Refused, not merely unanswered: the app has to have settled on spectator mode first.
   await expect(page.getByText('Location is off.')).toBeVisible();
-  await page.getByRole('button', { name: 'Report', exact: true }).click();
+  await page.getByRole('button', { name: 'Report police or an accident', exact: true }).click();
   await page.getByRole('button', { name: /^Accident/ }).click();
   await expect(page.getByText('Turn yourself back on to report.')).toBeVisible();
   await context.close();
@@ -80,7 +80,7 @@ test('a pin can be confirmed and cleared from the screen that sees it', async ({
   await onboard(pageB, simUrl(MILAN.lat + 0.002, MILAN.lng, 90, 10));
   await expect.poll(async () => (await cars(pageA)).length, { timeout: 20_000 }).toBeGreaterThan(0);
 
-  await pageA.getByRole('button', { name: 'Report', exact: true }).click();
+  await pageA.getByRole('button', { name: 'Report police or an accident', exact: true }).click();
   await pageA.getByRole('button', { name: /^Accident/ }).click();
   await expect
     .poll(async () => pageB.evaluate(() => window.__tw.reports().length), { timeout: 15_000 })

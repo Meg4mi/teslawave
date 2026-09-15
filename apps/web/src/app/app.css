@@ -187,6 +187,32 @@
   white-space: nowrap;
 }
 
+/*
+ * What the control above reports, a word to a line. Sentence case, so the two read as a list
+ * under the name rather than as more of it; a line each because "Police · Accident" does not
+ * fit the 74 px inside the button at any size worth reading at a glance.
+ */
+.control__sub {
+  font: var(--t-micro);
+  margin-top: -3px;
+  font-size: 9px;
+  line-height: 1.25;
+  letter-spacing: 0.01em;
+  text-transform: none;
+  white-space: nowrap;
+  opacity: 0.85;
+}
+
+/*
+ * The report control is the only one here that acts on the world rather than on this screen,
+ * and a driver has a second to find it. Warm, like every warning this app raises, so it is
+ * never taken for another switch.
+ */
+.control--alert {
+  border-color: rgba(255, 208, 138, 0.5);
+  color: var(--accent-warm);
+}
+
 /* Pressed means "this mode is on", and the only accent on screen belongs to it. */
 .control[aria-pressed='true'] {
   border-color: rgba(110, 231, 255, 0.55);
@@ -706,8 +732,20 @@
     height: 21px;
   }
 
+  /*
+   * On a 60 px button a nowrap label spills out of it: "Cap en haut" hung over the map on
+   * the French phone screen. Tighter tracking keeps every English label on one line, and a
+   * label that still does not fit wraps inside the button instead of leaving it.
+   */
   .control__label {
     font-size: 9px;
+    letter-spacing: 0.03em;
+    white-space: normal;
+  }
+
+  .control__sub {
+    font-size: 8px;
+    letter-spacing: 0;
   }
 
   .controls {

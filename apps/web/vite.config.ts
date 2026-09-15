@@ -51,6 +51,18 @@ const jsonLd = (): string =>
     url: `${brand('url')}/`,
     description: brand('description'),
     image: `${brand('url')}/og.png`,
+    /*
+     * What the app does, listed rather than left to the description's 150 characters: a
+     * crawler reading only the structured data should still know that this is a map, a wave
+     * and a report, and it is the one place a new feature has to be added by hand.
+     */
+    featureList: [
+      'Live map of the Teslas around you',
+      'Wave at a driver who comes within 300 m',
+      'Report police or an accident to the drivers behind you',
+      'Spoken alerts, so the road keeps your eyes',
+      'No account, nothing to install, and no position stored',
+    ],
     applicationCategory: 'SocialNetworkingApplication',
     operatingSystem: 'Any',
     browserRequirements:

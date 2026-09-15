@@ -129,11 +129,16 @@ export const BackspaceIcon = ({ size }: IconProps): ReactNode => (
   </Svg>
 );
 
-/** Report: a flag on a pole, the thing you plant where something is. */
-export const FlagIcon = ({ size }: IconProps): ReactNode => (
+/**
+ * Report: a pin with a warning inside it — the pin because that is exactly what the tap
+ * leaves on the map where the car is, the warning because what it marks is a hazard. A flag
+ * stood here before, and a flag says "something", not "police or an accident".
+ */
+export const ReportIcon = ({ size }: IconProps): ReactNode => (
   <Svg size={size}>
-    <path d="M6 21V4" />
-    <path d="M6 4.5h11.5l-2.5 4 2.5 4H6" />
+    <path d="M12 21.5c4.2-5.2 6.3-9 6.3-11.4a6.3 6.3 0 1 0-12.6 0c0 2.4 2.1 6.2 6.3 11.4Z" />
+    <path d="M12 6.3v4.3" />
+    <circle cx="12" cy="13.4" r="0.9" fill="currentColor" stroke="none" />
   </Svg>
 );
 
