@@ -126,9 +126,22 @@ export type HubState = {
    * presence is; a report that mattered was already on the screens that were there for it.
    */
   reports: Map<string, HubReport>;
+  /**
+   * cell -> the reports in it. An index over `reports`, kept in step with it, for the same
+   * reason `presenceByCell` is an index over `presence`: handing a cell's pins to a joining
+   * connection, and finding the pin a new report merges into, were both a scan of every pin
+   * in the whole hub (ADR-0033's lesson, applied to ADR-0040's pins).
+   */
+  reportsByCell: Map<string, Set<string>>;
   /** cell -> report ids changed since the last flush, and ids gone since. */
   reportsDirty: Map<string, Set<string>>;
   reportsGone: Map<string, Set<string>>;
+  /**
+   * A lower bound on the soonest any pin lapses, so a tick where none can have lapsed does no
+   * work at all. Only ever wrong in the safe direction — a confirmation pushes a pin's
+   * expiry out and leaves this behind, which costs one scan that puts it right.
+   */
+  nextReportExpiryAt: number;
   nextReportSeq: number;
   counters: Counters;
 };

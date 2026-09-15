@@ -7,6 +7,8 @@ import {
   INTEREST_RADIUS_M,
   LEGACY_PROTOCOL_VERSION,
   MAX_REPORTS_PER_CELL,
+  MAX_REPORTS_PER_HUB,
+  MAX_REPORT_VOTERS,
   MAX_SOCKETS_PER_CELL,
   PRESENCE_EXPIRY_MS,
   PROTOCOL_VERSION,
@@ -1497,5 +1499,99 @@ describe('a status a driver wrote', () => {
     hello('a', 'car-a', [CELL], { status: 'charging' } as Partial<ClientMsg>);
     expect(state.sockets.get('a')?.status).toBe('charging');
     expect(state.sockets.get('a')).not.toHaveProperty('statusText');
+  });
+});
+
+describe('what a hub full of pins costs', () => {
+  /**
+   * Pins on a grid inside the hub, MAX_REPORTS_PER_CELL to a cell, each placed through the
+   * real message path so both caps are exercised rather than assumed. Within a cell they sit
+   * 400 m apart, over the 300 m at which two reports of the same kind merge into one.
+   */
+  const fill = (wanted: number): number => {
+    const box = decodeBounds(HUB);
+    const seen = new Set<string>();
+    let placed = 0;
+    let i = 0;
+    for (let row = 0; row < 12 && placed < wanted; row++) {
+      for (let col = 0; col < 25 && placed < wanted; col++) {
+        const east = destination(box.minLat + 0.2, box.minLng + 0.2, 90, col * 30_000);
+        const base = destination(east.lat, east.lng, 0, row * 25_000);
+        const cell = encode(base.lat, base.lng, CELL_PRECISION);
+        // A cell twice over would just refill one and evict from it, which is how the first
+        // version of this fixture quietly placed four fifths of what it claimed.
+        if (hubOf(cell) !== HUB || seen.has(cell)) continue;
+        seen.add(cell);
+        for (let slot = 0; slot < MAX_REPORTS_PER_CELL && placed < wanted; slot++) {
+          const across = destination(base.lat, base.lng, 90, (slot % 7) * 400);
+          const at = destination(across.lat, across.lng, 0, Math.floor(slot / 7) * 400);
+          if (encode(at.lat, at.lng, CELL_PRECISION) !== cell) continue;
+          const key = `p${i++}`;
+          hello(key, `pinner-${key}`, [cell]);
+          pos(key, at.lat, at.lng);
+          report(key, 'police', at);
+          placed++;
+          now += 1;
+        }
+      }
+    }
+    return placed;
+  };
+
+  it('never holds more pins than the hub cap, and lets the stalest go', () => {
+    expect(fill(MAX_REPORTS_PER_HUB + 100)).toBe(MAX_REPORTS_PER_HUB + 100);
+    expect(hubStats(state).reports).toBe(MAX_REPORTS_PER_HUB);
+    // The per-cell cap bounds one message; this one bounds the object's memory, which the
+    // per-cell cap alone does not: 32 x 32 cells at 50 each is 51,200 pins.
+    expect(MAX_REPORTS_PER_CELL * 32 * 32).toBeGreaterThan(MAX_REPORTS_PER_HUB);
+  });
+
+  it('keeps its per-cell index in step, so nothing outlives the pin it described', () => {
+    expect(fill(MAX_REPORTS_PER_CELL)).toBe(MAX_REPORTS_PER_CELL);
+    const cell = [...state.reports.values()][0]?.cell as string;
+    expect(state.reportsByCell.get(cell)?.size).toBe(MAX_REPORTS_PER_CELL);
+    now += REPORT_TTL_MS.police + SERVER_TICK_MS;
+    flush(true);
+    expect(hubStats(state).reports).toBe(0);
+    expect(state.reportsByCell.size).toBe(0);
+  });
+
+  it('costs nothing per tick while none of them can have lapsed', () => {
+    expect(fill(MAX_REPORTS_PER_HUB)).toBe(MAX_REPORTS_PER_HUB);
+    expect(hubStats(state).reports).toBe(MAX_REPORTS_PER_HUB);
+    const started = Date.now();
+    const TICKS = 200;
+    for (let i = 0; i < TICKS; i++) {
+      now += SERVER_TICK_MS + 1;
+      flush();
+    }
+    const ms = Date.now() - started;
+    /*
+     * The sweep used to copy every pin in the hub twice a second to find nothing, which is
+     * the full-hub scan per tick that ADR-0033 took out of presence. A tick that cannot have
+     * lapsed anything must not touch the pins at all, so a thousand of them cost the same as
+     * none: well under a millisecond each, against Cloudflare's 10 ms per message.
+     */
+    expect(ms / TICKS).toBeLessThan(1);
+  });
+
+  it('bounds the voices on one pin, and still lets a late one restart its clock', () => {
+    hello('a', 'car-a');
+    pos('a', GENEVA.lat, GENEVA.lng);
+    report('a', 'police', GENEVA);
+    const pin = [...state.reports.values()][0];
+    expect(pin).toBeDefined();
+    for (let i = 0; i < MAX_REPORT_VOTERS + 20; i++) {
+      const key = `v${i}`;
+      hello(key, `voter-${i}`);
+      pos(key, GENEVA.lat, GENEVA.lng);
+      confirm(key, pin!.id, true, GENEVA);
+      now += RATE_CONFIRM_MS;
+    }
+    // A pin a hundred drivers have vouched for does not hold the hundred and first for hours.
+    expect(pin!.n).toBe(MAX_REPORT_VOTERS);
+    expect(pin!.by.size).toBe(MAX_REPORT_VOTERS);
+    // The part that matters is not the count: the last voice still said it was there.
+    expect(pin!.at).toBe(now - RATE_CONFIRM_MS);
   });
 });

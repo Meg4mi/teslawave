@@ -8,6 +8,8 @@ import {
   INTEREST_DROP_RADIUS_M,
   INTEREST_RADIUS_M,
   MAX_REPORTS_PER_CELL,
+  MAX_REPORTS_PER_HUB,
+  MAX_REPORT_VOTERS,
   MAX_SOCKETS_PER_CELL,
   MAX_SOCKETS_PER_HUB,
   MAX_SPEED_KMH,
@@ -83,8 +85,10 @@ export function createHub(hub: string, now: number, counters?: Partial<Counters>
     lastFlushAt: now,
     held: [],
     reports: new Map(),
+    reportsByCell: new Map(),
     reportsDirty: new Map(),
     reportsGone: new Map(),
+    nextReportExpiryAt: Number.POSITIVE_INFINITY,
     nextReportSeq: 1,
     counters: {
       wavesByUser: counters?.wavesByUser ?? new Map(),
@@ -602,6 +606,18 @@ const publicReport = (r: HubReport): Report => ({
  */
 const reportExpired = (r: HubReport, now: number): boolean => now > reportExpiryAt(r);
 
+/** Every live pin in one cell, through the index rather than by walking the whole hub. */
+function liveIn(state: HubState, cell: string, now: number): HubReport[] {
+  const out: HubReport[] = [];
+  for (const id of state.reportsByCell.get(cell) ?? []) {
+    const r = state.reports.get(id);
+    // Expired but not yet swept: the sweep runs when the watermark says one can have lapsed,
+    // which is at most a tick away, and nothing may be sent or merged into in the meantime.
+    if (r && !reportExpired(r, now)) out.push(r);
+  }
+  return out;
+}
+
 /**
  * Every live report in these cells, in full, for a connection that has just started holding
  * them. Nothing is sent for a cell with none: most cells have none, most of the time.
@@ -609,9 +625,7 @@ const reportExpired = (r: HubReport, now: number): boolean => now > reportExpiry
 function reportsIn(state: HubState, s: Socket, cells: readonly string[], now: number): Effect[] {
   const effects: Effect[] = [];
   for (const cell of cells) {
-    const upd: Report[] = [];
-    for (const r of state.reports.values())
-      if (r.cell === cell && !reportExpired(r, now)) upd.push(publicReport(r));
+    const upd = liveIn(state, cell, now).map(publicReport);
     if (upd.length > 0)
       effects.push({ k: 'send', to: s.key, msg: { t: 'reports', cell, upd, gone: [] } });
   }
@@ -624,9 +638,38 @@ const reportRefusal = (s: Socket, reason: ReportFailReason): Effect[] => [
 
 const dropReport = (state: HubState, r: HubReport): void => {
   state.reports.delete(r.id);
+  removeFrom(state.reportsByCell, r.cell, r.id);
   removeFrom(state.reportsDirty, r.cell, r.id);
   addTo(state.reportsGone, r.cell, r.id);
 };
+
+/** The one place a report is created, so its index and the sweep's watermark cannot drift. */
+const addReport = (state: HubState, r: HubReport): void => {
+  state.reports.set(r.id, r);
+  addTo(state.reportsByCell, r.cell, r.id);
+  state.nextReportExpiryAt = Math.min(state.nextReportExpiryAt, reportExpiryAt(r));
+};
+
+/**
+ * One driver's voice on a pin, and the only place either set grows. Past MAX_REPORT_VOTERS
+ * the voice still counted for the pin's clock, which is what the caller does either way; it
+ * simply stops being counted individually, because a pin a hundred drivers have vouched for
+ * does not need the hundred and first held in memory for four hours.
+ */
+const vote = (voices: Set<string>, id: string): void => {
+  if (voices.has(id) || voices.size < MAX_REPORT_VOTERS) voices.add(id);
+};
+
+/** The hub's least recently confirmed pin, for when a cap has to let one go. */
+function oldestReport(state: HubState, cell?: string): HubReport | null {
+  let oldest: HubReport | null = null;
+  const ids = cell === undefined ? state.reports.keys() : (state.reportsByCell.get(cell) ?? []);
+  for (const id of ids) {
+    const r = state.reports.get(id);
+    if (r && (!oldest || r.at < oldest.at)) oldest = r;
+  }
+  return oldest;
+}
 
 /**
  * A driver flags something where they are. The hub places it, merges it with a report of
@@ -659,13 +702,8 @@ function onReport(
   const ok: Effect[] = [{ k: 'send', to: s.key, msg: { t: 'reported', ok: true } }];
 
   // The same thing, already reported nearby: one pin, one more voice behind it.
-  let inCell = 0;
-  let oldest: HubReport | null = null;
-  for (const r of state.reports.values()) {
-    if (r.cell !== cell) continue;
-    if (reportExpired(r, now)) continue;
-    inCell += 1;
-    if (!oldest || r.at < oldest.at) oldest = r;
+  const inCell = liveIn(state, cell, now);
+  for (const r of inCell) {
     if (r.kind !== msg.kind || haversineM(r.lat, r.lng, lat, lng) > REPORT_MERGE_M) continue;
     /*
      * The same thing again. A driver who reports it a second time is saying it is still
@@ -674,19 +712,33 @@ function onReport(
      * mind, and is taken as one.
      */
     r.against.delete(s.id);
-    r.by.add(s.id);
+    vote(r.by, s.id);
     r.n = r.by.size;
     r.no = r.against.size;
     r.at = now;
+    state.nextReportExpiryAt = Math.min(state.nextReportExpiryAt, reportExpiryAt(r));
     addTo(state.reportsDirty, cell, r.id);
     return ok;
   }
-  if (inCell >= MAX_REPORTS_PER_CELL && oldest) dropReport(state, oldest);
+  /*
+   * Two caps, and they bound different things. The per-cell one keeps a single `reports`
+   * message small; the per-hub one is what keeps the object inside its memory, which the
+   * per-cell cap alone does not (see MAX_REPORTS_PER_HUB). Either way the pin that goes is
+   * the least recently confirmed one, which is the one nobody has vouched for in longest.
+   */
+  if (inCell.length >= MAX_REPORTS_PER_CELL) {
+    const stale = oldestReport(state, cell);
+    if (stale) dropReport(state, stale);
+  }
+  if (state.reports.size >= MAX_REPORTS_PER_HUB) {
+    const stale = oldestReport(state);
+    if (stale) dropReport(state, stale);
+  }
 
   // The id carries the time so that one minted after a hibernation cannot collide with one a
   // client is still holding from before it.
   const id = `${state.hub}-${now.toString(36)}-${(state.nextReportSeq++).toString(36)}`;
-  state.reports.set(id, {
+  addReport(state, {
     id,
     kind: msg.kind,
     lat,
@@ -743,12 +795,14 @@ function onConfirm(
   s.lastConfirmAt = now;
   if (msg.there) {
     report.against.delete(s.id);
-    report.by.add(s.id);
+    vote(report.by, s.id);
     // Only a voice for it restarts the clock. A dismissal must never extend a pin's life.
     report.at = now;
+    // The watermark may now be earlier than the truth, which costs one sweep that mends it.
+    state.nextReportExpiryAt = Math.min(state.nextReportExpiryAt, reportExpiryAt(report));
   } else {
     report.by.delete(s.id);
-    report.against.add(s.id);
+    vote(report.against, s.id);
   }
   report.n = report.by.size;
   report.no = report.against.size;
@@ -761,7 +815,21 @@ function onConfirm(
 
 /** The reports news for every cell that has some, to everybody holding that cell. */
 function flushReports(state: HubState, now: number): Effect[] {
-  for (const r of [...state.reports.values()]) if (reportExpired(r, now)) dropReport(state, r);
+  /*
+   * The sweep, and only when one can have lapsed. It used to run on every tick and copy every
+   * pin in the hub to do it, which at the cap was a 51,200-element array twice a second to
+   * find nothing — the same full-hub scan per tick that ADR-0033 took out of presence, walked
+   * back in through a side door. The watermark is a lower bound on the soonest expiry, so a
+   * tick that cannot have lapsed anything does nothing at all.
+   */
+  if (now >= state.nextReportExpiryAt) {
+    let soonest = Number.POSITIVE_INFINITY;
+    for (const r of [...state.reports.values()]) {
+      if (reportExpired(r, now)) dropReport(state, r);
+      else soonest = Math.min(soonest, reportExpiryAt(r));
+    }
+    state.nextReportExpiryAt = soonest;
+  }
   const effects: Effect[] = [];
   const cells = new Set([...state.reportsDirty.keys(), ...state.reportsGone.keys()]);
   for (const cell of cells) {

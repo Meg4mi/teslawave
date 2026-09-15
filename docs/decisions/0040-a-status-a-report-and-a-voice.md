@@ -215,6 +215,29 @@ our own sentence because we wrote the words and know they fit, and a written one
 sentence of its own ("Ghost waved at you. Their status: towing a caravan."), because dropping
 somebody's phrasing, possibly in another language, into the middle of ours reads as a fault.
 
+### What the longer life costs, and what bounds it
+
+A pin that lives up to four hours is the first thing this hub holds that outlives the socket
+that created it, which is a property the cost model had never had to have an opinion about
+(ADR-0002, amended, has the numbers and the reasoning). Two things came out of checking it,
+and both were real:
+
+- **The per-cell cap bounded a message, not the object.** 50 pins a cell across a hub's
+  32 x 32 cells is 51,200 pins, which measured at 541 MB of retained heap against a Durable
+  Object's 128 MB. There is now a `MAX_REPORTS_PER_HUB` of 1,000, as sockets have had a
+  per-hub cap beside their per-cell one all along, and a `MAX_REPORT_VOTERS` of 100 a side,
+  because the drivers vouching for a pin were the one part of it that was not a fixed size.
+  The worst the caps now allow measures at 41 MB, and the ordinary case at about 1 MB.
+- **The sweep walked every pin on every tick.** Copying the whole map twice a second to find
+  nothing is the full-hub scan ADR-0033 took out of presence, arrived at from a different
+  direction. It runs against a watermark of the soonest expiry now, so a tick that cannot have
+  lapsed anything does nothing, and a hub at its cap costs the same per idle tick as an empty
+  one. Pins are indexed by cell for the same reason presence is.
+
+Neither of the five invariants moved: pins are memory only and never reach storage, the sweep
+is driven by arriving messages like every other tick, and nothing here adds a timer, a fetch or
+a socket. `pnpm bench` now prints the pin table beside the fan-out one.
+
 ### Consequences of the amendment
 
 - Still no protocol bump: `confirm` and `confirmed` are a message an old hub counts as one

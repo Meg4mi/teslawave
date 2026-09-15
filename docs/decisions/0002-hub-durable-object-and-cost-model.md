@@ -125,3 +125,49 @@ restarted from zero. Two changes, neither touching the invariants:
 - The Worker writes each hub id into a `hubs` table the first time an isolate sees it, so the
   cron knows what to harvest. A namespace cannot be listed; at most 1,024 rows can exist.
 - A restore lists storage in pages of a thousand rather than one capped call.
+
+## Amendment, 2026-09-15: the first thing in the hub that outlives a socket
+
+Everything the hub held in memory used to be bounded by the sockets connected to it. Presence
+is one entry per driver reporting, evicted after 60 s; held waves are one per connection;
+handles are released when the driver they stand for goes. Two thousand sockets per hub bounded
+all of it, so the memory side of this record never needed a number.
+
+Report pins (ADR-0040) are the first thing that does not work that way. A pin outlives the
+connection that placed it — for up to four hours since the amendment that made a patrol
+persist — and it accumulates the ids of the drivers who vouch for it, so both the count of
+pins and the size of each one grow with traffic rather than with sockets. The per-cell cap of
+50 bounded the size of one `reports` message and nothing else: a hub owns 32 x 32 cells, so it
+permitted 51,200 pins, which measured at **541 MB** of retained heap with fifty voters apiece.
+A Durable Object has 128 MB. Nothing about that was visible in a request count or a duration
+figure; it would have appeared as an object that died under load in a busy region.
+
+So anything held in the hub that outlives the socket that created it needs its own stated
+bound, and the ones reports now carry are:
+
+| Bound                                   | Value | What it is for                                  |
+| --------------------------------------- | ----- | ----------------------------------------------- |
+| `MAX_REPORTS_PER_CELL`                  | 50    | The size of one `reports` message               |
+| `MAX_REPORTS_PER_HUB`                   | 1,000 | The object's memory                             |
+| `MAX_REPORT_VOTERS`, per side of a pin  | 100   | The one part of a pin that is not a fixed size  |
+
+Measured, with the pins placed through the real message path (`pnpm bench`) and the heap read
+after a forced collection:
+
+| Pins  | Voters each | Retained | Reachable                          |
+| ----- | ----------- | -------- | ---------------------------------- |
+| 1,000 | 3           | 1 MB     | the ordinary case                  |
+| 1,000 | 50          | 11 MB    | a busy region                      |
+| 1,000 | 200         | 41 MB    | the worst the caps now allow       |
+| 51,200| 50          | 541 MB   | what the per-cell cap alone allowed |
+
+The five invariants are untouched: pins are memory only and are never written to storage, the
+sweep that expires them is driven by arriving messages like every other tick, and nothing here
+opens a socket, a fetch or an alarm. What changed is that the hub now has a second thing to
+watch besides duration, and `debugStats` reports the live pin count so a hub sitting at its cap
+is visible before it is a problem.
+
+A pin's own expiry is swept only when one can have lapsed, against a watermark of the soonest
+expiry in the hub, rather than by walking every pin on every tick — the same full-hub scan per
+tick that ADR-0033 took out of presence, which had walked back in through a side door. A
+thousand pins now cost the same per idle tick as none: **0.002 ms**.

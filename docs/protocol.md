@@ -675,7 +675,10 @@ it, its `at` becomes now, and the pin stays where it was. A driver reporting the
 twice is told `ok` and still counted once. Otherwise a new report is created with `n: 1`.
 Either way the cell's subscribers hear on the next tick.
 
-At most **50** live reports per cell (`MAX_REPORTS_PER_CELL`); past that the oldest goes.
+At most **50** live reports per cell (`MAX_REPORTS_PER_CELL`) and **1,000** per hub
+(`MAX_REPORTS_PER_HUB`); past either, the least recently confirmed pin goes. The first bounds
+the size of one `reports` message, the second the object's memory, which the first does not:
+a hub owns 32 x 32 cells (ADR-0002, amended).
 
 ### 8a.3 What everyone else gets
 
@@ -753,7 +756,9 @@ say it is there and how many say it is gone — with the two answers at its foot
 
 Counted means the voter joins one of the report's two sets of drivers and leaves the other,
 so each driver counts once and a change of mind is taken as one. `n` and `no` are the sizes
-of those sets and nothing else.
+of those sets and nothing else. Each side stops growing at **100** (`MAX_REPORT_VOTERS`),
+which is the only part of a pin that is not a fixed size: past it a vote still restarts the
+pin's clock and simply stops being counted individually.
 
 - **There**: `at` becomes now, so the pin's lifetime restarts — up to the ceiling, which
   nothing moves.
@@ -828,8 +833,8 @@ counts a `report` as one violation out of five.
 | Speed                                  | 250 km/h reported; 280 km/h implied between two positions |
 | Waves                                  | one per 5 s per driver                                    |
 | `where` asks                           | one per 2 s per connection                                |
-| Reports                                | one per 60 s per connection; 50 live per cell             |
-| Votes on a pin                         | one per 10 s per connection; one per driver per pin       |
+| Reports                                | one per 60 s per connection; 50 live per cell, 1,000 per hub |
+| Votes on a pin                         | one per 10 s per connection; one per driver per pin; 100 counted a side |
 
 A **violation** is a message that failed the guard, arrived too large, or broke a rate or
 speed rule marked as one above. Five on one socket close it with `4008`. Below that, a
@@ -945,6 +950,7 @@ All in `packages/protocol/src/constants.ts` unless noted.
 | `RATE_REPORT_MS` / `REPORT_MERGE_M` / `REPORT_MAX_OFFSET_M`                          | 60,000 / 300 / 1,000    | 8a  |
 | `REPORT_TTL_MS` (police / accident), `MAX_REPORTS_PER_CELL`, `REPORT_ALERT_M`        | 90 / 60 min, 50, 1,000  | 8a  |
 | `REPORT_MAX_LIFE_MS`, `REPORT_VOTE_RANGE_M`, `RATE_CONFIRM_MS`                       | 4 h, 2,000, 10,000      | 8a  |
+| `MAX_REPORTS_PER_HUB`, `MAX_REPORT_VOTERS`                                           | 1,000, 100              | 8a  |
 | `STATUS_MAX_LEN`                                                                     | 24                      | 3   |
 | `RATE_VIOLATIONS_TO_CLOSE`                                                           | 5                       | 11  |
 | `MAX_MSG_BYTES`                                                                      | 1,024                   | 11  |

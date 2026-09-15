@@ -48,6 +48,9 @@ ESLint enforces these on `apps/worker/src/**` and the tests enforce them again:
 2. Sockets are accepted with `ctx.acceptWebSocket()`, never `ws.accept()`.
 3. No `fetch` and no D1 from a message handler.
 4. Positions are never persisted. Counter writes are debounced and limited to changed keys.
+   Anything the hub keeps that outlives the socket that made it — report pins are the only
+   thing so far — carries a stated per-hub bound, because the socket count no longer bounds
+   it (ADR-0002, amended).
 5. The hub id is validated at the edge, so at most 1,024 Durable Objects can ever exist.
 
 Breaking (1) or (2) bills every object with a connected driver around the clock — roughly
