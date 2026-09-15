@@ -850,3 +850,190 @@
     line-height: 1.25;
   }
 }
+
+/* --- Reports: the sheet, and the line at the foot when one is ahead -------------------- */
+/*
+ * Two big options, side by side, each the whole width of its half and 120 px tall: this
+ * sheet opens at speed, so the target is the size of a hand. Each has the colour its pin
+ * has on the map, on its rim only, so the sheet stays as dark as everything else.
+ */
+.report {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--sp-3);
+}
+
+.report__option {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-1);
+  min-height: 132px;
+  padding: var(--sp-4);
+  border: 1.5px solid var(--line-strong);
+  border-radius: var(--r-lg);
+  background: var(--bg-1);
+  color: var(--fg);
+  text-align: center;
+  transition:
+    transform var(--d-fast) var(--e-out),
+    border-color var(--d-fast) linear,
+    background-color var(--d-fast) linear;
+}
+
+.report__option:active {
+  transform: scale(0.97);
+  background: var(--bg-2);
+}
+
+.report__option:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.report__option--police {
+  border-color: rgba(122, 162, 255, 0.55);
+}
+
+.report__option--police .report__icon {
+  color: #7aa2ff;
+}
+
+.report__option--accident {
+  border-color: rgba(255, 139, 139, 0.55);
+}
+
+.report__option--accident .report__icon {
+  color: var(--danger);
+}
+
+.report__icon {
+  display: grid;
+  place-items: center;
+  height: 44px;
+}
+
+.report__label {
+  font: var(--t-title);
+  font-size: 22px;
+}
+
+.report__hint {
+  font: var(--t-hud);
+  font-weight: 450;
+  color: var(--fg-dim);
+}
+
+/* The line at the foot, warm, so it is read as the one thing to mind rather than a notice. */
+.hud__banner--warm {
+  border-color: var(--accent-warm);
+  color: var(--accent-warm);
+}
+
+.hud__banner-sub {
+  color: var(--fg-dim);
+}
+
+/* --- Status: a chip row in the picker, a line on the cards --------------------------------- */
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+
+.chip {
+  min-height: 48px;
+  padding: 0 var(--sp-4);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-full);
+  background: var(--bg-1);
+  color: var(--fg-dim);
+  font: var(--t-hud);
+  font-weight: 600;
+  font-size: 14px;
+  white-space: nowrap;
+  transition:
+    background-color var(--d-fast) linear,
+    border-color var(--d-fast) linear,
+    color var(--d-fast) linear,
+    transform var(--d-fast) var(--e-out);
+}
+
+.chip:active {
+  transform: scale(0.97);
+}
+
+.chip--on {
+  border-color: rgba(110, 231, 255, 0.55);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.chip:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.field__hint {
+  margin: 0;
+  font: var(--t-hud);
+  font-weight: 450;
+  font-size: 13px;
+  color: var(--fg-faint);
+}
+
+.card-sheet__status {
+  margin: var(--sp-2) 0 0;
+  font: var(--t-strong);
+  color: var(--accent);
+}
+
+.wave-card__status {
+  color: var(--fg-dim);
+}
+
+@media (max-width: 720px) {
+  .report__option {
+    min-height: 112px;
+  }
+
+  .chip {
+    min-height: 44px;
+    padding: 0 var(--sp-3);
+    font-size: 13px;
+  }
+}
+
+/* --- The card a pin raises: what it is, who says so, and the question ---------------------- */
+.report-card__icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 96px;
+  height: 96px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--line-soft);
+  background: var(--bg-1);
+}
+
+.report-card__icon--police {
+  color: #7aa2ff;
+  border-color: rgba(122, 162, 255, 0.45);
+}
+
+.report-card__icon--accident {
+  color: var(--danger);
+  border-color: rgba(255, 139, 139, 0.45);
+}
+
+/* Somebody has said it is gone, and it is still up: the card says so without deciding. */
+.report-card__disputed {
+  color: var(--accent-warm);
+}
+
+/* The status a driver writes, under the chips that would otherwise have said it for them. */
+.field__input--sub {
+  min-height: 56px;
+  font-size: 15px;
+}

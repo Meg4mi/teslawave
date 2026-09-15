@@ -4,6 +4,8 @@ import { describe, expect, it } from 'vitest';
 import {
   BRAND,
   CAR_COLOURS,
+  REPORT_KINDS,
+  STATUSES,
   TESLA_MODELS,
   WAVE_MILESTONES,
   describeCar,
@@ -190,5 +192,31 @@ describe('the brand is spelled in exactly one place', () => {
       .split('\n')
       .filter((line) => /TeslaWave/i.test(line.replace(/@teslawave\//g, '')));
     expect(literals, `${file} should read the name from brand.json`).toEqual([]);
+  });
+});
+
+describe('status, reports and the voice', () => {
+  it.each(everyLocale)('%s names every status and every kind of report', (_locale, copy) => {
+    for (const status of STATUSES) expect(copy.status.label(status).length).toBeGreaterThan(0);
+    for (const kind of REPORT_KINDS) expect(copy.report.kind(kind).length).toBeGreaterThan(0);
+  });
+
+  it('says who waved, with their status as an aside', () => {
+    expect(EN.voice.received({ model: 'Y', colour: 'deepblue' })).toBe('The blue Model Y waved at you.');
+    expect(EN.voice.received({ model: 'Y', colour: 'deepblue', nick: 'Ghost', status: 'roadtrip' })).toBe(
+      'Ghost, on a road trip, waved at you.',
+    );
+    expect(FR.voice.received({ model: 'CT', colour: 'steel' })).toBe('Le Cybertruck inox vous a fait signe.');
+    expect(FR.voice.received({ model: '3', colour: 'red', nick: 'Ghost', status: 'charging' })).toBe(
+      'Ghost, en route vers une borne, vous a fait signe.',
+    );
+  });
+
+  it('rounds a distance the way it would be said, in both languages', () => {
+    expect(EN.report.nearby('police', 612)).toBe('Police reported 600 m away');
+    expect(EN.report.nearby('accident', 1_240)).toBe('Accident reported 1.2 km away');
+    expect(EN.voice.report('police', 612)).toBe('Police reported, 600 metres away.');
+    expect(FR.report.nearby('police', 612)).toBe('Police signalée à 600 m');
+    expect(FR.report.nearby('accident', 1_240)).toBe('Accident signalé à 1,2 km');
   });
 });

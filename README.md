@@ -179,6 +179,7 @@ rules are enforced by ESLint on `apps/worker/src/**` and by tests, and they are 
 2. Sockets are accepted with `ctx.acceptWebSocket()`, never `ws.accept()`.
 3. No `fetch` and no D1 from a message handler.
 4. Positions are never persisted; counter writes are debounced and limited to changed keys.
+   Anything kept that outlives its socket is bounded per hub, not just per cell.
 5. The hub id is validated at the edge, so at most 1,024 Durable Objects can ever exist.
 
 Breaking (1) or (2) means every object with a connected driver is billed around the clock:

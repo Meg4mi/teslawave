@@ -1,9 +1,13 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react';
 import {
+  CELL_PRECISION,
   PROTOCOL_VERSION,
   WAVE_BACK_WINDOW_MS,
   WAVE_PROMPT_TTL_MS,
+  encode,
   hubOf,
+  toWireAt,
+  type ReportKind,
   type ServerMsg,
   type TeslaModel,
 } from '@teslawave/protocol';
@@ -16,6 +20,7 @@ import {
   bumpSelfWaves,
   dropCells,
   getCar,
+  getReport,
   getSelfWaves,
   pruneExpired,
   refreshSummary,
@@ -26,6 +31,7 @@ import {
 } from '../sim/world';
 import type { Identity, Prefs } from '../identity/store';
 import { play, setMuted } from '../ui/sound';
+import { setVoice, setVoiceLang, speak } from '../ui/voice';
 import { useCopy } from '../i18n';
 import type { Renderer } from '../overlay/renderer';
 import type { WaveCardContent } from '../screens/WaveCard';
@@ -59,6 +65,10 @@ export type Session = {
   backFrom: WaveBack | null;
   /** Send a wave. Says so on screen if it could not go out at all. */
   wave: (id: string) => void;
+  /** Flag police or an accident where the car is now. Says so on screen either way. */
+  report: (kind: ReportKind) => void;
+  /** Answer a pin: is it still there? `false` is a dismissal. */
+  confirm: (id: string, there: boolean) => void;
 };
 
 /**
@@ -87,6 +97,10 @@ export function useSession({
   });
   const netRef = useRef<Net | null>(null);
   const sentWaves = useRef(new Map<string, number>());
+  /** The last fix as sent, which is where a report is placed. */
+  const lastFix = useRef<{ lat: number; lng: number } | null>(null);
+  /** Which way the vote in flight went, so its answer can be worded as the driver meant it. */
+  const votedRef = useRef(true);
 
   const [status, setStatus] = useState<NetStatus>('idle');
   const [parked, setParked] = useState(false);
@@ -131,6 +145,8 @@ export function useSession({
         const isWaveBack = sentAt !== undefined && Date.now() - sentAt < WAVE_BACK_WINDOW_MS;
         rendererRef.current?.addWave({ kind: 'received', fromId: msg.from.id, toId: null });
         play('received');
+        // The voice says what the card shows, for the driver whose eyes are on the road.
+        speak(isWaveBack ? copy.voice.back(msg.from) : copy.voice.received(msg.from));
         bumpSelfWaves();
         celebrate();
         const at = Date.now();
@@ -140,6 +156,8 @@ export function useSession({
           colour: msg.from.colour,
           back: isWaveBack,
           ...(msg.from.nick === undefined ? {} : { nick: msg.from.nick }),
+          ...(msg.from.status === undefined ? {} : { status: msg.from.status }),
+          ...(msg.from.statusText === undefined ? {} : { statusText: msg.from.statusText }),
         });
         setFlashId(at);
         // A nod you did not start is one you can return. One you did start is already done.
@@ -176,8 +194,87 @@ export function useSession({
           showToast(why);
         }
       }
+      if (msg.t === 'reported') {
+        if (msg.ok) showToast(copy.report.sent);
+        else
+          showToast(
+            msg.reason === 'hidden'
+              ? copy.report.hidden
+              : msg.reason === 'rate'
+                ? copy.report.tooSoon
+                : copy.report.nofix,
+          );
+      }
+      if (msg.t === 'confirmed') {
+        // Which way the vote went is not on the answer: the hub says only that it counted,
+        // and we asked, so we know. A pin that has gone is the one refusal worth its own line.
+        if (msg.ok) showToast(votedRef.current ? copy.report.voteThanks : copy.report.voteCleared);
+        else
+          showToast(
+            msg.reason === 'gone'
+              ? copy.report.voteGone
+              : msg.reason === 'rate'
+                ? copy.report.voteTooSoon
+                : msg.reason === 'hidden'
+                  ? copy.report.hidden
+                  : copy.report.voteTooFar,
+          );
+      }
     },
     [showToast, celebrate, copy, rendererRef],
+  );
+
+  /**
+   * A report goes to the hub that owns the cell the car is in, with the car's own position:
+   * the hub places it there, or refuses it, and either way answers with `reported`. The
+   * refusals a driver can do something about are said as such; one they cannot is the map's.
+   */
+  const report = useCallback(
+    (kind: ReportKind): void => {
+      const fix = lastFix.current;
+      if (!fix || spectator) {
+        showToast(spectator ? copy.report.hidden : copy.report.nofix);
+        return;
+      }
+      if (!prefs.sharing) {
+        showToast(copy.report.hidden);
+        return;
+      }
+      const hub = hubOf(encode(fix.lat, fix.lng, CELL_PRECISION));
+      const sent = netRef.current?.send({ t: 'report', kind, at: toWireAt(fix) }, hub);
+      if (!sent) showToast(copy.report.nofix);
+      else play('sent');
+    },
+    [showToast, copy, spectator, prefs.sharing],
+  );
+
+  /**
+   * Answer the question a pin asks. It goes to the hub that owns the pin's cell rather than
+   * the one that owns ours: near a boundary those differ, and only one of them is holding
+   * the report. The car's own position rides along, as a report's does, so the hub can tell
+   * a driver who is looking at the thing from one who is nowhere near it.
+   */
+  const confirm = useCallback(
+    (id: string, there: boolean): void => {
+      const fix = lastFix.current;
+      if (!fix || spectator || !prefs.sharing) {
+        showToast(spectator || !prefs.sharing ? copy.report.hidden : copy.report.nofix);
+        return;
+      }
+      const report = getReport(id);
+      if (!report) {
+        showToast(copy.report.voteGone);
+        return;
+      }
+      votedRef.current = there;
+      const sent = netRef.current?.send(
+        { t: 'confirm', id, there, at: toWireAt(fix) },
+        hubOf(report.cell),
+      );
+      if (!sent) showToast(copy.report.nofix);
+      else play('sent');
+    },
+    [showToast, copy, spectator, prefs.sharing],
   );
 
   const wave = useCallback(
@@ -242,6 +339,10 @@ export function useSession({
       colour: profileRef.current?.colour ?? 'pearl',
       spectator,
       ...(profileRef.current?.nick === undefined ? {} : { nick: profileRef.current.nick }),
+      ...(profileRef.current?.status === undefined ? {} : { status: profileRef.current.status }),
+      ...(profileRef.current?.statusText === undefined
+        ? {}
+        : { statusText: profileRef.current.statusText }),
     });
     return () => {
       net.stop();
@@ -259,6 +360,8 @@ export function useSession({
       colour: identity.colour,
       spectator,
       ...(identity.nick === undefined ? {} : { nick: identity.nick }),
+      ...(identity.status === undefined ? {} : { status: identity.status }),
+      ...(identity.statusText === undefined ? {} : { statusText: identity.statusText }),
     });
   }, [identity, spectator]);
 
@@ -300,6 +403,15 @@ export function useSession({
     setMuted(prefs.muted);
   }, [prefs.muted]);
 
+  useEffect(() => {
+    setVoice(prefs.voice);
+  }, [prefs.voice]);
+
+  // The voice speaks the language the screen does.
+  useEffect(() => {
+    setVoiceLang(copy.voice.lang);
+  }, [copy]);
+
   // Anonymous frame timings, only while the driver has said yes (ADR-0027).
   useEffect(() => {
     if (!identity || !prefs.perfBeacon) return;
@@ -311,6 +423,7 @@ export function useSession({
   useEffect(() => {
     if (!fix) return;
     const reported = { lat: fix.lat, lng: fix.lng, heading: fix.heading, speed: fix.speed };
+    lastFix.current = reported;
     setSelfPlacement(reported);
     setSelfReported(reported);
     netRef.current?.update(reported);
@@ -350,5 +463,7 @@ export function useSession({
     flashId,
     backFrom,
     wave,
+    report,
+    confirm,
   };
 }

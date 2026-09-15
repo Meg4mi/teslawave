@@ -3,9 +3,14 @@ import {
   MODEL_LABELS,
   PARKED_HIDE_MS,
   PRESENCE_EXPIRY_MS,
+  REPORT_ALERT_M,
+  REPORT_MAX_LIFE_MS,
+  REPORT_TTL_MS,
   colourOf,
   isColourId,
   type CarColourId,
+  type ReportKind,
+  type StatusId,
   type TeslaModel,
 } from '@teslawave/protocol';
 
@@ -54,6 +59,36 @@ const n = (value: number): string => NUMBERS.format(value);
 /** "blue Model Y". Lowercase and short, so it drops into the middle of a sentence. */
 const describe = (model: TeslaModel, colour: string): string =>
   `${isColourId(colour) ? SHORT[colour] : colourOf(colour).label.toLowerCase()} ${MODEL_LABELS[model]}`;
+
+/** A word about the drive, as the chip reads it. */
+const STATUS_LABELS: Record<StatusId, string> = {
+  roadtrip: 'On a road trip',
+  charging: 'Heading to charge',
+  commute: 'Commuting',
+  cruising: 'Just cruising',
+  newowner: 'New owner',
+};
+
+/** The same word mid-sentence, after a name: "Ghost, on a road trip, waved at you". */
+const STATUS_ASIDES: Record<StatusId, string> = {
+  roadtrip: 'on a road trip',
+  charging: 'heading to charge',
+  commute: 'commuting',
+  cruising: 'just cruising',
+  newowner: 'a new owner',
+};
+
+const REPORT_LABELS: Record<ReportKind, string> = { police: 'Police', accident: 'Accident' };
+
+/** Rounded the way a driver would say it: 600 m, then 1.2 km. */
+const distance = (metres: number): string =>
+  metres < 950 ? `${n(Math.max(50, Math.round(metres / 50) * 50))} m` : `${(metres / 1000).toFixed(1)} km`;
+
+/** The same distance, said aloud: a synthesiser reads "m" as a letter. */
+const distanceSpoken = (metres: number): string =>
+  metres < 950
+    ? `${n(Math.max(50, Math.round(metres / 50) * 50))} metres`
+    : `${(metres / 1000).toFixed(1)} kilometres`;
 
 export const EN = {
   brand: BRAND.name,
@@ -148,10 +183,101 @@ export const EN = {
     title: 'Your car',
     hint: 'Change what other drivers see. Takes effect for everyone around you straight away.',
     open: 'Change',
-    tapHint: 'Tap to change model, colour or name',
+    tapHint: 'Tap to change model, colour, name or status',
     save: 'Save',
     cancel: 'Cancel',
     saved: 'Your car is updated.',
+  },
+
+  /**
+   * A status is a chip, not a sentence: chosen from a list so nothing is typed on the car
+   * screen and nothing needs moderating. Shown on your car card, on the card your wave
+   * raises, and said by the voice.
+   */
+  status: {
+    title: 'Status (optional)',
+    hint: 'A word about your drive, for drivers who look at your car. Your own words are shown as you write them, and translated for nobody.',
+    none: 'None',
+    label: (status: StatusId): string => STATUS_LABELS[status],
+    aside: (status: StatusId): string => STATUS_ASIDES[status],
+    /** The field under the chips: the one thing five options cannot do. */
+    own: 'Your own words',
+    ownPlaceholder: 'Say it your own way',
+  },
+
+  /**
+   * The report: two things every driver recognises from Waze, placed where the car is and
+   * shared with the drivers around for a while. The copy says exactly that, and says that
+   * nobody is named, because that is what a driver would want to know before tapping.
+   */
+  report: {
+    control: 'Report',
+    title: 'Report',
+    hint: `Placed where your car is now and shared with drivers nearby. It stays while drivers keep confirming it, and never longer than ${n(REPORT_MAX_LIFE_MS / 3_600_000)} hours. Nothing says who reported it.`,
+    kind: (kind: ReportKind): string => REPORT_LABELS[kind],
+    police: 'Police',
+    policeHint: 'A patrol or a check ahead.',
+    accident: 'Accident',
+    accidentHint: 'A crash or a car stopped on the road.',
+    sent: 'Reported. Drivers nearby will see it.',
+    hidden: 'Turn yourself back on to report.',
+    tooSoon: 'One report a minute.',
+    nofix: 'The map lost your position. Try again in a moment.',
+    /** The alert, on screen and in the ear, when a report comes within REPORT_ALERT_M. */
+    nearby: (kind: ReportKind, metres: number): string =>
+      `${REPORT_LABELS[kind]} reported ${distance(metres)} away`,
+    confirmed: (count: number): string =>
+      count === 1 ? 'reported by 1 driver' : `reported by ${n(count)} drivers`,
+    within: `Said once, within ${n(REPORT_ALERT_M / 1000)} km`,
+
+    /* The card a pin raises when you tap it: what it is, when, who says so, and the one
+       question a driver passing it can answer. */
+    seen: (ago: string): string => `Reported ${ago}`,
+    disputed: (count: number): string =>
+      count === 1 ? '1 driver says it is gone' : `${n(count)} drivers say it is gone`,
+    stillThere: 'Still there',
+    gone: 'Gone now',
+    cardNote: `A pin stays while drivers keep saying it is there, and goes when as many say it is not. It lapses on its own after ${n(REPORT_TTL_MS.police / 60_000)} minutes without a word, and never lives past ${n(REPORT_MAX_LIFE_MS / 3_600_000)} hours.`,
+    voteThanks: 'Noted. It stays up a while longer.',
+    voteCleared: 'Noted. Thank you for clearing it.',
+    voteTooFar: 'Too far from it to say.',
+    voteGone: 'That one has gone already.',
+    voteTooSoon: 'One at a time.',
+  },
+
+  /**
+   * The robot voice. It says what the card shows, so a driver looking at the road knows who
+   * waved without looking down. Deliberately a little silly: it is a synthesiser dropped an
+   * octave, and it should sound like one.
+   */
+  voice: {
+    title: 'Robot voice',
+    hint: 'Says who waved, out loud, in a voice from the year 2049.',
+    /** Spoken once when the switch goes on, so the driver hears what they just turned on. */
+    hello: 'Voice on. Watching the road with you.',
+    /**
+     * A chosen status is read as an aside, because we wrote the words and know they fit the
+     * sentence. A status a driver typed gets a sentence of its own: it is their phrasing, in
+     * their language, and dropping it into the middle of ours would read as a fault.
+     */
+    received: (car: {
+      model: TeslaModel;
+      colour: string;
+      nick?: string;
+      status?: StatusId;
+      statusText?: string;
+    }): string => {
+      const who = car.nick ?? `The ${describe(car.model, car.colour)}`;
+      const aside = car.status ? `, ${STATUS_ASIDES[car.status]},` : '';
+      const line = `${who}${aside} waved at you.`;
+      return car.statusText ? `${line} Their status: ${car.statusText}.` : line;
+    },
+    back: (car: { model: TeslaModel; colour: string; nick?: string }): string =>
+      `${car.nick ?? `The ${describe(car.model, car.colour)}`} waved back.`,
+    report: (kind: ReportKind, metres: number): string =>
+      `${REPORT_LABELS[kind]} reported, ${distanceSpoken(metres)} away.`,
+    /** The language tag the synthesiser is asked for. */
+    lang: 'en-GB',
   },
 
   howTo: {
@@ -285,6 +411,7 @@ export const EN = {
     orientationNorth: 'Map stays north up',
     settings: 'Settings',
     close: 'Close',
+    report: 'Report',
   },
 
   privacy: {
@@ -295,7 +422,8 @@ export const EN = {
     leaves: [
       `Your GPS position, as it is, while you are visible and moving. A car parked for ${n(PARKED_HIDE_MS / 60_000)} minutes is hidden until it moves, so nobody can watch where you stop. The position is used only to show you to the drivers around you.`,
       'Your heading and speed, so other cars glide instead of jumping.',
-      'The model and colour you picked, and a nickname if you typed one.',
+      'The model and colour you picked, a nickname if you typed one, and a status if you chose one.',
+      `If you report police or an accident: where your car was when you tapped, shared with drivers in the same map area for ${n(REPORT_TTL_MS.police / 60_000)} to ${n(REPORT_TTL_MS.accident / 60_000)} minutes, kept in memory only, and not linked to you.`,
       'A random secret generated in your browser. Other drivers see only a hash of it, which is not linked to you or to Tesla and cannot be used to pose as you.',
     ],
     keptTitle: 'What is kept',

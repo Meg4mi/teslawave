@@ -2,14 +2,25 @@ import type { CSSProperties, ReactNode } from 'react';
 import {
   CAR_COLOURS,
   NICK_MAX_LEN,
+  STATUSES,
+  STATUS_MAX_LEN,
   TESLA_MODELS,
   type CarColourId,
+  type StatusId,
   type TeslaModel,
 } from '@teslawave/protocol';
 import { CheckIcon } from '../ui/icons';
 import { useCopy } from '../i18n';
 
-export type CarChoice = { model: TeslaModel; colour: CarColourId; nick: string };
+export type CarChoice = {
+  model: TeslaModel;
+  colour: CarColourId;
+  nick: string;
+  /** Null is "none", which is the usual answer and the first chip. */
+  status: StatusId | null;
+  /** The driver's own words. Never set at the same time as `status`. */
+  statusText: string;
+};
 
 /**
  * Choosing your car: the model, the paint, the name. Shared by onboarding and by the garage
@@ -25,7 +36,9 @@ export function CarPicker({
   onChange: (patch: Partial<CarChoice>) => void;
 }): ReactNode {
   const copy = useCopy();
-  const { model, colour, nick } = value;
+  const { model, colour, nick, status, statusText } = value;
+  /** "None" is pressed only when neither half of the choice has been used. */
+  const none = status === null && statusText.trim().length === 0;
 
   return (
     <>
@@ -100,6 +113,48 @@ export function CarPicker({
           onChange={(event) => onChange({ nick: event.target.value })}
         />
       </label>
+
+      {/* Chips first, because five taps cover most drives and nothing is typed on the car
+          screen for them. The field under them is the one thing five options cannot do: say
+          something nobody anticipated (ADR-0040, amended). The two are one choice — picking a
+          chip clears the field, typing clears the chips — so a card never shows two statuses. */}
+      <fieldset className="field">
+        <legend className="field__label eyebrow">{copy.status.title}</legend>
+        <div className="chips" role="group" aria-label={copy.status.title}>
+          <button
+            type="button"
+            data-touch
+            className={`chip ${none ? 'chip--on' : ''}`.trim()}
+            aria-pressed={none}
+            onClick={() => onChange({ status: null, statusText: '' })}
+          >
+            {copy.status.none}
+          </button>
+          {STATUSES.map((s) => (
+            <button
+              key={s}
+              type="button"
+              data-touch
+              className={`chip ${s === status ? 'chip--on' : ''}`.trim()}
+              aria-pressed={s === status}
+              onClick={() => onChange({ status: s, statusText: '' })}
+            >
+              {copy.status.label(s)}
+            </button>
+          ))}
+        </div>
+        <input
+          type="text"
+          className="field__input field__input--sub"
+          value={statusText}
+          maxLength={STATUS_MAX_LEN}
+          autoComplete="off"
+          aria-label={copy.status.own}
+          placeholder={copy.status.ownPlaceholder}
+          onChange={(event) => onChange({ statusText: event.target.value, status: null })}
+        />
+        <p className="field__hint">{copy.status.hint}</p>
+      </fieldset>
     </>
   );
 }

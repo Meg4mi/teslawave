@@ -45,3 +45,4 @@ Format: Context / Decision / Rejected alternatives / Consequences (`0000-templat
 | [0037](0037-terms-safety-and-a-controller.md) | Terms, a safety line, and somebody to write to |
 | [0038](0038-the-demo-is-generated.md) | The demo clip is generated, not filmed |
 | [0039](0039-a-wave-the-hub-cannot-place-is-held-not-refused.md) | A wave the hub cannot place is held and asked about, not refused |
+| [0040](0040-a-status-a-report-and-a-voice.md) | A status chosen from a list or written, a report placed where the car is and answerable, and a voice that says it |

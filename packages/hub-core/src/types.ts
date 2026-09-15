@@ -1,4 +1,4 @@
-import type { CarState, ServerMsg, TeslaModel } from '@teslawave/protocol';
+import type { CarState, Report, ServerMsg, StatusId, TeslaModel } from '@teslawave/protocol';
 
 /** Opaque handle for one connection. The Cloudflare adapter maps it to a WebSocket. */
 export type SocketKey = string;
@@ -10,6 +10,8 @@ export type SocketProfile = {
   model: TeslaModel;
   colour: string;
   nick?: string;
+  status?: StatusId;
+  statusText?: string;
   cells: string[];
   spectator: boolean;
   hidden: boolean;
@@ -26,6 +28,10 @@ export type SocketProfile = {
 export type SocketRuntime = {
   lastPosAt: number;
   lastWaveAt: number;
+  /** When this connection last placed a report: one a minute (RATE_REPORT_MS). */
+  lastReportAt: number;
+  /** When it last voted on one: one every ten seconds (RATE_CONFIRM_MS). */
+  lastConfirmAt: number;
   /** When this connection was last asked `where`, so a burst of waves asks it once. */
   askedAt: number;
   violations: number;
@@ -52,6 +58,20 @@ export type HeldWave = {
   from: string;
   to: string;
   at: number;
+};
+
+/**
+ * A report as the hub holds it.
+ *
+ * `by` is the drivers who say it is there and `against` those who say it is gone, kept only
+ * so each driver counts once and can change their mind. They are memory only, never sent and
+ * never written, and they go with the report (ADR-0040). `n` and `no` on the wire are their
+ * sizes and nothing else, so the two can never drift apart.
+ */
+export type HubReport = Report & {
+  cell: string;
+  by: Set<string>;
+  against: Set<string>;
 };
 
 export type Counters = {
@@ -100,6 +120,29 @@ export type HubState = {
   lastFlushAt: number;
   /** Waves waiting on a position. Settled by the next message, never by a timer. */
   held: HeldWave[];
+  /**
+   * What drivers have flagged on the road, by id. Memory only, like presence: a report is a
+   * position, and positions are never written anywhere (ADR-0002). Gone on hibernation, as
+   * presence is; a report that mattered was already on the screens that were there for it.
+   */
+  reports: Map<string, HubReport>;
+  /**
+   * cell -> the reports in it. An index over `reports`, kept in step with it, for the same
+   * reason `presenceByCell` is an index over `presence`: handing a cell's pins to a joining
+   * connection, and finding the pin a new report merges into, were both a scan of every pin
+   * in the whole hub (ADR-0033's lesson, applied to ADR-0040's pins).
+   */
+  reportsByCell: Map<string, Set<string>>;
+  /** cell -> report ids changed since the last flush, and ids gone since. */
+  reportsDirty: Map<string, Set<string>>;
+  reportsGone: Map<string, Set<string>>;
+  /**
+   * A lower bound on the soonest any pin lapses, so a tick where none can have lapsed does no
+   * work at all. Only ever wrong in the safe direction — a confirmation pushes a pin's
+   * expiry out and leaves this behind, which costs one scan that puts it right.
+   */
+  nextReportExpiryAt: number;
+  nextReportSeq: number;
   counters: Counters;
 };
 

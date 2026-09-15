@@ -16,6 +16,7 @@ import {
   type CarColourId,
   type SentPos,
   type ServerMsg,
+  type StatusId,
   type TeslaModel,
 } from '@teslawave/protocol';
 import { wsUrl } from '../config/env';
@@ -28,6 +29,8 @@ export type NetProfile = {
   model: TeslaModel;
   colour: CarColourId;
   nick?: string;
+  status?: StatusId;
+  statusText?: string;
   spectator: boolean;
 };
 
@@ -193,6 +196,8 @@ export function createNet(handlers: {
       cells: hub.cells,
       v: PROTOCOL_VERSION,
       ...(profile.nick === undefined ? {} : { nick: profile.nick }),
+      ...(profile.status === undefined ? {} : { status: profile.status }),
+      ...(profile.statusText === undefined ? {} : { statusText: profile.statusText }),
       ...(profile.spectator ? { spectator: true } : {}),
       ...(at === null ? {} : { at }),
     };

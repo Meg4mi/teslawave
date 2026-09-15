@@ -1,5 +1,10 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { CAR_COLOURS, TESLA_MODELS, type TeslaModel } from '@teslawave/protocol';
+import {
+  CAR_COLOURS,
+  REPORT_TTL_MS,
+  TESLA_MODELS,
+  type TeslaModel,
+} from '@teslawave/protocol';
 import { createRenderer, type Renderer } from '../overlay/renderer';
 import { createTrack, pushSample } from '@teslawave/protocol';
 import { Button, Counter } from '../ui/primitives';
@@ -8,7 +13,8 @@ import { WaveButton, type WaveTarget } from './WaveButton';
 import { WaveCard, type WaveCardContent } from './WaveCard';
 import { useCopy } from '../i18n';
 import { play, unlockAudio } from '../ui/sound';
-import type { RenderCar } from '../sim/world';
+import { speak } from '../ui/voice';
+import type { RenderCar, RenderReport } from '../sim/world';
 import '../app/app.css';
 import '../screens/sheets.css';
 
@@ -27,6 +33,8 @@ export function KitchenSink(): ReactNode {
   const [nearby, setNearby] = useState(true);
   // Bumped by "wave received", exactly as a real wave re-arms the button as "Wave back".
   const [back, setBack] = useState<number | null>(null);
+  /** Pins on the demo road: added by the report buttons, drawn by the renderer. */
+  const reportsRef = useRef<RenderReport[]>([]);
   const params = new URLSearchParams(location.search);
   const chipSize = Number(params.get('size') ?? 44);
   // ?compare renders one colour across every model, which is the only way to judge whether
@@ -85,6 +93,7 @@ export function KitchenSink(): ReactNode {
         project,
         {
           cars,
+          reports: reportsRef.current,
           self: { lat: 46.1994, lng: 6.14, heading: 0, model: '3', colour: 'pearl' },
           nearbyId: nearby ? 'demo-Y' : null,
           selectedId: null,
@@ -112,10 +121,38 @@ export function KitchenSink(): ReactNode {
    */
   const NAMED = 'Wintermute Volta';
 
-  const fire = (kind: 'sent' | 'received' | 'back' | 'named' | 'milestone' | 'sonar'): void => {
+  const fire = (
+    kind: 'sent' | 'received' | 'back' | 'named' | 'milestone' | 'sonar' | 'police' | 'accident',
+  ): void => {
     unlockAudio();
     const renderer = rendererRef.current;
     if (kind === 'sonar') return renderer?.playSonar();
+    if (kind === 'police' || kind === 'accident') {
+      // A pin lands up the road, the alert chimes, and the voice says it: the whole moment.
+      const at = Date.now();
+      const distanceM = 400 + Math.round(Math.random() * 500);
+      reportsRef.current = [
+        ...reportsRef.current,
+        {
+          id: `demo-${at}`,
+          kind,
+          lat: 46.2 + reportsRef.current.length * 0.0004,
+          lng: 6.137,
+          at,
+          first: at,
+          n: 1 + reportsRef.current.length,
+          // Every other pin is doubted, so the faint state gets judged beside the plain one.
+          no: reportsRef.current.length % 2,
+          cell: 'u0hq',
+          appearedAt: performance.now(),
+          expiresAt: at + REPORT_TTL_MS[kind],
+          distanceM,
+        },
+      ];
+      play('received');
+      speak(copy.voice.report(kind, distanceM));
+      return;
+    }
     if (kind === 'sent') {
       renderer?.addWave({ kind: 'sent', fromId: null, toId: 'demo-Y' });
       play('sent');
@@ -125,6 +162,11 @@ export function KitchenSink(): ReactNode {
     if (kind === 'received' || kind === 'back' || kind === 'named') {
       renderer?.addWave({ kind: 'received', fromId: 'demo-Y', toId: null });
       play('received');
+      speak(
+        kind === 'back'
+          ? copy.voice.back({ model: 'Y', colour: 'deepblue' })
+          : copy.voice.received({ model: 'Y', colour: 'deepblue', ...(kind === 'named' ? { nick: NAMED, status: 'roadtrip' } : {}) }),
+      );
       setWaves((n) => n + 1);
       const at = Date.now();
       setCard({
@@ -132,7 +174,7 @@ export function KitchenSink(): ReactNode {
         model: 'Y',
         colour: 'deepblue',
         back: kind === 'back',
-        ...(kind === 'named' ? { nick: NAMED } : {}),
+        ...(kind === 'named' ? { nick: NAMED, status: 'roadtrip' } : {}),
       });
       setFlashId(at);
       setBack(kind === 'back' ? null : at);
@@ -165,6 +207,8 @@ export function KitchenSink(): ReactNode {
           <Button onClick={() => fire('back')}>Waved back</Button>
           <Button onClick={() => fire('named')}>Wave from a named car</Button>
           <Button onClick={() => fire('milestone')}>Milestone</Button>
+          <Button onClick={() => fire('police')}>Police reported</Button>
+          <Button onClick={() => fire('accident')}>Accident reported</Button>
           <Button onClick={() => setNearby((v) => !v)}>
             {nearby ? 'Hide wave button' : 'Show wave button'}
           </Button>

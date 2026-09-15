@@ -6,9 +6,16 @@ import {
   CLOSE_WRONG_HUB,
   INTEREST_RADIUS_M,
   LEGACY_PROTOCOL_VERSION,
+  MAX_REPORTS_PER_CELL,
+  MAX_REPORTS_PER_HUB,
+  MAX_REPORT_VOTERS,
   MAX_SOCKETS_PER_CELL,
   PRESENCE_EXPIRY_MS,
   PROTOCOL_VERSION,
+  RATE_CONFIRM_MS,
+  RATE_REPORT_MS,
+  REPORT_MAX_LIFE_MS,
+  REPORT_TTL_MS,
   SERVER_TICK_MS,
   WAVE_HOLD_MS,
   WIRE_COORD_SCALE,
@@ -1093,5 +1100,498 @@ describe('interest', () => {
     expect(seen.length).toBeLessThan(200);
     // The number that matters: the old wire would have put 200 x 210 bytes on this socket.
     expect(bytes).toBeLessThan(42_000 / 2);
+  });
+});
+
+const reportsFor = (effects: Effect[], to: string): Extract<ServerMsg, { t: 'reports' }>[] =>
+  sends(effects, to).filter((m): m is Extract<ServerMsg, { t: 'reports' }> => m.t === 'reports');
+
+const reportedFor = (effects: Effect[], to: string): Extract<ServerMsg, { t: 'reported' }>[] =>
+  sends(effects, to).filter((m): m is Extract<ServerMsg, { t: 'reported' }> => m.t === 'reported');
+
+const wireAt = (p: { lat: number; lng: number }): readonly [number, number] => [
+  Math.round(p.lat * WIRE_COORD_SCALE),
+  Math.round(p.lng * WIRE_COORD_SCALE),
+];
+
+const report = (key: string, kind: 'police' | 'accident', at: { lat: number; lng: number }): Effect[] =>
+  learned(onMessage(state, key, { t: 'report', kind, at: wireAt(at) }, now));
+
+describe('a status', () => {
+  it('travels with the car: in its description, and with its wave', () => {
+    hello('a', 'car-a', [CELL], { status: 'roadtrip' } as Partial<ClientMsg>);
+    hello('b', 'car-b');
+    pos('a', GENEVA.lat, GENEVA.lng);
+    const near = destination(GENEVA.lat, GENEVA.lng, 90, 100);
+    pos('b', near.lat, near.lng);
+    now += SERVER_TICK_MS;
+    const flushed = flush();
+    const aSeenByB = diff2sFor(flushed, 'b').flatMap((d) => d.meta).find((m) => m.id === ID('car-a'));
+    const bSeenByA = diff2sFor(flushed, 'a').flatMap((d) => d.meta).find((m) => m.id === ID('car-b'));
+    expect(aSeenByB?.status).toBe('roadtrip');
+    expect(bSeenByA).toBeDefined();
+    expect(bSeenByA).not.toHaveProperty('status');
+
+    const out = onMessage(state, 'a', { t: 'wave', to: ID('car-b') }, now);
+    expect(sends(out, 'b')[0]).toMatchObject({ t: 'wave', from: { status: 'roadtrip' } });
+  });
+
+  it('is kept in the profile, so a hibernation wake still knows it', () => {
+    hello('a', 'car-a', [CELL], { status: 'charging' } as Partial<ClientMsg>);
+    const profile = state.sockets.get('a')!;
+    expect(profile.status).toBe('charging');
+    // A fresh hello without one clears it: rebuilt, not patched.
+    hello('a', 'car-a');
+    expect(state.sockets.get('a')).not.toHaveProperty('status');
+  });
+});
+
+describe('reports', () => {
+  const twoCars = (): void => {
+    hello('a', 'car-a');
+    hello('b', 'car-b');
+    pos('a', GENEVA.lat, GENEVA.lng);
+    const near = destination(GENEVA.lat, GENEVA.lng, 90, 100);
+    pos('b', near.lat, near.lng);
+  };
+
+  it('places a report where the car is and tells the whole cell on the next tick', () => {
+    twoCars();
+    const out = report('a', 'police', GENEVA);
+    expect(reportedFor(out, 'a')).toEqual([{ t: 'reported', ok: true }]);
+    // Nothing until the tick: reports ride the same clock as everything else.
+    expect(reportsFor(out, 'b')).toHaveLength(0);
+    now += SERVER_TICK_MS;
+    const flushed = flush();
+    for (const key of ['a', 'b']) {
+      const [msg] = reportsFor(flushed, key);
+      expect(msg?.cell).toBe(CELL);
+      expect(msg?.upd).toHaveLength(1);
+      expect(msg?.upd[0]).toMatchObject({ kind: 'police', n: 1, at: now - SERVER_TICK_MS });
+      expect(msg?.upd[0]?.lat).toBeCloseTo(GENEVA.lat, 4);
+    }
+    expect(hubStats(state).reports).toBe(1);
+  });
+
+  it('says nothing about who reported it', () => {
+    twoCars();
+    report('a', 'accident', GENEVA);
+    now += SERVER_TICK_MS;
+    const serialised = JSON.stringify(reportsFor(flush(), 'b'));
+    expect(serialised).not.toContain(ID('car-a'));
+    expect(serialised).not.toContain('by');
+  });
+
+  it('merges a second driver reporting the same thing nearby into one pin', () => {
+    twoCars();
+    report('a', 'police', GENEVA);
+    now += SERVER_TICK_MS;
+    flush();
+    now += 5_000;
+    const near = destination(GENEVA.lat, GENEVA.lng, 90, 100);
+    report('b', 'police', near);
+    now += SERVER_TICK_MS;
+    const [msg] = reportsFor(flush(), 'a');
+    expect(msg?.upd).toHaveLength(1);
+    expect(msg?.upd[0]).toMatchObject({ n: 2, at: now - SERVER_TICK_MS });
+    expect(hubStats(state).reports).toBe(1);
+  });
+
+  it('keeps a different kind, or the same kind further off, as its own pin', () => {
+    twoCars();
+    report('a', 'police', GENEVA);
+    now += RATE_REPORT_MS;
+    report('a', 'accident', GENEVA);
+    now += RATE_REPORT_MS;
+    const far = destination(GENEVA.lat, GENEVA.lng, 90, 800);
+    pos('a', far.lat, far.lng);
+    report('a', 'police', far);
+    expect(hubStats(state).reports).toBe(3);
+  });
+
+  it('does not count the same driver twice, and does not refuse them either', () => {
+    twoCars();
+    report('a', 'police', GENEVA);
+    now += RATE_REPORT_MS;
+    const out = report('a', 'police', GENEVA);
+    expect(reportedFor(out, 'a')).toEqual([{ t: 'reported', ok: true }]);
+    expect([...state.reports.values()][0]?.n).toBe(1);
+  });
+
+  it('refuses a hidden driver, a second report inside a minute, and a position the car is not at', () => {
+    twoCars();
+    onMessage(state, 'b', { t: 'hide' }, now);
+    expect(reportedFor(report('b', 'police', GENEVA), 'b')[0]).toMatchObject({ ok: false, reason: 'hidden' });
+
+    report('a', 'police', GENEVA);
+    now += 10_000;
+    expect(reportedFor(report('a', 'accident', GENEVA), 'a')[0]).toMatchObject({ ok: false, reason: 'rate' });
+
+    now += RATE_REPORT_MS;
+    // The hub still knows where the car is, and it is not there.
+    pos('a', GENEVA.lat, GENEVA.lng);
+    const elsewhere = destination(GENEVA.lat, GENEVA.lng, 0, 5_000);
+    expect(reportedFor(report('a', 'police', elsewhere), 'a')[0]).toMatchObject({ ok: false, reason: 'range' });
+    expect(hubStats(state).reports).toBe(1);
+  });
+
+  it('takes the position the client gives when it has just woken and holds none', () => {
+    hello('a', 'car-a');
+    // No pos yet: the hub knows the connection and nothing else, as after a wake.
+    const out = report('a', 'accident', GENEVA);
+    expect(reportedFor(out, 'a')).toEqual([{ t: 'reported', ok: true }]);
+    expect([...state.reports.values()][0]?.cell).toBe(CELL);
+  });
+
+  it('refuses a report in a cell another hub owns', () => {
+    hello('a', 'car-a');
+    const away = { lat: GENEVA.lat, lng: GENEVA.lng + 12 };
+    expect(reportedFor(report('a', 'police', away), 'a')[0]).toMatchObject({ ok: false, reason: 'range' });
+  });
+
+  it('hands a late joiner the live reports of the cell, with its hello and with a new cell', () => {
+    hello('a', 'car-a');
+    pos('a', GENEVA.lat, GENEVA.lng);
+    report('a', 'police', GENEVA);
+    now += SERVER_TICK_MS;
+    flush();
+    const joined = hello('c', 'car-c');
+    expect(reportsFor(joined, 'c')[0]?.upd).toHaveLength(1);
+    // Somebody holding only the neighbour, who then drives into this cell.
+    const other = hello('d', 'car-d', [NEIGHBOUR_CELL]);
+    expect(reportsFor(other, 'd')).toHaveLength(0);
+    const subbed = learned(onMessage(state, 'd', { t: 'sub', cells: [NEIGHBOUR_CELL, CELL] }, now));
+    expect(reportsFor(subbed, 'd')[0]?.cell).toBe(CELL);
+  });
+
+  it('lets a report go after its lifetime, and says so', () => {
+    twoCars();
+    report('a', 'police', GENEVA);
+    now += SERVER_TICK_MS;
+    const [placed] = reportsFor(flush(), 'b');
+    const id = placed?.upd[0]?.id;
+    expect(id).toBeDefined();
+    // An accident would have gone half an hour ago; a patrol is given ninety minutes.
+    now += REPORT_TTL_MS.accident + SERVER_TICK_MS;
+    pos('a', GENEVA.lat + 1e-4, GENEVA.lng);
+    expect(reportsFor(flush(), 'b')[0]?.gone ?? []).toEqual([]);
+    expect(hubStats(state).reports).toBe(1);
+
+    now += REPORT_TTL_MS.police - REPORT_TTL_MS.accident + SERVER_TICK_MS;
+    // Somebody moves, so there is a tick.
+    pos('a', GENEVA.lat + 2e-4, GENEVA.lng);
+    const [gone] = reportsFor(flush(), 'b');
+    expect(gone?.gone).toEqual([id]);
+    expect(hubStats(state).reports).toBe(0);
+  });
+
+  it('caps the reports in a cell by letting the oldest go', () => {
+    hello('a', 'car-a');
+    pos('a', GENEVA.lat, GENEVA.lng);
+    // Different drivers, well apart but all inside the cell, so nothing merges.
+    const bounds = decodeBounds(CELL);
+    const row = { lat: (bounds.minLat + bounds.maxLat) / 2, lng: bounds.minLng + 0.01 };
+    for (let i = 0; i < MAX_REPORTS_PER_CELL + 1; i++) {
+      const at = destination(row.lat, row.lng, 90, 350 * i);
+      expect(encode(at.lat, at.lng, CELL_PRECISION)).toBe(CELL);
+      hello(`r${i}`, `reporter-${i}`);
+      pos(`r${i}`, at.lat, at.lng);
+      report(`r${i}`, 'police', at);
+      now += 1_000;
+    }
+    expect(hubStats(state).reports).toBe(MAX_REPORTS_PER_CELL);
+    now += SERVER_TICK_MS;
+    const [msg] = reportsFor(flush(), 'a');
+    expect(msg?.gone).toHaveLength(1);
+  });
+
+  it('is never written to storage', () => {
+    twoCars();
+    report('a', 'police', GENEVA);
+    onMessage(state, 'a', { t: 'wave', to: ID('car-b') }, now);
+    now += COUNTER_WRITE_MS + SERVER_TICK_MS;
+    const persisted = flush().filter((e) => e.k === 'persist');
+    expect(persisted.length).toBeGreaterThan(0);
+    const serialised = JSON.stringify(persisted);
+    expect(serialised).not.toContain('police');
+    expect(serialised).not.toContain(String(GENEVA.lat));
+  });
+});
+
+const confirm = (
+  key: string,
+  id: string,
+  there: boolean,
+  at: { lat: number; lng: number },
+): Effect[] => learned(onMessage(state, key, { t: 'confirm', id, there, at: wireAt(at) }, now));
+
+const confirmedFor = (effects: Effect[], to: string): Extract<ServerMsg, { t: 'confirmed' }>[] =>
+  sends(effects, to).filter((m): m is Extract<ServerMsg, { t: 'confirmed' }> => m.t === 'confirmed');
+
+describe('is it still there', () => {
+  /** Two drivers side by side, and a patrol reported by the first. */
+  const patrol = (): string => {
+    hello('a', 'car-a');
+    hello('b', 'car-b');
+    pos('a', GENEVA.lat, GENEVA.lng);
+    const near = destination(GENEVA.lat, GENEVA.lng, 90, 100);
+    pos('b', near.lat, near.lng);
+    report('a', 'police', GENEVA);
+    now += SERVER_TICK_MS;
+    const id = reportsFor(flush(), 'b')[0]?.upd[0]?.id;
+    expect(id).toBeDefined();
+    return id as string;
+  };
+
+  it('restarts the clock when a driver says it is still there, and counts them once', () => {
+    const id = patrol();
+    now += 60 * 60_000;
+    expect(confirmedFor(confirm('b', id, true, GENEVA), 'b')).toEqual([{ t: 'confirmed', id, ok: true }]);
+    now += SERVER_TICK_MS;
+    expect(reportsFor(flush(), 'a')[0]?.upd[0]).toMatchObject({ n: 2, no: 0, at: now - SERVER_TICK_MS });
+
+    // The same driver again: still there, still one voice.
+    now += RATE_CONFIRM_MS;
+    confirm('b', id, true, GENEVA);
+    expect([...state.reports.values()][0]?.n).toBe(2);
+
+    // And it outlives the lifetime it would have had, because the clock moved.
+    now += REPORT_TTL_MS.police - 60_000;
+    pos('a', GENEVA.lat + 1e-4, GENEVA.lng);
+    expect(hubStats(state).reports).toBe(1);
+  });
+
+  it('drops a pin when as many drivers say it is gone as say it is there', () => {
+    const id = patrol();
+    const out = confirm('b', id, false, GENEVA);
+    expect(confirmedFor(out, 'b')).toEqual([{ t: 'confirmed', id, ok: true }]);
+    expect(hubStats(state).reports).toBe(0);
+    now += SERVER_TICK_MS;
+    expect(reportsFor(flush(), 'a')[0]?.gone).toEqual([id]);
+  });
+
+  it('needs as many voices against as a well-confirmed pin has for it', () => {
+    const id = patrol();
+    hello('c', 'car-c');
+    pos('c', GENEVA.lat, GENEVA.lng);
+    confirm('c', id, true, GENEVA);
+    // Two for it: one against leaves it standing, dimmed.
+    confirm('b', id, false, GENEVA);
+    expect(hubStats(state).reports).toBe(1);
+    now += SERVER_TICK_MS;
+    expect(reportsFor(flush(), 'a')[0]?.upd[0]).toMatchObject({ n: 2, no: 1 });
+
+    now += RATE_CONFIRM_MS;
+    confirm('c', id, false, GENEVA);
+    expect(hubStats(state).reports).toBe(0);
+  });
+
+  it('takes a change of mind, in either direction, without double counting', () => {
+    const id = patrol();
+    hello('c', 'car-c');
+    pos('c', GENEVA.lat, GENEVA.lng);
+    confirm('c', id, true, GENEVA);
+    now += RATE_CONFIRM_MS;
+    // c says gone: one for (a), one against (c). Dropped.
+    confirm('c', id, false, GENEVA);
+    expect(hubStats(state).reports).toBe(0);
+  });
+
+  it('never lets a dismissal extend a pin', () => {
+    const id = patrol();
+    hello('c', 'car-c');
+    hello('d', 'car-d');
+    pos('c', GENEVA.lat, GENEVA.lng);
+    pos('d', GENEVA.lat, GENEVA.lng);
+    confirm('c', id, true, GENEVA);
+    const confirmedAt = [...state.reports.values()][0]?.at;
+    expect(confirmedAt).toBe(now);
+
+    // Ten minutes later a fourth driver says it is gone. Two voices for it to one against,
+    // so the pin stands — but a vote against must never buy it another ninety minutes.
+    now += 10 * 60_000;
+    confirm('d', id, false, GENEVA);
+    expect([...state.reports.values()][0]?.at).toBe(confirmedAt);
+  });
+
+  it('refuses a vote from a driver who is nowhere near it, hidden, or too quick', () => {
+    const id = patrol();
+    const away = destination(GENEVA.lat, GENEVA.lng, 0, 8_000);
+    pos('b', away.lat, away.lng);
+    expect(confirmedFor(confirm('b', id, false, away), 'b')[0]).toMatchObject({
+      ok: false,
+      reason: 'range',
+    });
+
+    now += RATE_CONFIRM_MS;
+    pos('b', GENEVA.lat, GENEVA.lng);
+    confirm('b', id, true, GENEVA);
+    expect(confirmedFor(confirm('b', id, true, GENEVA), 'b')[0]).toMatchObject({
+      ok: false,
+      reason: 'rate',
+    });
+
+    now += RATE_CONFIRM_MS;
+    onMessage(state, 'b', { t: 'hide' }, now);
+    expect(confirmedFor(confirm('b', id, true, GENEVA), 'b')[0]).toMatchObject({
+      ok: false,
+      reason: 'hidden',
+    });
+  });
+
+  it('says a pin is gone when the vote arrives after it has already gone', () => {
+    const id = patrol();
+    now += REPORT_TTL_MS.police + 1;
+    expect(confirmedFor(confirm('b', id, true, GENEVA), 'b')[0]).toMatchObject({
+      ok: false,
+      reason: 'gone',
+    });
+    expect(confirmedFor(confirm('b', 'u0-nothing-1', true, GENEVA), 'b')[0]).toMatchObject({
+      ok: false,
+      reason: 'gone',
+    });
+  });
+
+  it('lets a pin go at the ceiling however often it is confirmed', () => {
+    const id = patrol();
+    // Confirmed every half hour, for ever, by two drivers taking turns.
+    hello('c', 'car-c');
+    pos('c', GENEVA.lat, GENEVA.lng);
+    for (let i = 0; i < 12; i++) {
+      now += 30 * 60_000;
+      confirm(i % 2 === 0 ? 'b' : 'c', id, true, GENEVA);
+      pos('a', GENEVA.lat + i * 1e-5, GENEVA.lng);
+      flush();
+    }
+    expect(hubStats(state).reports).toBe(0);
+    // Four hours from the first report, and no later.
+    expect(now - REPORT_MAX_LIFE_MS).toBeGreaterThan(0);
+  });
+
+  it('says nothing about who voted', () => {
+    const id = patrol();
+    confirm('b', id, true, GENEVA);
+    now += SERVER_TICK_MS;
+    const serialised = JSON.stringify(reportsFor(flush(), 'a'));
+    expect(serialised).not.toContain(ID('car-a'));
+    expect(serialised).not.toContain(ID('car-b'));
+    expect(serialised).not.toContain('against');
+  });
+});
+
+describe('a status a driver wrote', () => {
+  it('travels like a chosen one, and a chosen one replaces it', () => {
+    hello('a', 'car-a', [CELL], { statusText: 'towing a caravan' } as Partial<ClientMsg>);
+    hello('b', 'car-b');
+    pos('a', GENEVA.lat, GENEVA.lng);
+    const near = destination(GENEVA.lat, GENEVA.lng, 90, 100);
+    pos('b', near.lat, near.lng);
+    now += SERVER_TICK_MS;
+    const described = diff2sFor(flush(), 'b')
+      .flatMap((d) => d.meta)
+      .find((m) => m.id === ID('car-a'));
+    expect(described?.statusText).toBe('towing a caravan');
+    expect(described).not.toHaveProperty('status');
+
+    const out = onMessage(state, 'a', { t: 'wave', to: ID('car-b') }, now);
+    expect(sends(out, 'b')[0]).toMatchObject({ t: 'wave', from: { statusText: 'towing a caravan' } });
+
+    hello('a', 'car-a', [CELL], { status: 'charging' } as Partial<ClientMsg>);
+    expect(state.sockets.get('a')?.status).toBe('charging');
+    expect(state.sockets.get('a')).not.toHaveProperty('statusText');
+  });
+});
+
+describe('what a hub full of pins costs', () => {
+  /**
+   * Pins on a grid inside the hub, MAX_REPORTS_PER_CELL to a cell, each placed through the
+   * real message path so both caps are exercised rather than assumed. Within a cell they sit
+   * 400 m apart, over the 300 m at which two reports of the same kind merge into one.
+   */
+  const fill = (wanted: number): number => {
+    const box = decodeBounds(HUB);
+    const seen = new Set<string>();
+    let placed = 0;
+    let i = 0;
+    for (let row = 0; row < 12 && placed < wanted; row++) {
+      for (let col = 0; col < 25 && placed < wanted; col++) {
+        const east = destination(box.minLat + 0.2, box.minLng + 0.2, 90, col * 30_000);
+        const base = destination(east.lat, east.lng, 0, row * 25_000);
+        const cell = encode(base.lat, base.lng, CELL_PRECISION);
+        // A cell twice over would just refill one and evict from it, which is how the first
+        // version of this fixture quietly placed four fifths of what it claimed.
+        if (hubOf(cell) !== HUB || seen.has(cell)) continue;
+        seen.add(cell);
+        for (let slot = 0; slot < MAX_REPORTS_PER_CELL && placed < wanted; slot++) {
+          const across = destination(base.lat, base.lng, 90, (slot % 7) * 400);
+          const at = destination(across.lat, across.lng, 0, Math.floor(slot / 7) * 400);
+          if (encode(at.lat, at.lng, CELL_PRECISION) !== cell) continue;
+          const key = `p${i++}`;
+          hello(key, `pinner-${key}`, [cell]);
+          pos(key, at.lat, at.lng);
+          report(key, 'police', at);
+          placed++;
+          now += 1;
+        }
+      }
+    }
+    return placed;
+  };
+
+  it('never holds more pins than the hub cap, and lets the stalest go', () => {
+    expect(fill(MAX_REPORTS_PER_HUB + 100)).toBe(MAX_REPORTS_PER_HUB + 100);
+    expect(hubStats(state).reports).toBe(MAX_REPORTS_PER_HUB);
+    // The per-cell cap bounds one message; this one bounds the object's memory, which the
+    // per-cell cap alone does not: 32 x 32 cells at 50 each is 51,200 pins.
+    expect(MAX_REPORTS_PER_CELL * 32 * 32).toBeGreaterThan(MAX_REPORTS_PER_HUB);
+  });
+
+  it('keeps its per-cell index in step, so nothing outlives the pin it described', () => {
+    expect(fill(MAX_REPORTS_PER_CELL)).toBe(MAX_REPORTS_PER_CELL);
+    const cell = [...state.reports.values()][0]?.cell as string;
+    expect(state.reportsByCell.get(cell)?.size).toBe(MAX_REPORTS_PER_CELL);
+    now += REPORT_TTL_MS.police + SERVER_TICK_MS;
+    flush(true);
+    expect(hubStats(state).reports).toBe(0);
+    expect(state.reportsByCell.size).toBe(0);
+  });
+
+  it('costs nothing per tick while none of them can have lapsed', () => {
+    expect(fill(MAX_REPORTS_PER_HUB)).toBe(MAX_REPORTS_PER_HUB);
+    expect(hubStats(state).reports).toBe(MAX_REPORTS_PER_HUB);
+    const started = Date.now();
+    const TICKS = 200;
+    for (let i = 0; i < TICKS; i++) {
+      now += SERVER_TICK_MS + 1;
+      flush();
+    }
+    const ms = Date.now() - started;
+    /*
+     * The sweep used to copy every pin in the hub twice a second to find nothing, which is
+     * the full-hub scan per tick that ADR-0033 took out of presence. A tick that cannot have
+     * lapsed anything must not touch the pins at all, so a thousand of them cost the same as
+     * none: well under a millisecond each, against Cloudflare's 10 ms per message.
+     */
+    expect(ms / TICKS).toBeLessThan(1);
+  });
+
+  it('bounds the voices on one pin, and still lets a late one restart its clock', () => {
+    hello('a', 'car-a');
+    pos('a', GENEVA.lat, GENEVA.lng);
+    report('a', 'police', GENEVA);
+    const pin = [...state.reports.values()][0];
+    expect(pin).toBeDefined();
+    for (let i = 0; i < MAX_REPORT_VOTERS + 20; i++) {
+      const key = `v${i}`;
+      hello(key, `voter-${i}`);
+      pos(key, GENEVA.lat, GENEVA.lng);
+      confirm(key, pin!.id, true, GENEVA);
+      now += RATE_CONFIRM_MS;
+    }
+    // A pin a hundred drivers have vouched for does not hold the hundred and first for hours.
+    expect(pin!.n).toBe(MAX_REPORT_VOTERS);
+    expect(pin!.by.size).toBe(MAX_REPORT_VOTERS);
+    // The part that matters is not the count: the last voice still said it was there.
+    expect(pin!.at).toBe(now - RATE_CONFIRM_MS);
   });
 });

@@ -1,20 +1,24 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
-import { isColourId, isModel, isSecret } from '@teslawave/protocol';
+import { isColourId, isModel, isSecret, isStatusId, type ReportKind } from '@teslawave/protocol';
 import { LiveMap } from '../map/LiveMap';
 import { nextResetLabel } from '../net/budget';
 import { usePulse } from '../net/usePulse';
-import { getCar, getSummary, subscribeSummary } from '../sim/world';
+import { getCar, getReport, getSummary, subscribeSummary } from '../sim/world';
 import { identityFrom, newSecret, useIdentity } from '../identity/store';
-import { unlockAudio } from '../ui/sound';
+import { play, unlockAudio } from '../ui/sound';
+import { speak } from '../ui/voice';
 import { ControlButton, Toast, type ToastContent } from '../ui/primitives';
 import {
+  BadgeIcon,
   EyeIcon,
   EyeOffIcon,
+  FlagIcon,
   NorthUpIcon,
   SettingsIcon,
   SoundOffIcon,
   SoundOnIcon,
   TrackUpIcon,
+  WarningIcon,
 } from '../ui/icons';
 import { useCopy } from '../i18n';
 import { Disclaimer } from '../ui/Disclaimer';
@@ -29,6 +33,8 @@ import { SettingsSheet } from '../screens/SettingsSheet';
 import { EnterCodeSheet, ShowPairingSheet } from '../screens/Pairing';
 import { GarageSheet, type CarEdit } from '../screens/GarageSheet';
 import { HowToWave } from '../screens/HowToWave';
+import { ReportSheet } from '../screens/ReportSheet';
+import { ReportCard } from '../screens/ReportCard';
 import type { Renderer } from '../overlay/renderer';
 import { installTestHook } from './testHook';
 import { useSession } from './useSession';
@@ -45,11 +51,19 @@ type SheetName =
   | 'how-to'
   | 'garage'
   | 'share'
+  | 'report'
   | null;
 
 const BOOT_KEY = 'tw.booted';
 
-type Paired = { secret: string; model: string; colour: string; nick?: string };
+type Paired = {
+  secret: string;
+  model: string;
+  colour: string;
+  nick?: string;
+  status?: string;
+  statusText?: string;
+};
 
 /**
  * The screens, and what opens them. Everything between the driver and the hub — the socket,
@@ -62,11 +76,14 @@ export function App(): ReactNode {
   const { identity, prefs, setIdentity, setPrefs, claimMilestone } = useIdentity();
   const [sheet, setSheet] = useState<SheetName>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedReportId, setSelectedReportId] = useState<string | null>(null);
   const [toast, setToast] = useState<ToastContent | null>(null);
   const [tiles, setTiles] = useState(true);
   const [origin, setOrigin] = useState<{ lat: number; lng: number } | null>(null);
   const rendererRef = useRef<Renderer | null>(null);
   const toastId = useRef(0);
+  /** Reports already announced, by id: each is said once, however long it stays close. */
+  const announced = useRef(new Set<string>());
 
   const summary = useSyncExternalStore(subscribeSummary, getSummary, getSummary);
 
@@ -81,6 +98,42 @@ export function App(): ReactNode {
 
   const session = useSession({ identity, prefs, claimMilestone, rendererRef, showToast });
   const { status, spectator, parked, wave: sendWave } = session;
+
+  /*
+   * A report coming within range is said once: a toast with its pin, the chime, and the
+   * voice. Keyed on the report's id, so the line at the foot of the screen can keep counting
+   * the metres down without this firing again, and a pin you drive past twice is one alert.
+   */
+  const alertId = summary.alert?.id ?? null;
+  useEffect(() => {
+    const alert = summary.alert;
+    if (!alert || alertId === null || announced.current.has(alertId)) return;
+    announced.current.add(alertId);
+    const icon = alert.kind === 'police' ? <BadgeIcon size={22} /> : <WarningIcon size={22} />;
+    showToast(copy.report.nearby(alert.kind, alert.distanceM), icon, true);
+    play('received');
+    speak(copy.voice.report(alert.kind, alert.distanceM));
+    // Only a new id is a new alert; the distance on it is read at that moment.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [alertId]);
+
+  const report = useCallback(
+    (kind: ReportKind): void => {
+      setSheet(null);
+      session.report(kind);
+    },
+    [session],
+  );
+
+  // The card asked a question and the tap answered it: it closes, as the wave button does.
+  const voteOnReport = useCallback(
+    (there: boolean): void => {
+      if (!selectedReportId) return;
+      session.confirm(selectedReportId, there);
+      setSelectedReportId(null);
+    },
+    [session, selectedReportId],
+  );
 
   useEffect(() => {
     if (isE2E()) installTestHook();
@@ -126,6 +179,8 @@ export function App(): ReactNode {
           model: next.model,
           colour: next.colour,
           ...(next.nick === undefined ? {} : { nick: next.nick }),
+          ...(next.status === undefined ? {} : { status: next.status }),
+          ...(next.statusText === undefined ? {} : { statusText: next.statusText }),
         }),
       );
       setSheet(null);
@@ -145,6 +200,10 @@ export function App(): ReactNode {
           colour: paired.colour,
           createdAt: Date.now(),
           ...(paired.nick === undefined ? {} : { nick: paired.nick }),
+          ...(isStatusId(paired.status) ? { status: paired.status } : {}),
+          ...(isStatusId(paired.status) || paired.statusText === undefined
+            ? {}
+            : { statusText: paired.statusText }),
         }),
       );
       setPrefs({ sharing: true });
@@ -197,6 +256,9 @@ export function App(): ReactNode {
   }, []);
 
   const selected = selectedId ? getCar(selectedId) : undefined;
+  // Looked up every render rather than held: a pin that lapses while its card is open takes
+  // the card with it, which is the honest thing for a card that asks whether it is still there.
+  const selectedReport = selectedReportId ? getReport(selectedReportId) : undefined;
   // No wave button while hidden, by hand or by the clock: the hub would refuse the wave.
   const canWave = prefs.sharing && !spectator && !parked;
   const nearby = useMemo(() => (canWave ? summary.nearby : null), [summary.nearby, canWave]);
@@ -251,11 +313,13 @@ export function App(): ReactNode {
       <LiveMap
         northUp={prefs.northUp}
         selectedId={selectedId}
+        selectedReportId={selectedReportId}
         nearbyId={nearby?.id ?? null}
         self={selfCar}
         origin={origin}
         onSelect={setSelectedId}
         onSelectSelf={openGarage}
+        onSelectReport={setSelectedReportId}
         onReady={onMapReady}
         onTiles={setTiles}
       />
@@ -275,6 +339,13 @@ export function App(): ReactNode {
       {status === 'paused' ? <Notice>{copy.map.paused}</Notice> : null}
       {!tiles ? <Notice>{copy.map.tilesOffline}</Notice> : null}
       {session.upgrading ? <Notice>{copy.map.upgrading}</Notice> : null}
+      {/* The report you are approaching, counting down, for as long as it is within range. */}
+      {summary.alert ? (
+        <Notice warm>
+          {copy.report.nearby(summary.alert.kind, summary.alert.distanceM)}
+          <span className="hud__banner-sub"> · {copy.report.confirmed(summary.alert.n)}</span>
+        </Notice>
+      ) : null}
 
       {/* Labelled, not cryptic: on a touch screen there is no hover, so a tooltip would
           never appear. Each control says what it does and what state it is in. */}
@@ -299,6 +370,12 @@ export function App(): ReactNode {
           active={prefs.northUp}
           icon={prefs.northUp ? <NorthUpIcon /> : <TrackUpIcon />}
           onClick={() => setPrefs({ northUp: !prefs.northUp })}
+        />
+        <ControlButton
+          label={copy.controls.report}
+          title={copy.report.title}
+          icon={<FlagIcon />}
+          onClick={() => setSheet('report')}
         />
         <ControlButton
           label={copy.controls.settings}
@@ -330,6 +407,15 @@ export function App(): ReactNode {
           serverNow={summary.serverNow}
           onWave={wave}
           onClose={() => setSelectedId(null)}
+        />
+      ) : null}
+      {/* A tapped pin: what it is, who says so, and the question it exists to ask. */}
+      {selectedReport ? (
+        <ReportCard
+          report={selectedReport}
+          serverNow={summary.serverNow}
+          onVote={voteOnReport}
+          onClose={() => setSelectedReportId(null)}
         />
       ) : null}
       {sheet === 'pulse' ? (
@@ -368,17 +454,20 @@ export function App(): ReactNode {
         <EnterCodeSheet onPaired={adopt} onClose={() => setSheet(null)} />
       ) : null}
       {sheet === 'how-to' ? <HowToWave onClose={() => setSheet(null)} /> : null}
+      {sheet === 'report' ? <ReportSheet onReport={report} onClose={() => setSheet(null)} /> : null}
 
       <Disclaimer />
     </>
   );
 }
 
-/** One line at the foot of the screen. */
-function Notice({ children }: { children: ReactNode }): ReactNode {
+/** One line at the foot of the screen. Warm is for a report ahead: the one line to mind. */
+function Notice({ children, warm = false }: { children: ReactNode; warm?: boolean }): ReactNode {
   return (
     <div className="hud hud--foot">
-      <p className="hud__banner">{children}</p>
+      <p className={`hud__banner ${warm ? 'hud__banner--warm' : ''}`.trim()} role={warm ? 'status' : undefined}>
+        {children}
+      </p>
     </div>
   );
 }

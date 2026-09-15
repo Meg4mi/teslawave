@@ -22,6 +22,9 @@ export function setMuted(value: boolean): void {
   muted = value;
 }
 
+/** The mute covers everything that makes a noise, the voice included. */
+export const isMuted = (): boolean => muted;
+
 /** Call from a user gesture, once. Safe to call again. */
 export function unlockAudio(): void {
   if (ctx) {

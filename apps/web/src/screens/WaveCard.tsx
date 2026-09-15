@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import type { TeslaModel } from '@teslawave/protocol';
+import type { StatusId, TeslaModel } from '@teslawave/protocol';
 import { CarSvg } from '../ui/CarSvg';
 import { useCopy } from '../i18n';
 
@@ -9,6 +9,10 @@ export type WaveCardContent = {
   colour: string;
   /** What their driver called the car, if they named it. Their spelling, their capitals. */
   nick?: string;
+  /** Their word about their drive, if they chose one: "on a road trip". */
+  status?: StatusId;
+  /** Or the words they wrote themselves, shown as they wrote them. */
+  statusText?: string;
   back: boolean;
 };
 
@@ -75,6 +79,14 @@ export function WaveCard({
         <span className={card.nick ? 'wave-card__model' : 'wave-card__who'}>{described}</span>
         <span className="wave-card__what">
           {card.back ? copy.wave.cardBackTitle : copy.wave.cardTitle}
+          {/* The status rides on the beat line rather than taking a fourth: the card is read
+              in a glance, and "waved at you · on a road trip" is still one glance. */}
+          {card.status || card.statusText ? (
+            <span className="wave-card__status">
+              {' · '}
+              {card.status ? copy.status.aside(card.status) : card.statusText}
+            </span>
+          ) : null}
         </span>
       </span>
     </div>

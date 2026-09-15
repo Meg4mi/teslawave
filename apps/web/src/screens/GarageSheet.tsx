@@ -1,11 +1,17 @@
 import { useState, type ReactNode } from 'react';
-import type { CarColourId, TeslaModel } from '@teslawave/protocol';
+import type { CarColourId, StatusId, TeslaModel } from '@teslawave/protocol';
 import { Button, Sheet, SheetActions } from '../ui/primitives';
 import { CarSvg } from '../ui/CarSvg';
 import { CarPicker, type CarChoice } from './CarPicker';
 import { useCopy } from '../i18n';
 
-export type CarEdit = { model: TeslaModel; colour: CarColourId; nick?: string };
+export type CarEdit = {
+  model: TeslaModel;
+  colour: CarColourId;
+  nick?: string;
+  status?: StatusId;
+  statusText?: string;
+};
 
 /**
  * Change the car you are showing as, after onboarding. Applied on Save rather than live: on a
@@ -26,12 +32,16 @@ export function GarageSheet({
     model: car.model,
     colour: car.colour,
     nick: car.nick ?? '',
+    status: car.status ?? null,
+    statusText: car.statusText ?? '',
   });
 
   const changed =
     draft.model !== car.model ||
     draft.colour !== car.colour ||
-    draft.nick.trim() !== (car.nick ?? '');
+    draft.nick.trim() !== (car.nick ?? '') ||
+    draft.status !== (car.status ?? null) ||
+    draft.statusText.trim() !== (car.statusText ?? '');
 
   return (
     <Sheet label={copy.garage.title} title={copy.garage.title} onClose={onClose} wide>
@@ -67,6 +77,10 @@ export function GarageSheet({
               model: draft.model,
               colour: draft.colour,
               ...(draft.nick.trim() ? { nick: draft.nick.trim() } : {}),
+              ...(draft.status === null ? {} : { status: draft.status }),
+              ...(draft.status === null && draft.statusText.trim()
+                ? { statusText: draft.statusText.trim() }
+                : {}),
             })
           }
         >

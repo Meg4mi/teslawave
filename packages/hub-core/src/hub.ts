@@ -7,14 +7,22 @@ import {
   COMPACT_WIRE_VERSION,
   INTEREST_DROP_RADIUS_M,
   INTEREST_RADIUS_M,
+  MAX_REPORTS_PER_CELL,
+  MAX_REPORTS_PER_HUB,
+  MAX_REPORT_VOTERS,
   MAX_SOCKETS_PER_CELL,
   MAX_SOCKETS_PER_HUB,
   MAX_SPEED_KMH,
   PRESENCE_EXPIRY_MS,
   PROTOCOL_VERSION,
+  RATE_CONFIRM_MS,
   RATE_POS_MS,
+  RATE_REPORT_MS,
   RATE_VIOLATIONS_TO_CLOSE,
   RATE_WAVE_MS,
+  REPORT_MAX_OFFSET_M,
+  REPORT_MERGE_M,
+  REPORT_VOTE_RANGE_M,
   SERVER_TICK_MS,
   WAVE_HOLD_MS,
   WAVE_VALIDATE_RANGE_M,
@@ -23,15 +31,27 @@ import {
   haversineM,
   hubOf,
   idFromSecret,
+  reportExpiryAt,
   type CarMeta,
   type CarPublic,
   type CarState,
   type CarWire,
   type ClientMsg,
+  type ConfirmFailReason,
+  type Report,
+  type ReportFailReason,
   type ServerMsg,
   type WaveFailReason,
 } from '@teslawave/protocol';
-import type { Counters, Effect, HubState, Socket, SocketKey, SocketProfile } from './types.js';
+import type {
+  Counters,
+  Effect,
+  HubReport,
+  HubState,
+  Socket,
+  SocketKey,
+  SocketProfile,
+} from './types.js';
 
 /** Counters are flushed to storage at most this often, to stay far under 100k row writes/day. */
 export const COUNTER_WRITE_MS = 30_000;
@@ -64,6 +84,12 @@ export function createHub(hub: string, now: number, counters?: Partial<Counters>
     gone: new Map(),
     lastFlushAt: now,
     held: [],
+    reports: new Map(),
+    reportsByCell: new Map(),
+    reportsDirty: new Map(),
+    reportsGone: new Map(),
+    nextReportExpiryAt: Number.POSITIVE_INFINITY,
+    nextReportSeq: 1,
     counters: {
       wavesByUser: counters?.wavesByUser ?? new Map(),
       lastWaveByUser: counters?.lastWaveByUser ?? new Map(),
@@ -95,6 +121,8 @@ const publicOf = (car: CarState): CarPublic => ({
   waves: car.waves,
   since: car.since,
   ...(car.nick === undefined ? {} : { nick: car.nick }),
+  ...(car.status === undefined ? {} : { status: car.status }),
+  ...(car.statusText === undefined ? {} : { statusText: car.statusText }),
 });
 
 const profileOf = (s: Socket): SocketProfile => ({
@@ -108,6 +136,8 @@ const profileOf = (s: Socket): SocketProfile => ({
   since: s.since,
   v: s.v,
   ...(s.nick === undefined ? {} : { nick: s.nick }),
+  ...(s.status === undefined ? {} : { status: s.status }),
+  ...(s.statusText === undefined ? {} : { statusText: s.statusText }),
 });
 
 const markDirty = (state: HubState, cell: string, id: string): void => addTo(state.dirty, cell, id);
@@ -134,6 +164,8 @@ export function restoreSocket(state: HubState, profile: SocketProfile): void {
     ...profile,
     lastPosAt: 0,
     lastWaveAt: 0,
+    lastReportAt: 0,
+    lastConfirmAt: 0,
     askedAt: 0,
     violations: 0,
     lastSeen: null,
@@ -155,6 +187,8 @@ export function openSocket(state: HubState, key: SocketKey): void {
     v: 0,
     lastPosAt: 0,
     lastWaveAt: 0,
+    lastReportAt: 0,
+    lastConfirmAt: 0,
     askedAt: 0,
     violations: 0,
     lastSeen: null,
@@ -298,6 +332,8 @@ const metaOf = (car: CarState, h: number): CarMeta => ({
   since: car.since,
   cell: car.cell,
   ...(car.nick === undefined ? {} : { nick: car.nick }),
+  ...(car.status === undefined ? {} : { status: car.status }),
+  ...(car.statusText === undefined ? {} : { statusText: car.statusText }),
 });
 
 const wireOf = (car: CarState, h: number, now: number): CarWire => [
@@ -392,6 +428,10 @@ function onHello(state: HubState, s: Socket, msg: Extract<ClientMsg, { t: 'hello
   s.colour = msg.colour;
   if (msg.nick === undefined) delete s.nick;
   else s.nick = msg.nick;
+  if (msg.status === undefined) delete s.status;
+  else s.status = msg.status;
+  if (msg.statusText === undefined) delete s.statusText;
+  else s.statusText = msg.statusText;
   s.cells = [...msg.cells];
   s.spectator = msg.spectator === true;
   s.since = state.presence.get(s.id)?.since ?? (s.since || now);
@@ -445,6 +485,7 @@ function onHello(state: HubState, s: Socket, msg: Extract<ClientMsg, { t: 'hello
         ? { t: 'diff2', cell, now, ...enterCell(state, s, cell, now), ...cellStats(state, cell, now) }
         : { t: 'diff', cell, upd: [], gone: [], ...cellStats(state, cell, now) },
     });
+  effects.push(...reportsIn(state, s, s.cells, now));
   /*
    * An older client is told, not cut off. It keeps its map, its socket and its waves, and
    * reloads itself the next time the car is standing still (ADR-0029). Closing the socket
@@ -495,6 +536,8 @@ function onPos(state: HubState, s: Socket, msg: Extract<ClientMsg, { t: 'pos' }>
     ts: now,
     cell,
     ...(s.nick === undefined ? {} : { nick: s.nick }),
+    ...(s.status === undefined ? {} : { status: s.status }),
+    ...(s.statusText === undefined ? {} : { statusText: s.statusText }),
   });
   markDirty(state, cell, s.id);
   return [];
@@ -539,6 +582,270 @@ function onSub(state: HubState, s: Socket, msg: Extract<ClientMsg, { t: 'sub' }>
             ...cellStats(state, cell, now),
           },
     });
+  effects.push(...reportsIn(state, s, added, now));
+  return effects;
+}
+
+// --- Reports -----------------------------------------------------------------------------
+
+const publicReport = (r: HubReport): Report => ({
+  id: r.id,
+  kind: r.kind,
+  lat: r.lat,
+  lng: r.lng,
+  at: r.at,
+  first: r.first,
+  n: r.n,
+  no: r.no,
+});
+
+/**
+ * The kind's lifetime from the last driver who said it was there, or the ceiling from when it
+ * was placed, whichever comes first: confirmations extend a report, they do not immortalise
+ * it (ADR-0040, amended).
+ */
+const reportExpired = (r: HubReport, now: number): boolean => now > reportExpiryAt(r);
+
+/** Every live pin in one cell, through the index rather than by walking the whole hub. */
+function liveIn(state: HubState, cell: string, now: number): HubReport[] {
+  const out: HubReport[] = [];
+  for (const id of state.reportsByCell.get(cell) ?? []) {
+    const r = state.reports.get(id);
+    // Expired but not yet swept: the sweep runs when the watermark says one can have lapsed,
+    // which is at most a tick away, and nothing may be sent or merged into in the meantime.
+    if (r && !reportExpired(r, now)) out.push(r);
+  }
+  return out;
+}
+
+/**
+ * Every live report in these cells, in full, for a connection that has just started holding
+ * them. Nothing is sent for a cell with none: most cells have none, most of the time.
+ */
+function reportsIn(state: HubState, s: Socket, cells: readonly string[], now: number): Effect[] {
+  const effects: Effect[] = [];
+  for (const cell of cells) {
+    const upd = liveIn(state, cell, now).map(publicReport);
+    if (upd.length > 0)
+      effects.push({ k: 'send', to: s.key, msg: { t: 'reports', cell, upd, gone: [] } });
+  }
+  return effects;
+}
+
+const reportRefusal = (s: Socket, reason: ReportFailReason): Effect[] => [
+  { k: 'send', to: s.key, msg: { t: 'reported', ok: false, reason } },
+];
+
+const dropReport = (state: HubState, r: HubReport): void => {
+  state.reports.delete(r.id);
+  removeFrom(state.reportsByCell, r.cell, r.id);
+  removeFrom(state.reportsDirty, r.cell, r.id);
+  addTo(state.reportsGone, r.cell, r.id);
+};
+
+/** The one place a report is created, so its index and the sweep's watermark cannot drift. */
+const addReport = (state: HubState, r: HubReport): void => {
+  state.reports.set(r.id, r);
+  addTo(state.reportsByCell, r.cell, r.id);
+  state.nextReportExpiryAt = Math.min(state.nextReportExpiryAt, reportExpiryAt(r));
+};
+
+/**
+ * One driver's voice on a pin, and the only place either set grows. Past MAX_REPORT_VOTERS
+ * the voice still counted for the pin's clock, which is what the caller does either way; it
+ * simply stops being counted individually, because a pin a hundred drivers have vouched for
+ * does not need the hundred and first held in memory for four hours.
+ */
+const vote = (voices: Set<string>, id: string): void => {
+  if (voices.has(id) || voices.size < MAX_REPORT_VOTERS) voices.add(id);
+};
+
+/** The hub's least recently confirmed pin, for when a cap has to let one go. */
+function oldestReport(state: HubState, cell?: string): HubReport | null {
+  let oldest: HubReport | null = null;
+  const ids = cell === undefined ? state.reports.keys() : (state.reportsByCell.get(cell) ?? []);
+  for (const id of ids) {
+    const r = state.reports.get(id);
+    if (r && (!oldest || r.at < oldest.at)) oldest = r;
+  }
+  return oldest;
+}
+
+/**
+ * A driver flags something where they are. The hub places it, merges it with a report of
+ * the same thing already there, and tells the cell on the next tick (ADR-0040).
+ *
+ * The position is the client's own, as the hello's `at` is, because a hub that has just
+ * woken holds nobody's — but where the hub does hold one it has to agree, so a car cannot
+ * report a patrol on a road it is not on. What is placed carries no driver id: `by` stays in
+ * memory here and goes with the report.
+ */
+function onReport(
+  state: HubState,
+  s: Socket,
+  msg: Extract<ClientMsg, { t: 'report' }>,
+  now: number,
+): Effect[] {
+  if (!s.id) return violation(s);
+  if (s.hidden || s.spectator) return reportRefusal(s, 'hidden');
+  if (s.lastReportAt !== 0 && now - s.lastReportAt < RATE_REPORT_MS) return reportRefusal(s, 'rate');
+
+  const lat = msg.at[0] / WIRE_COORD_SCALE;
+  const lng = msg.at[1] / WIRE_COORD_SCALE;
+  const known = s.lastSeen && now - s.lastSeen.ts <= PRESENCE_EXPIRY_MS ? s.lastSeen : null;
+  if (known && haversineM(known.lat, known.lng, lat, lng) > REPORT_MAX_OFFSET_M)
+    return reportRefusal(s, 'range');
+  const cell = encode(lat, lng, CELL_PRECISION);
+  if (hubOf(cell) !== state.hub) return reportRefusal(s, 'range');
+
+  s.lastReportAt = now;
+  const ok: Effect[] = [{ k: 'send', to: s.key, msg: { t: 'reported', ok: true } }];
+
+  // The same thing, already reported nearby: one pin, one more voice behind it.
+  const inCell = liveIn(state, cell, now);
+  for (const r of inCell) {
+    if (r.kind !== msg.kind || haversineM(r.lat, r.lng, lat, lng) > REPORT_MERGE_M) continue;
+    /*
+     * The same thing again. A driver who reports it a second time is saying it is still
+     * there, so the clock restarts either way; the count is the size of the set, so their
+     * second tap cannot raise it. Reporting something they had dismissed is a change of
+     * mind, and is taken as one.
+     */
+    r.against.delete(s.id);
+    vote(r.by, s.id);
+    r.n = r.by.size;
+    r.no = r.against.size;
+    r.at = now;
+    state.nextReportExpiryAt = Math.min(state.nextReportExpiryAt, reportExpiryAt(r));
+    addTo(state.reportsDirty, cell, r.id);
+    return ok;
+  }
+  /*
+   * Two caps, and they bound different things. The per-cell one keeps a single `reports`
+   * message small; the per-hub one is what keeps the object inside its memory, which the
+   * per-cell cap alone does not (see MAX_REPORTS_PER_HUB). Either way the pin that goes is
+   * the least recently confirmed one, which is the one nobody has vouched for in longest.
+   */
+  if (inCell.length >= MAX_REPORTS_PER_CELL) {
+    const stale = oldestReport(state, cell);
+    if (stale) dropReport(state, stale);
+  }
+  if (state.reports.size >= MAX_REPORTS_PER_HUB) {
+    const stale = oldestReport(state);
+    if (stale) dropReport(state, stale);
+  }
+
+  // The id carries the time so that one minted after a hibernation cannot collide with one a
+  // client is still holding from before it.
+  const id = `${state.hub}-${now.toString(36)}-${(state.nextReportSeq++).toString(36)}`;
+  addReport(state, {
+    id,
+    kind: msg.kind,
+    lat,
+    lng,
+    at: now,
+    first: now,
+    n: 1,
+    no: 0,
+    cell,
+    by: new Set([s.id]),
+    against: new Set(),
+  });
+  addTo(state.reportsDirty, cell, id);
+  return ok;
+}
+
+/**
+ * A driver answers the question the pin asks: is it still there?
+ *
+ * A vote is worth something only from somebody who could see the thing, so it is checked
+ * against the voter's own position the way a report is, and against the pin's: beyond
+ * REPORT_VOTE_RANGE_M there is nothing to have seen. Each driver counts once and can change
+ * their mind; `n` and `no` are the two set sizes, so they cannot drift.
+ *
+ * A report goes when as many drivers say it is gone as say it is there. One voice against
+ * one is enough to clear a pin nobody else has vouched for, and a pin four drivers have
+ * confirmed needs four — which is the right way round, and self-correcting either way,
+ * because a driver who is actually looking at it can report it again (ADR-0040, amended).
+ */
+function onConfirm(
+  state: HubState,
+  s: Socket,
+  msg: Extract<ClientMsg, { t: 'confirm' }>,
+  now: number,
+): Effect[] {
+  if (!s.id) return violation(s);
+  const refuse = (reason: ConfirmFailReason): Effect[] => [
+    { k: 'send', to: s.key, msg: { t: 'confirmed', id: msg.id, ok: false, reason } },
+  ];
+  if (s.hidden || s.spectator) return refuse('hidden');
+  if (s.lastConfirmAt !== 0 && now - s.lastConfirmAt < RATE_CONFIRM_MS) return refuse('rate');
+
+  const report = state.reports.get(msg.id);
+  // Lapsed, or dismissed by somebody else, between the pin being drawn and the tap.
+  if (!report || reportExpired(report, now)) return refuse('gone');
+
+  const lat = msg.at[0] / WIRE_COORD_SCALE;
+  const lng = msg.at[1] / WIRE_COORD_SCALE;
+  const known = s.lastSeen && now - s.lastSeen.ts <= PRESENCE_EXPIRY_MS ? s.lastSeen : null;
+  if (known && haversineM(known.lat, known.lng, lat, lng) > REPORT_MAX_OFFSET_M)
+    return refuse('range');
+  if (haversineM(report.lat, report.lng, lat, lng) > REPORT_VOTE_RANGE_M) return refuse('range');
+
+  s.lastConfirmAt = now;
+  if (msg.there) {
+    report.against.delete(s.id);
+    vote(report.by, s.id);
+    // Only a voice for it restarts the clock. A dismissal must never extend a pin's life.
+    report.at = now;
+    // The watermark may now be earlier than the truth, which costs one sweep that mends it.
+    state.nextReportExpiryAt = Math.min(state.nextReportExpiryAt, reportExpiryAt(report));
+  } else {
+    report.by.delete(s.id);
+    vote(report.against, s.id);
+  }
+  report.n = report.by.size;
+  report.no = report.against.size;
+
+  const ok: Effect[] = [{ k: 'send', to: s.key, msg: { t: 'confirmed', id: msg.id, ok: true } }];
+  if (report.against.size >= report.by.size) dropReport(state, report);
+  else addTo(state.reportsDirty, report.cell, report.id);
+  return ok;
+}
+
+/** The reports news for every cell that has some, to everybody holding that cell. */
+function flushReports(state: HubState, now: number): Effect[] {
+  /*
+   * The sweep, and only when one can have lapsed. It used to run on every tick and copy every
+   * pin in the hub to do it, which at the cap was a 51,200-element array twice a second to
+   * find nothing — the same full-hub scan per tick that ADR-0033 took out of presence, walked
+   * back in through a side door. The watermark is a lower bound on the soonest expiry, so a
+   * tick that cannot have lapsed anything does nothing at all.
+   */
+  if (now >= state.nextReportExpiryAt) {
+    let soonest = Number.POSITIVE_INFINITY;
+    for (const r of [...state.reports.values()]) {
+      if (reportExpired(r, now)) dropReport(state, r);
+      else soonest = Math.min(soonest, reportExpiryAt(r));
+    }
+    state.nextReportExpiryAt = soonest;
+  }
+  const effects: Effect[] = [];
+  const cells = new Set([...state.reportsDirty.keys(), ...state.reportsGone.keys()]);
+  for (const cell of cells) {
+    const subscribers = state.socketsByCell.get(cell);
+    const gone = [...(state.reportsGone.get(cell) ?? [])];
+    const upd: Report[] = [];
+    for (const id of state.reportsDirty.get(cell) ?? []) {
+      const r = state.reports.get(id);
+      if (r) upd.push(publicReport(r));
+    }
+    if (!subscribers || (upd.length === 0 && gone.length === 0)) continue;
+    const msg: ServerMsg = { t: 'reports', cell, upd, gone };
+    for (const key of subscribers) effects.push({ k: 'send', to: key, msg });
+  }
+  state.reportsDirty.clear();
+  state.reportsGone.clear();
   return effects;
 }
 
@@ -712,6 +1019,10 @@ function handle(state: HubState, s: Socket, msg: ClientMsg, now: number): Effect
       return onSub(state, s, msg, now);
     case 'wave':
       return onWave(state, s, msg.to, now);
+    case 'report':
+      return onReport(state, s, msg, now);
+    case 'confirm':
+      return onConfirm(state, s, msg, now);
     case 'hide': {
       s.hidden = true;
       dropPresence(state, s.id);
@@ -934,6 +1245,7 @@ export function flushIfDue(state: HubState, now: number, force = false): Effect[
 
   state.dirty.clear();
   state.gone.clear();
+  effects.push(...flushReports(state, now));
 
   const c = state.counters;
   if (c.dirtyKeys.size > 0 && now - c.lastWriteAt >= COUNTER_WRITE_MS) {
@@ -1040,10 +1352,12 @@ export const hubStats = (state: HubState): {
   presence: number;
   cells: number;
   held: number;
+  reports: number;
 } => ({
   hub: state.hub,
   sockets: state.sockets.size,
   presence: state.presence.size,
   cells: state.socketsByCell.size,
   held: state.held.length,
+  reports: state.reports.size,
 });

@@ -7,3 +7,5 @@ export * from './models.js';
 export * from './motion.js';
 export * from './rates.js';
 export * from './hash.js';
+export * from './status.js';
+export * from './reports.js';

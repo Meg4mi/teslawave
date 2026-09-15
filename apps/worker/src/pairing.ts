@@ -3,10 +3,13 @@ import {
   generateCode,
   isColourId,
   isModel,
+  cleanStatusText,
   isSecret,
+  isStatusId,
   isValidCode,
   normaliseCode,
   NICK_MAX_LEN,
+  type StatusId,
 } from '@teslawave/protocol';
 import { overLimit } from './limits.js';
 
@@ -15,7 +18,14 @@ import { overLimit } from './limits.js';
  * id from it, and from then on both devices are the same driver (ADR-0025). The row that
  * carries it lives ten minutes at most and is deleted the moment it is claimed.
  */
-export type PairPayload = { secret: string; model: string; colour: string; nick?: string };
+export type PairPayload = {
+  secret: string;
+  model: string;
+  colour: string;
+  nick?: string;
+  status?: StatusId;
+  statusText?: string;
+};
 
 const json = (body: unknown, status = 200): Response =>
   new Response(JSON.stringify(body), {
@@ -39,11 +49,19 @@ const CREATE_WINDOW_MS = 60_000;
 
 const readPayload = (body: unknown): PairPayload | null => {
   if (typeof body !== 'object' || body === null) return null;
-  const { secret, model, colour, nick } = body as Record<string, unknown>;
+  const { secret, model, colour, nick, status, statusText } = body as Record<string, unknown>;
   if (!isSecret(secret)) return null;
   if (!isModel(model) || !isColourId(colour)) return null;
   const clean = typeof nick === 'string' ? nick.trim().slice(0, NICK_MAX_LEN) : '';
-  return { secret, model, colour, ...(clean ? { nick: clean } : {}) };
+  const text = isStatusId(status) ? undefined : cleanStatusText(statusText);
+  return {
+    secret,
+    model,
+    colour,
+    ...(clean ? { nick: clean } : {}),
+    ...(isStatusId(status) ? { status } : {}),
+    ...(text === undefined ? {} : { statusText: text }),
+  };
 };
 
 /** Create a short code that carries an identity from the phone to the car. */

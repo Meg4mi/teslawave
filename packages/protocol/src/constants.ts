@@ -51,6 +51,65 @@ export const RATE_WAVE_MS = 5_000;
  */
 export const WAVE_HOLD_MS = 3_000;
 export const RATE_VIOLATIONS_TO_CLOSE = 5;
+/**
+ * One report a minute per connection. A report is a tap, and the hub places it where the
+ * car is, so there is nothing a second tap ten seconds later could add that the first did
+ * not — except noise on everybody else's map.
+ */
+export const RATE_REPORT_MS = 60_000;
+/**
+ * A second driver reporting the same kind of thing within this distance of an existing
+ * report confirms it rather than adding another marker: the count goes up, the clock
+ * restarts, the map keeps one pin.
+ */
+export const REPORT_MERGE_M = 300;
+/**
+ * A report carries the client's own position, because a hub that has just woken has no
+ * other. When the hub does hold one, the two must agree to within this: a car cannot report
+ * a patrol it is not near.
+ */
+export const REPORT_MAX_OFFSET_M = 1_000;
+/** Bounds the size of one `reports` message: past this the cell's oldest pin goes. */
+export const MAX_REPORTS_PER_CELL = 50;
+/**
+ * And this is what bounds the hub's memory, which the per-cell cap alone does not: a hub owns
+ * 32 x 32 cells, so 50 each is 51,200 pins, and 51,200 pins with fifty voters apiece measured
+ * at 529 MB of heap — four times what a Durable Object has. A pin now lives up to four hours
+ * (ADR-0040, amended), which is long enough for a busy region to walk towards that, so the
+ * bound has to be stated rather than hoped for.
+ *
+ * A thousand is twenty busy cells' worth at once, far more than a region of 1,250 x 625 km
+ * plausibly has, and it measures at about 3 MB with fifty voters on every pin. Past it the
+ * hub's least recently confirmed pin goes. If a region ever genuinely needs more, the lever
+ * is HUB_PRECISION, exactly as it is for sockets.
+ */
+export const MAX_REPORTS_PER_HUB = 1_000;
+/**
+ * And this bounds the other dimension a pin can grow in: the drivers behind it. A pin holds
+ * the id of everyone who has said it is there and everyone who has said it is not, so that
+ * each counts once and can change their mind — and over four hours on a busy road that set
+ * is the only part of a pin that is not a fixed size. A thousand pins with five hundred
+ * voters apiece measured at 99 MB, against a Durable Object's 128 MB; at a hundred it is 11.
+ *
+ * Past it a vote still restarts the pin's clock, which is the part that matters, and simply
+ * stops adding to the count. A pin a hundred drivers have vouched for does not need the
+ * hundred and first to be counted individually.
+ */
+export const MAX_REPORT_VOTERS = 100;
+/** The client says something, once, when a report comes within this of the car. */
+export const REPORT_ALERT_M = 1_000;
+/**
+ * How near a driver has to be to a pin to vote on it. Wider than the alert range, because
+ * the tap comes after the announcement and a car at 100 km/h covers the difference while
+ * the driver decides — and narrow enough that a vote means "I am looking at this".
+ */
+export const REPORT_VOTE_RANGE_M = 2_000;
+/**
+ * One vote per connection every ten seconds. Not the report's own minute: two stale pins on
+ * the same stretch of road should both be dismissable, and the real bound on a vote is that
+ * each driver counts once per report however often they tap.
+ */
+export const RATE_CONFIRM_MS = 10_000;
 export const MAX_MSG_BYTES = 1_024;
 
 /** Anything faster than this between two updates is a spoof or a bug. */

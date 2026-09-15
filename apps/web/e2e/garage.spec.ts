@@ -23,7 +23,8 @@ test('you can change your car after onboarding, and it sticks', async ({ page })
   await openGarage(page);
   await page.getByRole('button', { name: 'Model Y', exact: true }).click();
   await page.getByRole('button', { name: 'Deep Blue', exact: true }).click();
-  await page.getByRole('textbox').fill('Nine');
+  await page.getByRole('textbox', { name: 'Name (optional)' }).fill('Nine');
+  await page.getByRole('button', { name: 'On a road trip', exact: true }).click();
   await page.getByRole('button', { name: 'Save', exact: true }).click();
 
   await expect(page.getByText('Your car is updated.')).toBeVisible();
@@ -31,6 +32,7 @@ test('you can change your car after onboarding, and it sticks', async ({ page })
     model: 'Y',
     colour: 'deepblue',
     nick: 'Nine',
+    status: 'roadtrip',
   });
 
   // The identity itself must survive: changing your paint is not becoming a new driver.
@@ -45,15 +47,36 @@ test('you can change your car after onboarding, and it sticks', async ({ page })
   });
 });
 
+test('a status can be the driver\u2019s own words, and a chip takes it back over', async ({
+  page,
+}) => {
+  await onboard(page, simUrl(GENEVA.lat, GENEVA.lng, 90, 50));
+  await openGarage(page);
+  // The chips and the field are one choice: the last one used is the one that counts.
+  await page.getByRole('button', { name: 'Commuting', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Your own words' }).fill('towing a caravan');
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  expect(await page.evaluate(() => window.__tw.identity())).toMatchObject({
+    statusText: 'towing a caravan',
+  });
+  expect(await page.evaluate(() => window.__tw.identity())).not.toHaveProperty('status');
+
+  await openGarage(page);
+  await page.getByRole('button', { name: 'On a road trip', exact: true }).click();
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  expect(await page.evaluate(() => window.__tw.identity())).toMatchObject({ status: 'roadtrip' });
+  expect(await page.evaluate(() => window.__tw.identity())).not.toHaveProperty('statusText');
+});
+
 test('a name can be cleared again, not only changed', async ({ page }) => {
   await onboard(page, simUrl(GENEVA.lat, GENEVA.lng, 90, 50));
   await openGarage(page);
-  await page.getByRole('textbox').fill('Nine');
+  await page.getByRole('textbox', { name: 'Name (optional)' }).fill('Nine');
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   expect(await page.evaluate(() => window.__tw.identity())).toMatchObject({ nick: 'Nine' });
 
   await openGarage(page);
-  await page.getByRole('textbox').fill('');
+  await page.getByRole('textbox', { name: 'Name (optional)' }).fill('');
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   // Rebuilt rather than patched, or an emptied field would leave the old name in place.
   expect(await page.evaluate(() => window.__tw.identity())).not.toHaveProperty('nick');
