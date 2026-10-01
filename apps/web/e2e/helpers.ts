@@ -1,6 +1,26 @@
-import type { Page } from '@playwright/test';
+import type { Page, TestInfo } from '@playwright/test';
 
 export const GENEVA = { lat: 46.2044, lng: 6.1432 };
+
+/**
+ * The same place, moved east by a whole degree for every project, retry and repeat, so a run
+ * of a spec never shares a hub cell with an earlier run of itself.
+ *
+ * The hub outlives a test and a report outlives the hub's tick by up to ninety minutes, so a
+ * pin left by the `tesla` project was still there when `tesla-dpr2` reported the same thing
+ * in the same spot, and was confirmed instead of placed. A degree is about 77 km here, twice
+ * the width of a cell, so the cells a client holds cannot reach the next spot along.
+ */
+export function apart(
+  at: { lat: number; lng: number },
+  testInfo: TestInfo,
+): { lat: number; lng: number } {
+  const projects = testInfo.config.projects.length;
+  const project = testInfo.config.projects.findIndex((p) => p.name === testInfo.project.name);
+  const attempts = testInfo.project.retries + 1;
+  const slot = (testInfo.repeatEachIndex * projects + project) * attempts + testInfo.retry;
+  return { lat: at.lat, lng: at.lng + slot };
+}
 
 /**
  * A car driving from a point, in the app's simulated-position mode. `turn` is degrees per

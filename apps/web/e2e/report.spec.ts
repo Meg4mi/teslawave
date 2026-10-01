@@ -1,12 +1,13 @@
 import { expect, test } from '@playwright/test';
-import { cars, GENEVA, onboard, simUrl } from './helpers';
+import { apart, cars, GENEVA, onboard, simUrl } from './helpers';
 
 /**
  * A report goes the whole way round: tapped on one screen, placed by the hub where that car
  * is, drawn on the other screen, and said there once because it is within a kilometre.
  * Two browsers, the real hub, the real wire (ADR-0040).
  */
-test('a report on one screen is a pin and an alert on the other', async ({ browser }) => {
+test('a report on one screen is a pin and an alert on the other', async ({ browser }, testInfo) => {
+  const here = apart(GENEVA, testInfo);
   const a = await browser.newContext({ permissions: ['geolocation'] });
   const b = await browser.newContext({ permissions: ['geolocation'] });
   const pageA = await a.newPage();
@@ -14,13 +15,21 @@ test('a report on one screen is a pin and an alert on the other', async ({ brows
 
   // ~220 m apart: inside the alert range, and inside the 300 m within which a second report
   // of the same thing confirms the first rather than adding a pin.
-  await onboard(pageA, simUrl(GENEVA.lat, GENEVA.lng, 90, 10));
-  await onboard(pageB, simUrl(GENEVA.lat + 0.002, GENEVA.lng, 90, 10));
+  await onboard(pageA, simUrl(here.lat, here.lng, 90, 10));
+  await onboard(pageB, simUrl(here.lat + 0.002, here.lng, 90, 10));
   await expect.poll(async () => (await cars(pageA)).length, { timeout: 20_000 }).toBeGreaterThan(0);
 
+  // Watched every frame rather than polled: the next tick brings the pin back to A as well,
+  // and its alert takes the same toast, so this line can be up for well under the interval an
+  // ordinary assertion polls at.
+  const said = pageA.waitForFunction(
+    () => document.body.innerText.includes('Reported. Drivers nearby will see it.'),
+    undefined,
+    { polling: 'raf', timeout: 15_000 },
+  );
   await pageA.getByRole('button', { name: 'Report police or an accident', exact: true }).click();
   await pageA.getByRole('button', { name: /^Police/ }).click();
-  await expect(pageA.getByText('Reported. Drivers nearby will see it.')).toBeVisible();
+  await said;
 
   // The pin lands on both screens, where A was, and nobody is named on it.
   await expect
@@ -70,14 +79,19 @@ test('a spectator is told to turn location on rather than left guessing', async 
  */
 const MILAN = { lat: 45.4642, lng: 9.19 };
 
-test('a pin can be confirmed and cleared from the screen that sees it', async ({ browser }) => {
+test('a pin can be confirmed and cleared from the screen that sees it', async ({
+  browser,
+}, testInfo) => {
+  const here = apart(MILAN, testInfo);
   const a = await browser.newContext({ permissions: ['geolocation'] });
   const b = await browser.newContext({ permissions: ['geolocation'] });
   const pageA = await a.newPage();
   const pageB = await b.newPage();
 
-  await onboard(pageA, simUrl(MILAN.lat, MILAN.lng, 90, 10));
-  await onboard(pageB, simUrl(MILAN.lat + 0.002, MILAN.lng, 90, 10));
+  // A drives on at a pace that takes it off its own pin within a second or two; B crawls, so
+  // the map under the finger barely moves between finding the pin and tapping it.
+  await onboard(pageA, simUrl(here.lat, here.lng, 90, 40));
+  await onboard(pageB, simUrl(here.lat + 0.002, here.lng, 90, 10));
   await expect.poll(async () => (await cars(pageA)).length, { timeout: 20_000 }).toBeGreaterThan(0);
 
   await pageA.getByRole('button', { name: 'Report police or an accident', exact: true }).click();
@@ -86,13 +100,31 @@ test('a pin can be confirmed and cleared from the screen that sees it', async ({
     .poll(async () => pageB.evaluate(() => window.__tw.reports().length), { timeout: 15_000 })
     .toBe(1);
 
-  // Tap the pin where the app actually drew it, through the map's own projection.
-  const tapPin = async (): Promise<void> => {
-    const point = await pageB.evaluate(() => {
+  /*
+   * Tap the pin where the app actually drew it, through the map's own projection — once A's
+   * car is clear of it. A is parked on its own pin the moment it reports, and the map gives a
+   * tap to whichever is nearer, the car when they tie, so a tap made then opened A's card.
+   */
+  const pinAndClearance = () =>
+    pageB.evaluate(() => {
       const report = window.__tw.reports()[0];
-      if (!report || !window.__twMap) return null;
-      return window.__twMap.project([report.lng, report.lat]);
+      const map = window.__twMap;
+      if (!report || !map) return null;
+      const pin = map.project([report.lng, report.lat]);
+      const clearance = Math.min(
+        Infinity,
+        ...window.__tw.cars().map((car) => {
+          const at = map.project([car.drawn.lng, car.drawn.lat]);
+          return Math.hypot(at.x - pin.x, at.y - pin.y);
+        }),
+      );
+      return { pin, clearance };
     });
+  const tapPin = async (): Promise<void> => {
+    await expect
+      .poll(async () => (await pinAndClearance())?.clearance ?? 0, { timeout: 15_000 })
+      .toBeGreaterThan(20);
+    const point = (await pinAndClearance())?.pin ?? null;
     expect(point).not.toBeNull();
     const box = await pageB.locator('.map__gl canvas').first().boundingBox();
     expect(box).not.toBeNull();

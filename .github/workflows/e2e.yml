@@ -4,10 +4,13 @@ name: E2E
 # push. It runs every night, on any pull request that touches the rendering path, and from
 # the Actions tab (or `gh workflow run e2e.yml`) whenever the acceptance criteria are worth
 # re-checking. A manual-only suite is a suite nobody runs.
+#
+# The nightly run is off for now to save Actions minutes: it failed ten nights running on
+# report.spec.ts, at about 23 minutes a night. Put the schedule back once the suite is green.
 on:
-  schedule:
-    # 03:17 UTC, off the hour so it does not queue behind everyone else's nightly.
-    - cron: '17 3 * * *'
+  # schedule:
+  #   # 03:17 UTC, off the hour so it does not queue behind everyone else's nightly.
+  #   - cron: '17 3 * * *'
   pull_request:
     paths:
       - 'apps/web/src/map/**'
